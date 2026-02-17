@@ -1,0 +1,89 @@
+import { auth } from "@/auth";
+import prisma from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+
+export default async function TeacherClubsPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const where =
+    session.user.role === "ADMIN"
+      ? undefined
+      : { ownerId: session.user.id };
+
+  const clubs = await prisma.club.findMany({
+    where,
+    include: {
+      owner: { select: { name: true } },
+      _count: { select: { clubSessions: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">My Clubs</h1>
+        <Link
+          href="/teacher/clubs/new"
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+        >
+          + New Club
+        </Link>
+      </div>
+
+      {clubs.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">
+          No clubs yet.{" "}
+          <Link href="/teacher/clubs/new" className="text-indigo-600 hover:underline">
+            Create your first club
+          </Link>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-3 text-left">Club</th>
+                <th className="px-4 py-3 text-left">Location</th>
+                <th className="px-4 py-3 text-left">Capacity</th>
+                <th className="px-4 py-3 text-left">Sessions</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {clubs.map((club) => (
+                <tr key={club.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">{club.name}</div>
+                    {club.description && (
+                      <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">
+                        {club.description}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {club.location ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{club.maxCapacity}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {club._count.clubSessions}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/teacher/clubs/${club.id}`}
+                      className="text-indigo-600 hover:underline text-xs font-medium"
+                    >
+                      Manage
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
