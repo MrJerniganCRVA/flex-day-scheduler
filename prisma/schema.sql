@@ -1,27 +1,27 @@
 -- ============================================================
 -- Flex Day Club Scheduler — Database Bootstrap
 -- Derived from prisma/schema.prisma
--- Run once against a fresh PostgreSQL database via psql or any
--- Postgres client (Railway shell, TablePlus, DBeaver, etc.)
--- Safe to re-run on an existing database (fully idempotent).
+--
+-- Run against a FRESH PostgreSQL database:
+--   psql "$DATABASE_URL" -f prisma/schema.sql
+--
+-- If you need to reset an existing database first, uncomment:
+--   DROP TABLE IF EXISTS "Signup","ClubSession","Club","FlexDay",
+--     "VerificationToken","Session","Account","User" CASCADE;
+--   DROP TYPE IF EXISTS "RotationSlot", "Role";
 -- ============================================================
+
+BEGIN;
 
 -- ─── Enums ──────────────────────────────────────────────────────────────────
 
-DO $$ BEGIN
-  CREATE TYPE "Role" AS ENUM ('STUDENT', 'TEACHER', 'ADMIN');
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$ BEGIN
-  CREATE TYPE "RotationSlot" AS ENUM ('FLEX_1', 'FLEX_2', 'FLEX_3');
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+CREATE TYPE "Role" AS ENUM ('STUDENT', 'TEACHER', 'ADMIN');
+CREATE TYPE "RotationSlot" AS ENUM ('FLEX_1', 'FLEX_2', 'FLEX_3');
 
 -- ─── Tables (in FK-dependency order) ────────────────────────────────────────
 
 -- User (no FK deps)
-CREATE TABLE IF NOT EXISTS "User" (
+CREATE TABLE "User" (
   "id"        TEXT         NOT NULL,
   "email"     TEXT         NOT NULL,
   "name"      TEXT         NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS "User" (
 );
 
 -- Account (NextAuth; depends on User)
-CREATE TABLE IF NOT EXISTS "Account" (
+CREATE TABLE "Account" (
   "id"                TEXT    NOT NULL,
   "userId"            TEXT    NOT NULL,
   "type"              TEXT    NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS "Account" (
 );
 
 -- Session (NextAuth; depends on User)
-CREATE TABLE IF NOT EXISTS "Session" (
+CREATE TABLE "Session" (
   "id"           TEXT         NOT NULL,
   "sessionToken" TEXT         NOT NULL,
   "userId"       TEXT         NOT NULL,
@@ -65,14 +65,14 @@ CREATE TABLE IF NOT EXISTS "Session" (
 );
 
 -- VerificationToken (NextAuth; no FK deps)
-CREATE TABLE IF NOT EXISTS "VerificationToken" (
+CREATE TABLE "VerificationToken" (
   "identifier" TEXT         NOT NULL,
   "token"      TEXT         NOT NULL,
   "expires"    TIMESTAMP(3) NOT NULL
 );
 
 -- FlexDay (no FK deps)
-CREATE TABLE IF NOT EXISTS "FlexDay" (
+CREATE TABLE "FlexDay" (
   "id"        TEXT         NOT NULL,
   "date"      DATE         NOT NULL,
   "label"     TEXT,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS "FlexDay" (
 );
 
 -- Club (depends on User)
-CREATE TABLE IF NOT EXISTS "Club" (
+CREATE TABLE "Club" (
   "id"               TEXT         NOT NULL,
   "name"             TEXT         NOT NULL,
   "description"      TEXT,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS "Club" (
 );
 
 -- ClubSession (depends on FlexDay, Club)
-CREATE TABLE IF NOT EXISTS "ClubSession" (
+CREATE TABLE "ClubSession" (
   "id"            TEXT             NOT NULL,
   "flexDayId"     TEXT             NOT NULL,
   "clubId"        TEXT             NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS "ClubSession" (
 );
 
 -- Signup (depends on User, ClubSession)
-CREATE TABLE IF NOT EXISTS "Signup" (
+CREATE TABLE "Signup" (
   "id"            TEXT         NOT NULL,
   "studentId"     TEXT         NOT NULL,
   "clubSessionId" TEXT         NOT NULL,
@@ -134,36 +134,31 @@ CREATE TABLE IF NOT EXISTS "Signup" (
 
 -- ─── Unique indexes ──────────────────────────────────────────────────────────
 
-CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key"
+CREATE UNIQUE INDEX "User_email_key"
   ON "User"("email");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "Account_provider_providerAccountId_key"
+CREATE UNIQUE INDEX "Account_provider_providerAccountId_key"
   ON "Account"("provider", "providerAccountId");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "Session_sessionToken_key"
+CREATE UNIQUE INDEX "Session_sessionToken_key"
   ON "Session"("sessionToken");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_token_key"
+CREATE UNIQUE INDEX "VerificationToken_token_key"
   ON "VerificationToken"("token");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_identifier_token_key"
+CREATE UNIQUE INDEX "VerificationToken_identifier_token_key"
   ON "VerificationToken"("identifier", "token");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "FlexDay_date_key"
+CREATE UNIQUE INDEX "FlexDay_date_key"
   ON "FlexDay"("date");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "Club_googleCalendarId_key"
+CREATE UNIQUE INDEX "Club_googleCalendarId_key"
   ON "Club"("googleCalendarId");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "Signup_studentId_clubSessionId_key"
+CREATE UNIQUE INDEX "Signup_studentId_clubSessionId_key"
   ON "Signup"("studentId", "clubSessionId");
 
 -- ─── Regular indexes ─────────────────────────────────────────────────────────
 
-CREATE INDEX IF NOT EXISTS "User_email_idx"            ON "User"("email");
-CREATE INDEX IF NOT EXISTS "FlexDay_date_idx"          ON "FlexDay"("date");
-CREATE INDEX IF NOT EXISTS "Club_ownerId_idx"          ON "Club"("ownerId");
-CREATE INDEX IF NOT EXISTS "ClubSession_flexDayId_idx" ON "ClubSession"("flexDayId");
-CREATE INDEX IF NOT EXISTS "ClubSession_clubId_idx"    ON "ClubSession"("clubId");
-CREATE INDEX IF NOT EXISTS "Signup_studentId_idx"      ON "Signup"("studentId");
-CREATE INDEX IF NOT EXISTS "Signup_clubSessionId_idx"  ON "Signup"("clubSessionId");
+CREATE INDEX "User_email_idx"            ON "User"("email");
+CREATE INDEX "FlexDay_date_idx"          ON "FlexDay"("date");
+CREATE INDEX "Club_ownerId_idx"          ON "Club"("ownerId");
+CREATE INDEX "ClubSession_flexDayId_idx" ON "ClubSession"("flexDayId");
+CREATE INDEX "ClubSession_clubId_idx"    ON "ClubSession"("clubId");
+CREATE INDEX "Signup_studentId_idx"      ON "Signup"("studentId");
+CREATE INDEX "Signup_clubSessionId_idx"  ON "Signup"("clubSessionId");
+
+COMMIT;
