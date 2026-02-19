@@ -31,14 +31,18 @@ export default function SessionForm({
   const [clubId, setClubId] = useState(preselectedClubId ?? clubs[0]?.id ?? "");
   const [flexDayId, setFlexDayId] = useState(flexDays[0]?.id ?? "");
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
+  const [signupMode, setSignupMode] = useState<"linked" | "separate">("linked");
   const [locationOverride, setLocationOverride] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function toggleRotation(r: RotationSlot) {
-    setRotations((prev) =>
-      prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]
-    );
+    setRotations((prev) => {
+      const next = prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r];
+      // Reset to linked when dropping back to 1 rotation
+      if (next.length < 2) setSignupMode("linked");
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -50,21 +54,47 @@ export default function SessionForm({
     setLoading(true);
     setError(null);
 
-    const res = await fetch(`/api/clubs/${clubId}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        flexDayId,
-        rotations,
-        locationOverride: locationOverride || undefined,
-      }),
-    });
-
-    setLoading(false);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Failed to schedule session.");
+    try {
+      if (signupMode === "separate" && rotations.length > 1) {
+        // Create one independent session per rotation
+        for (const r of rotations) {
+          const res = await fetch(`/api/clubs/${clubId}/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              flexDayId,
+              rotations: [r],
+              locationOverride: locationOverride || undefined,
+            }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setError(data.error ?? "Failed to schedule session.");
+            setLoading(false);
+            return;
+          }
+        }
+      } else {
+        // Create one linked session covering all selected rotations
+        const res = await fetch(`/api/clubs/${clubId}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flexDayId,
+            rotations,
+            locationOverride: locationOverride || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error ?? "Failed to schedule session.");
+          setLoading(false);
+          return;
+        }
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
       return;
     }
 
@@ -141,11 +171,7 @@ export default function SessionForm({
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
           Rotations <span className="text-red-500">*</span>
         </label>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Select all rotations this club will occupy. All selected rotations
-          become a single session block — students sign up once and attend all.
-        </p>
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex gap-3 flex-wrap mb-3">
           {ALL_ROTATIONS.map((r) => (
             <label
               key={r}
@@ -165,6 +191,58 @@ export default function SessionForm({
             </label>
           ))}
         </div>
+
+        {/* Signup mode toggle — shown only when 2+ rotations are selected */}
+        {rotations.length >= 2 && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              How should students sign up?
+            </p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="signupMode"
+                value="linked"
+                checked={signupMode === "linked"}
+                onChange={() => setSignupMode("linked")}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  Linked block
+                </span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  One signup covers all selected rotations. Students commit to the full block.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="signupMode"
+                value="separate"
+                checked={signupMode === "separate"}
+                onChange={() => setSignupMode("separate")}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  Independent per rotation
+                </span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Creates separate sessions. Students can sign up for just one rotation.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
+
+        {rotations.length < 2 && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Select all rotations this club will occupy. All selected rotations
+            become a single session block — students sign up once and attend all.
+          </p>
+        )}
       </div>
 
       <div>
@@ -203,7 +281,11 @@ export default function SessionForm({
           disabled={loading || rotations.length === 0}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? "Scheduling…" : "Schedule Session"}
+          {loading
+            ? "Scheduling…"
+            : signupMode === "separate" && rotations.length > 1
+              ? `Schedule ${rotations.length} Sessions`
+              : "Schedule Session"}
         </button>
       </div>
     </form>
