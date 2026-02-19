@@ -11,8 +11,29 @@ export default async function AdminFlexDaysPage() {
   const flexDays = await prisma.flexDay.findMany({
     include: {
       _count: { select: { clubSessions: true } },
+      clubSessions: {
+        include: {
+          club: { select: { maxCapacity: true } },
+          _count: { select: { signups: true } },
+        },
+      },
     },
-    orderBy: { date: "desc" },
+    orderBy: { date: "asc" },
+  });
+
+  // Compute aggregate stats per flex day
+  const flexDaysWithStats = flexDays.map((fd) => {
+    const totalCapacity = fd.clubSessions.reduce(
+      (sum, cs) => sum + cs.club.maxCapacity,
+      0
+    );
+    const totalSignups = fd.clubSessions.reduce(
+      (sum, cs) => sum + cs._count.signups,
+      0
+    );
+    const pct =
+      totalCapacity > 0 ? Math.round((totalSignups / totalCapacity) * 100) : 0;
+    return { ...fd, totalCapacity, totalSignups, pct };
   });
 
   return (
@@ -21,13 +42,13 @@ export default async function AdminFlexDaysPage() {
         <h1 className="text-2xl font-bold text-gray-900">Flex Days</h1>
         <Link
           href="/admin/flex-days/new"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+          className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
         >
           + New Flex Day
         </Link>
       </div>
 
-      {flexDays.length === 0 ? (
+      {flexDaysWithStats.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">
           No Flex Days yet.{" "}
           <Link href="/admin/flex-days/new" className="text-indigo-600 hover:underline">
@@ -42,12 +63,14 @@ export default async function AdminFlexDaysPage() {
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Label</th>
                 <th className="px-4 py-3 text-left">Sessions</th>
+                <th className="px-4 py-3 text-left">Signups</th>
+                <th className="px-4 py-3 text-left">Filled</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {flexDays.map((fd) => (
+              {flexDaysWithStats.map((fd) => (
                 <tr key={fd.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-700 font-medium">
                     {new Date(fd.date).toLocaleDateString("en-US", {
@@ -58,9 +81,27 @@ export default async function AdminFlexDaysPage() {
                       timeZone: "UTC",
                     })}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{fd.label ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-500">{fd.label ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">{fd._count.clubSessions}</td>
                   <td className="px-4 py-3 text-gray-600">
-                    {fd._count.clubSessions}
+                    {fd.totalSignups}/{fd.totalCapacity}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            fd.pct >= 80
+                              ? "bg-green-500"
+                              : fd.pct >= 40
+                                ? "bg-yellow-400"
+                                : "bg-gray-300"
+                          }`}
+                          style={{ width: `${fd.pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-500">{fd.pct}%</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -73,14 +114,16 @@ export default async function AdminFlexDaysPage() {
                       {fd.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right flex justify-end gap-3">
-                    <Link
-                      href={`/admin/flex-days/${fd.id}`}
-                      className="text-indigo-600 hover:underline text-xs font-medium"
-                    >
-                      View
-                    </Link>
-                    <DeleteFlexDayButton flexDayId={fd.id} />
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={`/admin/flex-days/${fd.id}`}
+                        className="text-indigo-600 hover:underline text-xs font-medium"
+                      >
+                        View
+                      </Link>
+                      <DeleteFlexDayButton flexDayId={fd.id} />
+                    </div>
                   </td>
                 </tr>
               ))}

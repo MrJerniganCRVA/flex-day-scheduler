@@ -67,9 +67,16 @@ export async function PUT(
     );
   }
 
+  // Only admin can reassign ownership; strip ownerId from non-admin updates
+  const { ownerId: newOwnerId, ...updateData } = parsed.data;
+  const finalData =
+    session.user.role === "ADMIN" && newOwnerId
+      ? { ...updateData, ownerId: newOwnerId }
+      : updateData;
+
   const updated = await prisma.club.update({
     where: { id: clubId },
-    data: parsed.data,
+    data: finalData,
   });
 
   return NextResponse.json(updated);

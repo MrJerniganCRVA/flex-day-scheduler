@@ -56,7 +56,7 @@ export async function POST(
     );
   }
 
-  const { flexDayId, rotations } = parsed.data;
+  const { flexDayId, rotations, locationOverride } = parsed.data;
 
   const flexDay = await prisma.flexDay.findUnique({ where: { id: flexDayId } });
   if (!flexDay) {
@@ -65,19 +65,19 @@ export async function POST(
 
   // Create the session
   const clubSession = await prisma.clubSession.create({
-    data: { clubId, flexDayId, rotations },
+    data: { clubId, flexDayId, rotations, locationOverride },
     include: {
       flexDay: { select: { id: true, date: true, label: true } },
       club: { select: { name: true, location: true } },
     },
   });
 
-  // Create Google Calendar event (non-blocking)
+  // Create Google Calendar event (non-blocking); prefer session location override
   if (club.googleCalendarId) {
     createEventForSession({
       calendarId: club.googleCalendarId,
       clubName: club.name,
-      location: club.location,
+      location: locationOverride ?? club.location,
       flexDayDate: flexDay.date,
       rotations,
     })

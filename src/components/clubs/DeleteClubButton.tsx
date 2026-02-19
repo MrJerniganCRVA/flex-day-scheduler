@@ -3,7 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-export default function DeleteClubButton({ clubId }: { clubId: string }) {
+export default function DeleteClubButton({
+  clubId,
+  redirectTo = "/teacher/clubs",
+}: {
+  clubId: string;
+  redirectTo?: string;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
@@ -12,7 +18,7 @@ export default function DeleteClubButton({ clubId }: { clubId: string }) {
     const res = await fetch(`/api/clubs/${clubId}`, { method: "DELETE" });
     if (res.ok) {
       startTransition(() => {
-        router.push("/teacher/clubs");
+        router.push(redirectTo);
         router.refresh();
       });
     }
