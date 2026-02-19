@@ -53,7 +53,6 @@ function getDashboardPath(role?: Role): string {
 }
 
 export const config = {
-  runtime: "nodejs",
   matcher: [
     "/((?!api/auth|_next/static|_next/image|favicon.ico|unauthorized).*)",
   ],
