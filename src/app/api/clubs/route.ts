@@ -45,12 +45,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Admin can assign a club to a specific teacher; everyone else owns their own club
+  const { ownerId: requestedOwnerId, ...clubData } = parsed.data;
+  const ownerId =
+    session.user.role === "ADMIN" && requestedOwnerId
+      ? requestedOwnerId
+      : session.user.id;
+
   // Create the club record first
   const club = await prisma.club.create({
-    data: {
-      ...parsed.data,
-      ownerId: session.user.id,
-    },
+    data: { ...clubData, ownerId },
   });
 
   // Attempt to create a Google Calendar for this club (non-blocking)

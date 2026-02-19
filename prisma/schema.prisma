@@ -108,13 +108,14 @@ model Club {
 }
 
 model ClubSession {
-  id            String         @id @default(cuid())
-  flexDayId     String
-  clubId        String
-  rotations     RotationSlot[]
-  googleEventId String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  flexDayId        String
+  clubId           String
+  rotations        RotationSlot[]
+  locationOverride String?
+  googleEventId    String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   flexDay FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
   club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)

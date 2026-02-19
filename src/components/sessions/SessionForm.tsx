@@ -31,6 +31,7 @@ export default function SessionForm({
   const [clubId, setClubId] = useState(preselectedClubId ?? clubs[0]?.id ?? "");
   const [flexDayId, setFlexDayId] = useState(flexDays[0]?.id ?? "");
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
+  const [locationOverride, setLocationOverride] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +53,11 @@ export default function SessionForm({
     const res = await fetch(`/api/clubs/${clubId}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flexDayId, rotations }),
+      body: JSON.stringify({
+        flexDayId,
+        rotations,
+        locationOverride: locationOverride || undefined,
+      }),
     });
 
     setLoading(false);
@@ -137,7 +142,7 @@ export default function SessionForm({
           Select all rotations this club will occupy. All selected rotations
           become a single session block — students sign up once and attend all.
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           {ALL_ROTATIONS.map((r) => (
             <label
               key={r}
@@ -157,6 +162,23 @@ export default function SessionForm({
             </label>
           ))}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Location Override{" "}
+          <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={locationOverride}
+          onChange={(e) => setLocationOverride(e.target.value)}
+          placeholder="Leave blank to use club's default room"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        />
+        <p className="mt-1 text-xs text-gray-400">
+          Use this to move a single session to a different room without changing the club&apos;s default.
+        </p>
       </div>
 
       {error && (

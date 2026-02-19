@@ -16,6 +16,7 @@ export const createClubSchema = z.object({
   description: z.string().max(500).optional(),
   maxCapacity: z.number().int().positive(),
   location: z.string().max(100).optional(),
+  ownerId: z.string().cuid().optional(), // admin only — ignored for teachers
 });
 
 export const updateClubSchema = createClubSchema.partial();
@@ -25,6 +26,7 @@ export const createClubSessionSchema = z.object({
   rotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
+  locationOverride: z.string().max(100).optional(), // overrides club's default room for this session
 });
 
 export const createSignupSchema = z.object({

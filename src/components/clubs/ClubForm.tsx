@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+}
+
 interface Props {
   clubId?: string;
   defaultValues?: {
@@ -11,9 +17,21 @@ interface Props {
     maxCapacity?: number;
     location?: string;
   };
+  /** Admin only: list of assignable teachers */
+  teachers?: Teacher[];
+  /** Admin only: pre-selected owner id */
+  defaultOwnerId?: string;
+  /** Base path to redirect after save, e.g. "/admin/clubs" */
+  returnBasePath?: string;
 }
 
-export default function ClubForm({ clubId, defaultValues }: Props) {
+export default function ClubForm({
+  clubId,
+  defaultValues,
+  teachers,
+  defaultOwnerId,
+  returnBasePath = "/teacher/clubs",
+}: Props) {
   const router = useRouter();
   const isEdit = !!clubId;
 
@@ -23,6 +41,7 @@ export default function ClubForm({ clubId, defaultValues }: Props) {
     maxCapacity: defaultValues?.maxCapacity ?? 20,
     location: defaultValues?.location ?? "",
   });
+  const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +61,7 @@ export default function ClubForm({ clubId, defaultValues }: Props) {
         maxCapacity: Number(form.maxCapacity),
         description: form.description || undefined,
         location: form.location || undefined,
+        ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
 
@@ -54,7 +74,7 @@ export default function ClubForm({ clubId, defaultValues }: Props) {
     }
 
     const club = await res.json();
-    router.push(`/teacher/clubs/${club.id}`);
+    router.push(`${returnBasePath}/${club.id}`);
     router.refresh();
   }
 
@@ -107,7 +127,7 @@ export default function ClubForm({ clubId, defaultValues }: Props) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Room / Location
+            Default Room / Location
           </label>
           <input
             type="text"
@@ -118,6 +138,25 @@ export default function ClubForm({ clubId, defaultValues }: Props) {
           />
         </div>
       </div>
+
+      {teachers && teachers.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Assigned Teacher <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={ownerId}
+            onChange={(e) => setOwnerId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.email})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
