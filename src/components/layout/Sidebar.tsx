@@ -4,21 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 
-type NavItem = { label: string; href: string };
+type NavItem = { label: string; href: string; exact?: boolean };
 
 const studentNav: NavItem[] = [
-  { label: "Flex Days", href: "/student" },
+  { label: "Flex Days", href: "/student", exact: true },
   { label: "My Signups", href: "/student/my-signups" },
 ];
 
 const teacherNav: NavItem[] = [
-  { label: "Dashboard", href: "/teacher" },
+  { label: "Dashboard", href: "/teacher", exact: true },
   { label: "My Clubs", href: "/teacher/clubs" },
   { label: "Schedule Session", href: "/teacher/sessions/new" },
 ];
 
 const adminNav: NavItem[] = [
-  { label: "Dashboard", href: "/admin" },
+  { label: "Dashboard", href: "/admin", exact: true },
   { label: "Flex Days", href: "/admin/flex-days" },
   { label: "Users", href: "/admin/users" },
   { label: "All Clubs", href: "/admin/clubs" },
@@ -42,8 +42,8 @@ export default function Sidebar() {
         <ul className="space-y-1">
           {items.map((item) => {
             const active =
-              item.href === "/"
-                ? pathname === "/"
+              item.href === "/" || item.exact
+                ? pathname === item.href
                 : pathname.startsWith(item.href);
             return (
               <li key={item.href}>
