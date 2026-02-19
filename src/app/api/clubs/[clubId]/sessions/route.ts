@@ -63,6 +63,24 @@ export async function POST(
     return NextResponse.json({ error: "Flex Day not found" }, { status: 404 });
   }
 
+  // Prevent teacher from being scheduled in the same rotation twice on the same flex day
+  const teacherConflict = await prisma.clubSession.findFirst({
+    where: {
+      flexDayId,
+      club: { ownerId: club.ownerId },
+      rotations: { hasSome: rotations },
+    },
+    include: { club: { select: { name: true } } },
+  });
+  if (teacherConflict) {
+    return NextResponse.json(
+      {
+        error: `This teacher already has "${teacherConflict.club.name}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
+      },
+      { status: 409 }
+    );
+  }
+
   // Create the session
   const clubSession = await prisma.clubSession.create({
     data: { clubId, flexDayId, rotations, locationOverride },
