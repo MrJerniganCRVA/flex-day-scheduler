@@ -43,7 +43,6 @@ export default async function StudentFlexDayPage({
 
   if (!flexDay) notFound();
 
-  // Build a map from rotation → sessions that include that rotation
   const rotationMap = new Map<RotationSlot, typeof flexDay.clubSessions>();
   for (const slot of ALL_ROTATIONS) {
     rotationMap.set(
@@ -52,7 +51,6 @@ export default async function StudentFlexDayPage({
     );
   }
 
-  // Find which rotations the student has already booked
   const bookedRotations = new Set<RotationSlot>();
   for (const cs of flexDay.clubSessions) {
     if (cs.signups.length > 0) {
@@ -62,7 +60,7 @@ export default async function StudentFlexDayPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
         {flexDay.label ??
           new Date(flexDay.date).toLocaleDateString("en-US", {
             weekday: "long",
@@ -72,7 +70,7 @@ export default async function StudentFlexDayPage({
             timeZone: "UTC",
           })}
       </h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
         Select a club for each rotation below.
       </p>
 
@@ -82,12 +80,12 @@ export default async function StudentFlexDayPage({
           const isBooked = bookedRotations.has(slot);
 
           return (
-            <div key={slot} className="rounded-xl bg-white border border-gray-200 overflow-hidden">
+            <div key={slot} className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div
                 className={`px-5 py-3 font-semibold text-sm ${
                   isBooked
-                    ? "bg-green-50 text-green-700"
-                    : "bg-indigo-50 text-indigo-700"
+                    ? "bg-green-50 dark:bg-green-950/50 text-green-700 dark:text-green-300"
+                    : "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
                 }`}
               >
                 {ROTATION_LABELS[slot]}
@@ -95,7 +93,7 @@ export default async function StudentFlexDayPage({
               </div>
               <div className="p-4 space-y-3">
                 {sessions.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
                     No clubs scheduled for this rotation.
                   </p>
                 ) : (
@@ -103,7 +101,6 @@ export default async function StudentFlexDayPage({
                     const isFull = cs._count.signups >= cs.club.maxCapacity;
                     const isMySignup = cs.signups.length > 0;
                     const signupId = cs.signups[0]?.id;
-                    // Check if this session spans multiple rotations
                     const spansRotations = cs.rotations.length > 1;
                     const otherRotations = cs.rotations.filter((r) => r !== slot);
 
@@ -112,25 +109,25 @@ export default async function StudentFlexDayPage({
                         key={cs.id}
                         className={`rounded-lg border p-3 ${
                           isMySignup
-                            ? "border-green-300 bg-green-50"
-                            : "border-gray-200"
+                            ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30"
+                            : "border-gray-200 dark:border-gray-700"
                         }`}
                       >
-                        <div className="font-medium text-sm text-gray-900">
+                        <div className="font-medium text-sm text-gray-900 dark:text-white">
                           {cs.club.name}
                         </div>
                         {cs.club.description && (
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {cs.club.description}
                           </p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
                           {cs.club.location && <span>📍 {cs.club.location}</span>}
                           <span>
                             {cs._count.signups}/{cs.club.maxCapacity} enrolled
                           </span>
                           {spansRotations && (
-                            <span className="text-indigo-600 font-medium">
+                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
                               Also: {otherRotations
                                 .map((r) => ROTATION_LABELS[r])
                                 .join(", ")}

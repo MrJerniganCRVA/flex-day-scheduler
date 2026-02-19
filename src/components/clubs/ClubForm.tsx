@@ -78,10 +78,13 @@ export default function ClubForm({
     router.refresh();
   }
 
+  const inputClass =
+    "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-white rounded-xl border border-gray-200 p-6">
+    <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Club Name <span className="text-red-500">*</span>
         </label>
         <input
@@ -90,12 +93,12 @@ export default function ClubForm({
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           placeholder="e.g. Chess Club"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Description
         </label>
         <textarea
@@ -103,13 +106,13 @@ export default function ClubForm({
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
           placeholder="Brief description of the club activity…"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+          className={`${inputClass} resize-none`}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
             Max Capacity <span className="text-red-500">*</span>
           </label>
           <input
@@ -121,12 +124,12 @@ export default function ClubForm({
             onChange={(e) =>
               setForm({ ...form, maxCapacity: Number(e.target.value) })
             }
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className={inputClass}
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
             Default Room / Location
           </label>
           <input
@@ -134,20 +137,20 @@ export default function ClubForm({
             value={form.location}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
             placeholder="e.g. Room 204"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className={inputClass}
           />
         </div>
       </div>
 
       {teachers && teachers.length > 0 && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
             Assigned Teacher <span className="text-red-500">*</span>
           </label>
           <select
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className={inputClass}
           >
             {teachers.map((t) => (
               <option key={t.id} value={t.id}>
@@ -159,7 +162,7 @@ export default function ClubForm({
       )}
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
       )}
@@ -168,7 +171,7 @@ export default function ClubForm({
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           Cancel
         </button>

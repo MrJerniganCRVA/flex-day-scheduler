@@ -54,11 +54,11 @@ export default function SignupButton({
         <button
           onClick={handleCancel}
           disabled={isPending}
-          className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
+          className="w-full rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/80 disabled:opacity-50 transition-colors"
         >
           {isPending ? "Cancelling…" : "Cancel Signup"}
         </button>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
     );
   }
@@ -67,7 +67,7 @@ export default function SignupButton({
     return (
       <button
         disabled
-        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
+        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
       >
         Rotation Conflict
       </button>
@@ -78,7 +78,7 @@ export default function SignupButton({
     return (
       <button
         disabled
-        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
+        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
       >
         Full
       </button>
@@ -94,7 +94,7 @@ export default function SignupButton({
       >
         {isPending ? "Signing up…" : "Sign Up"}
       </button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

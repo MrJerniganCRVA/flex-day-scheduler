@@ -32,7 +32,7 @@ export default async function EditClubPage({
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Edit Club</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Edit Club</h1>
       <ClubForm
         clubId={clubId}
         defaultValues={{

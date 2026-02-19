@@ -72,9 +72,12 @@ export default function SessionForm({
     router.refresh();
   }
 
+  const selectClass =
+    "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+
   if (clubs.length === 0) {
     return (
-      <div className="rounded-xl bg-white border border-gray-200 p-6 text-gray-500">
+      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-6 text-gray-500 dark:text-gray-400">
         You don&apos;t have any clubs yet. Create a club first.
       </div>
     );
@@ -82,7 +85,7 @@ export default function SessionForm({
 
   if (flexDays.length === 0) {
     return (
-      <div className="rounded-xl bg-white border border-gray-200 p-6 text-gray-500">
+      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-6 text-gray-500 dark:text-gray-400">
         No Flex Days have been scheduled. Ask an administrator to create one.
       </div>
     );
@@ -91,16 +94,16 @@ export default function SessionForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-5 bg-white rounded-xl border border-gray-200 p-6"
+      className="space-y-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6"
     >
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Club <span className="text-red-500">*</span>
         </label>
         <select
           value={clubId}
           onChange={(e) => setClubId(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className={selectClass}
         >
           {clubs.map((c) => (
             <option key={c.id} value={c.id}>
@@ -111,13 +114,13 @@ export default function SessionForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Flex Day <span className="text-red-500">*</span>
         </label>
         <select
           value={flexDayId}
           onChange={(e) => setFlexDayId(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className={selectClass}
         >
           {flexDays.map((fd) => (
             <option key={fd.id} value={fd.id}>
@@ -135,10 +138,10 @@ export default function SessionForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
           Rotations <span className="text-red-500">*</span>
         </label>
-        <p className="text-xs text-gray-500 mb-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Select all rotations this club will occupy. All selected rotations
           become a single session block — students sign up once and attend all.
         </p>
@@ -148,8 +151,8 @@ export default function SessionForm({
               key={r}
               className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
                 rotations.includes(r)
-                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                  ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
+                  : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
               <input
@@ -165,24 +168,24 @@ export default function SessionForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Location Override{" "}
-          <span className="text-gray-400 font-normal">(optional)</span>
+          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
         </label>
         <input
           type="text"
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
           placeholder="Leave blank to use club's default room"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
         />
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
           Use this to move a single session to a different room without changing the club&apos;s default.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
         </div>
       )}
@@ -191,7 +194,7 @@ export default function SessionForm({
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Cancel
         </button>

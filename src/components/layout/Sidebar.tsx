@@ -37,7 +37,7 @@ export default function Sidebar() {
         : studentNav;
 
   return (
-    <aside className="w-56 shrink-0 bg-white border-r border-gray-200 min-h-screen pt-6">
+    <aside className="w-56 shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 min-h-screen pt-6">
       <nav className="px-3">
         <ul className="space-y-1">
           {items.map((item) => {
@@ -51,8 +51,8 @@ export default function Sidebar() {
                   href={item.href}
                   className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     active
-                      ? "bg-indigo-50 text-indigo-700"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      ? "bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300"
+                      : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
                   }`}
                 >
                   {item.label}

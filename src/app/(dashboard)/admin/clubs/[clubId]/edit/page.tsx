@@ -40,11 +40,11 @@ export default async function AdminEditClubPage({
       <div className="mb-6">
         <Link
           href={`/admin/clubs/${clubId}`}
-          className="text-sm text-gray-400 hover:text-gray-600"
+          className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
         >
           ← Back to club
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-2">Edit Club</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">Edit Club</h1>
       </div>
       <ClubForm
         clubId={clubId}

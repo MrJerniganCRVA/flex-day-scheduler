@@ -38,7 +38,6 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  // Only owner or admin can manage
   const canManage =
     session.user.role === "ADMIN" || club.owner.id === session.user.id;
   if (!canManage) redirect("/unauthorized");
@@ -47,25 +46,25 @@ export default async function ClubDetailPage({
     <div>
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{club.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{club.name}</h1>
           {club.description && (
-            <p className="text-gray-500 text-sm mt-1">{club.description}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{club.description}</p>
           )}
-          <div className="flex gap-4 mt-2 text-xs text-gray-400">
+          <div className="flex gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>Capacity: {club.maxCapacity}</span>
             {club.location && <span>Location: {club.location}</span>}
             <span>Owner: {club.owner.name}</span>
             {club.googleCalendarId ? (
-              <span className="text-green-600">Google Calendar: Connected</span>
+              <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
             ) : (
-              <span className="text-yellow-600">Google Calendar: Pending</span>
+              <span className="text-yellow-600 dark:text-yellow-400">Google Calendar: Pending</span>
             )}
           </div>
         </div>
         <div className="flex gap-2">
           <Link
             href={`/teacher/clubs/${clubId}/edit`}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             Edit
           </Link>
@@ -79,16 +78,16 @@ export default async function ClubDetailPage({
         </div>
       </div>
 
-      <h2 className="text-lg font-semibold text-gray-800 mb-3">
+      <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
         Scheduled Sessions
       </h2>
 
       {club.clubSessions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-400">
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
           No sessions scheduled yet.{" "}
           <Link
             href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="text-indigo-600 hover:underline"
+            className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Schedule a session
           </Link>
@@ -98,11 +97,11 @@ export default async function ClubDetailPage({
           {club.clubSessions.map((cs) => (
             <div
               key={cs.id}
-              className="rounded-xl bg-white border border-gray-200 p-5"
+              className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-5"
             >
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className="font-semibold text-gray-900">
+                  <div className="font-semibold text-gray-900 dark:text-white">
                     {new Date(cs.flexDay.date).toLocaleDateString("en-US", {
                       weekday: "long",
                       year: "numeric",
@@ -112,13 +111,13 @@ export default async function ClubDetailPage({
                     })}
                   </div>
                   {cs.flexDay.label && (
-                    <div className="text-xs text-gray-400">{cs.flexDay.label}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{cs.flexDay.label}</div>
                   )}
                   <div className="mt-1 flex gap-1">
                     {cs.rotations.map((r: RotationSlot) => (
                       <span
                         key={r}
-                        className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                        className="inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
                       >
                         {ROTATION_LABELS[r]}
                       </span>
@@ -126,7 +125,7 @@ export default async function ClubDetailPage({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     {cs._count.signups}/{club.maxCapacity} enrolled
                   </span>
                   <DeleteSessionButton
@@ -138,17 +137,17 @@ export default async function ClubDetailPage({
 
               {cs.signups.length > 0 && (
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-indigo-600 hover:underline">
+                  <summary className="cursor-pointer text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
                     View roster ({cs.signups.length})
                   </summary>
                   <ul className="mt-2 space-y-1">
                     {cs.signups.map((signup) => (
                       <li
                         key={signup.id}
-                        className="text-xs text-gray-600 flex gap-2"
+                        className="text-xs text-gray-600 dark:text-gray-300 flex gap-2"
                       >
                         <span>{signup.student.name}</span>
-                        <span className="text-gray-400">{signup.student.email}</span>
+                        <span className="text-gray-400 dark:text-gray-500">{signup.student.email}</span>
                       </li>
                     ))}
                   </ul>

@@ -43,7 +43,7 @@ export default async function AdminFlexDayDetailPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           {flexDay.label ??
             new Date(flexDay.date).toLocaleDateString("en-US", {
               weekday: "long",
@@ -53,7 +53,7 @@ export default async function AdminFlexDayDetailPage({
               timeZone: "UTC",
             })}
         </h1>
-        <div className="text-sm text-gray-500 mt-1">
+        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {flexDay.clubSessions.length} sessions · {totalSignups} total signups
         </div>
       </div>
@@ -67,42 +67,42 @@ export default async function AdminFlexDayDetailPage({
           return (
             <div
               key={slot}
-              className="rounded-xl bg-white border border-gray-200 overflow-hidden"
+              className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden"
             >
-              <div className="px-5 py-3 bg-indigo-50 text-indigo-700 font-semibold text-sm">
+              <div className="px-5 py-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold text-sm">
                 {ROTATION_LABELS[slot]}
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {sessions.length === 0 ? (
-                  <p className="px-5 py-4 text-sm text-gray-400 italic">
+                  <p className="px-5 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
                     No clubs scheduled.
                   </p>
                 ) : (
                   sessions.map((cs) => (
                     <div key={cs.id} className="px-5 py-4">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="font-medium text-gray-900 text-sm">
+                        <div className="font-medium text-gray-900 dark:text-white text-sm">
                           {cs.club.name}
                         </div>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           {cs._count.signups}/{cs.club.maxCapacity}
                         </span>
                       </div>
                       {cs.club.location && (
-                        <div className="text-xs text-gray-400 mb-2">
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">
                           {cs.club.location}
                         </div>
                       )}
                       {cs.signups.length > 0 && (
                         <details>
-                          <summary className="cursor-pointer text-xs text-indigo-600 hover:underline">
+                          <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                             Roster ({cs.signups.length})
                           </summary>
                           <ul className="mt-2 space-y-1">
                             {cs.signups.map((s) => (
                               <li
                                 key={s.id}
-                                className="text-xs text-gray-600"
+                                className="text-xs text-gray-600 dark:text-gray-300"
                               >
                                 {s.student.name}
                               </li>
