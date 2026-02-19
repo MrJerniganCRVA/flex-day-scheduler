@@ -15,24 +15,24 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-md text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-950">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl dark:shadow-gray-950 p-10 w-full max-w-md text-center">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             Flex Day Scheduler
           </h1>
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
             CodeRVA Regional High School
           </p>
         </div>
 
-        <p className="text-gray-600 mb-8">
+        <p className="text-gray-600 dark:text-gray-300 mb-8">
           Sign in with your school Google account to view and sign up for Flex
           Day clubs.
         </p>
 
         {error && (
-          <div className="mb-6 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="mb-6 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
             {error === "AccessDenied"
               ? "Access denied. Please use your school Google account (@coderva.org)."
               : "An error occurred. Please try again."}
@@ -47,7 +47,7 @@ export default async function LoginPage({
         >
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-6 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -71,7 +71,7 @@ export default async function LoginPage({
           </button>
         </form>
 
-        <p className="mt-6 text-xs text-gray-400">
+        <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
           Only school accounts ending in @{process.env.ALLOWED_EMAIL_DOMAIN ?? "coderva.org"} are
           permitted.
         </p>

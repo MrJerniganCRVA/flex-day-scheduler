@@ -45,34 +45,34 @@ export default async function AdminClubDetailPage({
           <div className="flex items-center gap-2 mb-1">
             <Link
               href="/admin/clubs"
-              className="text-sm text-gray-400 hover:text-gray-600"
+              className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
             >
               ← All Clubs
             </Link>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">{club.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{club.name}</h1>
           {club.description && (
-            <p className="text-gray-500 text-sm mt-1">{club.description}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{club.description}</p>
           )}
-          <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-400">
+          <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>
               Teacher:{" "}
-              <span className="text-gray-600 font-medium">{club.owner.name}</span>{" "}
-              <span className="text-gray-400">({club.owner.email})</span>
+              <span className="text-gray-600 dark:text-gray-300 font-medium">{club.owner.name}</span>{" "}
+              <span className="text-gray-400 dark:text-gray-500">({club.owner.email})</span>
             </span>
             <span>Capacity: {club.maxCapacity}</span>
             {club.location && <span>Default room: {club.location}</span>}
             {club.googleCalendarId ? (
-              <span className="text-green-600">Calendar: Connected</span>
+              <span className="text-green-600 dark:text-green-400">Calendar: Connected</span>
             ) : (
-              <span className="text-yellow-600">Calendar: Pending</span>
+              <span className="text-yellow-600 dark:text-yellow-400">Calendar: Pending</span>
             )}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
           <Link
             href={`/admin/clubs/${clubId}/edit`}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             Edit
           </Link>
@@ -86,14 +86,14 @@ export default async function AdminClubDetailPage({
         </div>
       </div>
 
-      <h2 className="text-lg font-semibold text-gray-800 mb-3">Scheduled Sessions</h2>
+      <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Scheduled Sessions</h2>
 
       {club.clubSessions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-400">
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
           No sessions scheduled yet.{" "}
           <Link
             href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="text-indigo-600 hover:underline"
+            className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Schedule one
           </Link>
@@ -103,11 +103,11 @@ export default async function AdminClubDetailPage({
           {club.clubSessions.map((cs) => (
             <div
               key={cs.id}
-              className="rounded-xl bg-white border border-gray-200 p-5"
+              className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-5"
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="font-semibold text-gray-900">
+                  <div className="font-semibold text-gray-900 dark:text-white">
                     {new Date(cs.flexDay.date).toLocaleDateString("en-US", {
                       weekday: "long",
                       year: "numeric",
@@ -117,26 +117,26 @@ export default async function AdminClubDetailPage({
                     })}
                   </div>
                   {cs.flexDay.label && (
-                    <div className="text-xs text-gray-400">{cs.flexDay.label}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{cs.flexDay.label}</div>
                   )}
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {cs.rotations.map((r: RotationSlot) => (
                       <span
                         key={r}
-                        className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                        className="inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
                       >
                         {ROTATION_LABELS[r]}
                       </span>
                     ))}
                     {"locationOverride" in cs && cs.locationOverride && (
-                      <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      <span className="inline-block rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                         {cs.locationOverride as string}
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     {cs._count.signups}/{club.maxCapacity} enrolled
                   </span>
                   <DeleteSessionButton clubId={clubId} sessionId={cs.id} />
@@ -145,14 +145,14 @@ export default async function AdminClubDetailPage({
 
               {cs.signups.length > 0 && (
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-indigo-600 hover:underline">
+                  <summary className="cursor-pointer text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
                     View roster ({cs.signups.length})
                   </summary>
                   <ul className="mt-2 space-y-1">
                     {cs.signups.map((signup) => (
-                      <li key={signup.id} className="text-xs text-gray-600 flex gap-2">
+                      <li key={signup.id} className="text-xs text-gray-600 dark:text-gray-300 flex gap-2">
                         <span>{signup.student.name}</span>
-                        <span className="text-gray-400">{signup.student.email}</span>
+                        <span className="text-gray-400 dark:text-gray-500">{signup.student.email}</span>
                       </li>
                     ))}
                   </ul>

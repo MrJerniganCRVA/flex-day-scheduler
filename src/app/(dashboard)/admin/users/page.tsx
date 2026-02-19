@@ -23,21 +23,21 @@ export default async function AdminUsersPage() {
   });
 
   const roleBadgeClass: Record<Role, string> = {
-    STUDENT: "bg-blue-100 text-blue-700",
-    TEACHER: "bg-purple-100 text-purple-700",
-    ADMIN: "bg-orange-100 text-orange-700",
+    STUDENT: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+    TEACHER: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400",
+    ADMIN: "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400",
   };
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">User Management</h1>
-      <p className="text-sm text-gray-500 mb-4">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">User Management</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         {users.length} users registered
       </p>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left">Name</th>
               <th className="px-4 py-3 text-left">Email</th>
@@ -47,13 +47,13 @@ export default async function AdminUsersPage() {
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
                   {user.name}
                 </td>
-                <td className="px-4 py-3 text-gray-500">{user.email}</td>
+                <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{user.email}</td>
                 <td className="px-4 py-3">
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeClass[user.role]}`}
@@ -61,10 +61,10 @@ export default async function AdminUsersPage() {
                     {user.role.charAt(0) + user.role.slice(1).toLowerCase()}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-600">
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                   {user._count.signups}
                 </td>
-                <td className="px-4 py-3 text-gray-600">
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                   {user._count.clubsOwned}
                 </td>
                 <td className="px-4 py-3 text-right">

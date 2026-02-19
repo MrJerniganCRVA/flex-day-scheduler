@@ -8,7 +8,7 @@ export default async function NewFlexDayPage() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         Create a New Flex Day
       </h1>
       <FlexDayForm />

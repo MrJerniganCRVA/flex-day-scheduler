@@ -24,17 +24,17 @@ export default function DeleteFlexDayButton({
   if (confirming) {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-red-600">Delete?</span>
+        <span className="text-xs text-red-600 dark:text-red-400">Delete?</span>
         <button
           onClick={handleDelete}
           disabled={isPending}
-          className="rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-600 hover:bg-red-100 disabled:opacity-50"
+          className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-2 py-0.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/80 disabled:opacity-50"
         >
           {isPending ? "…" : "Yes"}
         </button>
         <button
           onClick={() => setConfirming(false)}
-          className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+          className="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           No
         </button>
@@ -45,7 +45,7 @@ export default function DeleteFlexDayButton({
   return (
     <button
       onClick={() => setConfirming(true)}
-      className="text-xs text-red-500 hover:underline"
+      className="text-xs text-red-500 dark:text-red-400 hover:underline"
     >
       Delete
     </button>

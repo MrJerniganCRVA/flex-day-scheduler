@@ -32,7 +32,7 @@ export default function RoleSelect({
 
   if (isSelf) {
     return (
-      <span className="text-xs text-gray-400 italic">You</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 italic">You</span>
     );
   }
 
@@ -41,7 +41,7 @@ export default function RoleSelect({
       value={role}
       onChange={(e) => handleChange(e.target.value as Role)}
       disabled={isPending}
-      className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+      className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
     >
       {roles.map((r) => (
         <option key={r} value={r}>

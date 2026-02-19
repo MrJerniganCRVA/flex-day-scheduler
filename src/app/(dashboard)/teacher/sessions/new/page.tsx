@@ -13,7 +13,6 @@ export default async function NewSessionPage({
 
   const { clubId: preselectedClubId } = await searchParams;
 
-  // Load the teacher's clubs and upcoming flex days
   const where =
     session.user.role === "ADMIN"
       ? undefined
@@ -34,7 +33,7 @@ export default async function NewSessionPage({
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         Schedule a Club Session
       </h1>
       <SessionForm

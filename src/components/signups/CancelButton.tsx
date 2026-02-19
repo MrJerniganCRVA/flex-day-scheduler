@@ -23,11 +23,11 @@ export default function CancelButton({ signupId }: { signupId: string }) {
       <button
         onClick={handleCancel}
         disabled={isPending}
-        className="text-xs text-red-600 hover:underline disabled:opacity-50"
+        className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
       >
         {isPending ? "Cancelling…" : "Cancel"}
       </button>
-      {error && <p className="text-xs text-red-600 mt-0.5">{error}</p>}
+      {error && <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{error}</p>}
     </div>
   );
 }
