@@ -9,6 +9,7 @@ interface Props {
   isMySignup: boolean;
   isFull: boolean;
   isConflicted: boolean;
+  isPastDeadline?: boolean;
 }
 
 export default function SignupButton({
@@ -17,6 +18,7 @@ export default function SignupButton({
   isMySignup,
   isFull,
   isConflicted,
+  isPastDeadline = false,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -46,6 +48,17 @@ export default function SignupButton({
       return;
     }
     startTransition(() => router.refresh());
+  }
+
+  if (isPastDeadline) {
+    return (
+      <button
+        disabled
+        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
+      >
+        Signups Closed
+      </button>
+    );
   }
 
   if (isMySignup) {
