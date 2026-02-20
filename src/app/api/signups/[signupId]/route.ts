@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { removeAttendeeFromEvent } from "@/lib/google-calendar";
+import { isPastSignupDeadline } from "@/lib/flex-day-utils";
 
 export async function DELETE(
   _req: NextRequest,
@@ -20,6 +21,7 @@ export async function DELETE(
       clubSession: {
         include: {
           club: { select: { googleCalendarId: true } },
+          flexDay: { select: { date: true } },
         },
       },
       student: { select: { email: true } },
@@ -36,6 +38,17 @@ export async function DELETE(
     signup.studentId !== session.user.id
   ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Enforce deadline for students (admins can override)
+  if (
+    session.user.role !== "ADMIN" &&
+    isPastSignupDeadline(signup.clubSession.flexDay.date)
+  ) {
+    return NextResponse.json(
+      { error: "Signups for this flex day are closed" },
+      { status: 403 }
+    );
   }
 
   await prisma.signup.delete({ where: { id: signupId } });

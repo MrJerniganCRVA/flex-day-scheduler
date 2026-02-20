@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import SignupButton from "@/components/signups/SignupButton";
+import { isPastSignupDeadline } from "@/lib/flex-day-utils";
 import type { RotationSlot } from "@prisma/client";
 
 export default async function StudentFlexDayPage({
@@ -57,6 +58,8 @@ export default async function StudentFlexDayPage({
       for (const r of cs.rotations) bookedRotations.add(r);
     }
   }
+
+  const pastDeadline = isPastSignupDeadline(flexDay.date);
 
   return (
     <div>
@@ -144,6 +147,7 @@ export default async function StudentFlexDayPage({
                               !isMySignup &&
                               cs.rotations.some((r) => bookedRotations.has(r))
                             }
+                            isPastDeadline={pastDeadline}
                           />
                         </div>
                       </div>

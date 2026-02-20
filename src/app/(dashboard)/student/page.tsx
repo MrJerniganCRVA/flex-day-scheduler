@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import SignupButton from "@/components/signups/SignupButton";
+import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
 import type { RotationSlot } from "@prisma/client";
 
 export default async function StudentDashboard() {
@@ -67,11 +68,16 @@ export default async function StudentDashboard() {
 
   // Track which rotations the student already has signups for
   const bookedRotations = new Set<RotationSlot>();
+  const mySignups: Array<{ clubName: string; rotations: RotationSlot[] }> = [];
   for (const cs of nextFlexDay.clubSessions) {
     if (cs.signups.length > 0) {
+      mySignups.push({ clubName: cs.club.name, rotations: cs.rotations });
       for (const r of cs.rotations) bookedRotations.add(r);
     }
   }
+
+  const deadline = getSignupDeadline(nextFlexDay.date);
+  const pastDeadline = isPastSignupDeadline(nextFlexDay.date);
 
   return (
     <div>
@@ -81,6 +87,24 @@ export default async function StudentDashboard() {
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
         Sign up for clubs for the next Flex Day below.
       </p>
+
+      {/* Signed-up clubs summary */}
+      {mySignups.length > 0 && (
+        <div className="mb-4 rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 p-4">
+          <div className="font-medium text-sm text-green-800 dark:text-green-200 mb-1">
+            Your Signups:
+          </div>
+          <ul className="space-y-1">
+            {mySignups.map((signup, idx) => (
+              <li key={idx} className="text-sm text-green-700 dark:text-green-300">
+                <span className="font-medium">{signup.clubName}</span>
+                {" — "}
+                {signup.rotations.map((r) => ROTATION_LABELS[r]).join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mb-6 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-5">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
@@ -93,10 +117,37 @@ export default async function StudentDashboard() {
           })}
         </h2>
         {nextFlexDay.label && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
             {nextFlexDay.label}
           </p>
         )}
+        <div
+          className={`text-xs font-medium mt-2 ${
+            pastDeadline
+              ? "text-red-600 dark:text-red-400"
+              : "text-indigo-600 dark:text-indigo-400"
+          }`}
+        >
+          {pastDeadline ? (
+            <>Signups closed</>
+          ) : (
+            <>
+              Signups close:{" "}
+              {deadline.toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                timeZone: "UTC",
+              })}{" "}
+              at{" "}
+              {deadline.toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                timeZone: "UTC",
+              })}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -125,14 +176,23 @@ export default async function StudentDashboard() {
                     No clubs scheduled for this rotation.
                   </p>
                 ) : (
-                  sessions.map((cs) => {
-                    const isFull = cs._count.signups >= cs.club.maxCapacity;
-                    const isMySignup = cs.signups.length > 0;
-                    const signupId = cs.signups[0]?.id;
-                    const spansRotations = cs.rotations.length > 1;
-                    const otherRotations = cs.rotations.filter((r) => r !== slot);
+                  sessions
+                    .sort((a, b) => {
+                      // Signed-up clubs first
+                      const aSignedUp = a.signups.length > 0 ? 1 : 0;
+                      const bSignedUp = b.signups.length > 0 ? 1 : 0;
+                      return bSignedUp - aSignedUp;
+                    })
+                    .map((cs) => {
+                      const isFull = cs._count.signups >= cs.club.maxCapacity;
+                      const isMySignup = cs.signups.length > 0;
+                      const signupId = cs.signups[0]?.id;
+                      const spansRotations = cs.rotations.length > 1;
+                      const otherRotations = cs.rotations.filter(
+                        (r) => r !== slot
+                      );
 
-                    return (
+                      return (
                       <div
                         key={cs.id}
                         className={`rounded-lg border p-3 ${
@@ -172,6 +232,7 @@ export default async function StudentDashboard() {
                               !isMySignup &&
                               cs.rotations.some((r) => bookedRotations.has(r))
                             }
+                            isPastDeadline={pastDeadline}
                           />
                         </div>
                       </div>

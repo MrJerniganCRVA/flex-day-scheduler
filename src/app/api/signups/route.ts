@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createSignupSchema } from "@/lib/validations";
 import { addAttendeeToEvent } from "@/lib/google-calendar";
+import { isPastSignupDeadline } from "@/lib/flex-day-utils";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -35,12 +36,17 @@ export async function POST(request: NextRequest) {
         where: { id: clubSessionId },
         include: {
           club: { select: { maxCapacity: true, googleCalendarId: true } },
-          flexDay: { select: { id: true } },
+          flexDay: { select: { id: true, date: true } },
         },
       });
 
       if (!targetSession) {
         throw Object.assign(new Error("SESSION_NOT_FOUND"), { status: 404 });
+      }
+
+      // Check signup deadline
+      if (isPastSignupDeadline(targetSession.flexDay.date)) {
+        throw Object.assign(new Error("SIGNUPS_CLOSED"), { status: 403 });
       }
 
       // Check capacity
@@ -106,6 +112,12 @@ export async function POST(request: NextRequest) {
     const err = error as Error & { status?: number; rotations?: string[] };
     if (err.message === "SESSION_NOT_FOUND") {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    if (err.message === "SIGNUPS_CLOSED") {
+      return NextResponse.json(
+        { error: "Signups for this flex day are closed" },
+        { status: 403 }
+      );
     }
     if (err.message === "CAPACITY_FULL") {
       return NextResponse.json(
