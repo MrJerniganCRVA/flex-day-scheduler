@@ -1,13 +1,19 @@
 /**
  * Calculate the signup deadline for a given flex day.
- * Deadline is Friday before the flex day at 2:56 PM (14:56).
+ * Deadline is Friday before the flex day at 2:56 PM local time.
  */
 export function getSignupDeadline(flexDayDate: Date): Date {
   const flexDay = new Date(flexDayDate);
-  flexDay.setUTCHours(0, 0, 0, 0);
 
-  // Get day of week (0 = Sunday, 6 = Saturday)
-  const dayOfWeek = flexDay.getUTCDay();
+  // Work with local time - set to midnight local time
+  const flexDayLocal = new Date(
+    flexDay.getFullYear(),
+    flexDay.getMonth(),
+    flexDay.getDate()
+  );
+
+  // Get day of week in local time (0 = Sunday, 6 = Saturday)
+  const dayOfWeek = flexDayLocal.getDay();
 
   // Calculate days back to the most recent Friday (5 = Friday)
   let daysBack: number;
@@ -23,9 +29,9 @@ export function getSignupDeadline(flexDayDate: Date): Date {
     daysBack = dayOfWeek + 2;
   }
 
-  const deadline = new Date(flexDay);
-  deadline.setUTCDate(deadline.getUTCDate() - daysBack);
-  deadline.setUTCHours(14, 56, 0, 0); // 2:56 PM UTC
+  const deadline = new Date(flexDayLocal);
+  deadline.setDate(deadline.getDate() - daysBack);
+  deadline.setHours(14, 56, 0, 0); // 2:56 PM local time
 
   return deadline;
 }
