@@ -182,14 +182,24 @@ export default async function TeacherDashboard() {
               })}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-800">
-              <Link
-                href={`/teacher/sessions/new`}
-                className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                + Schedule a session for this day →
-              </Link>
-            </div>
+            {(() => {
+              const coveredRotations = new Set(
+                nextFlexDay.clubSessions.flatMap((cs) => cs.rotations)
+              );
+              const fullyBooked = ALL_ROTATIONS.every((r) =>
+                coveredRotations.has(r)
+              );
+              return fullyBooked ? null : (
+                <div className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-800">
+                  <Link
+                    href={`/teacher/sessions/new`}
+                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    + Schedule a session for this day →
+                  </Link>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
