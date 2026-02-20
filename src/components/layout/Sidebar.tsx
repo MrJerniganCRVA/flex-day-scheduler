@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
 
 type NavItem = { label: string; href: string; exact?: boolean };
 
@@ -29,27 +28,13 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = session?.user?.role;
-  const [teacherFullyBooked, setTeacherFullyBooked] = useState(false);
 
-  useEffect(() => {
-    if (role !== "TEACHER") return;
-    fetch("/api/teacher/availability")
-      .then((r) => r.json())
-      .then((data) => setTeacherFullyBooked(data.fullyBooked ?? false))
-      .catch(() => {});
-  }, [role, pathname]);
-
-  const baseItems =
+  const items =
     role === "ADMIN"
       ? adminNav
       : role === "TEACHER"
         ? teacherNav
         : studentNav;
-
-  const items =
-    role === "TEACHER" && teacherFullyBooked
-      ? baseItems.filter((item) => item.href !== "/teacher/sessions/new")
-      : baseItems;
 
   return (
     <aside className="w-56 shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 min-h-screen pt-6">
