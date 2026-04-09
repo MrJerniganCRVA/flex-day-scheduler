@@ -47,6 +47,27 @@ export async function POST(request: NextRequest) {
     const flexDay = await prisma.flexDay.create({
       data: { date: dateObj, label },
     });
+
+    // Auto-schedule all existing clubs with their default rotations
+    const clubs = await prisma.club.findMany({
+      select: { id: true, defaultRotations: true },
+    });
+
+    // Create sessions for all clubs that have default rotations
+    const sessionPromises = clubs
+      .filter((club) => club.defaultRotations && club.defaultRotations.length > 0)
+      .map((club) =>
+        prisma.clubSession.create({
+          data: {
+            flexDayId: flexDay.id,
+            clubId: club.id,
+            rotations: club.defaultRotations,
+          },
+        })
+      );
+
+    await Promise.all(sessionPromises);
+
     return NextResponse.json(flexDay, { status: 201 });
   } catch (error: unknown) {
     if (

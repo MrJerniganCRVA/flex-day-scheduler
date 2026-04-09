@@ -68,12 +68,6 @@ export default async function ClubDetailPage({
           >
             Edit
           </Link>
-          <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-          >
-            + Schedule Session
-          </Link>
           <DeleteClubButton clubId={clubId} />
         </div>
       </div>
@@ -84,13 +78,7 @@ export default async function ClubDetailPage({
 
       {club.clubSessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
-          No sessions scheduled yet.{" "}
-          <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Schedule a session
-          </Link>
+          No sessions scheduled yet. Sessions will be automatically created when new flex days are added.
         </div>
       ) : (
         <div className="space-y-4">
@@ -128,6 +116,12 @@ export default async function ClubDetailPage({
                   <span className="text-sm text-gray-500 dark:text-gray-400">
                     {cs._count.signups}/{club.maxCapacity} enrolled
                   </span>
+                  <Link
+                    href={`/teacher/clubs/${clubId}/sessions/${cs.id}/edit`}
+                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Edit
+                  </Link>
                   <DeleteSessionButton
                     clubId={clubId}
                     sessionId={cs.id}

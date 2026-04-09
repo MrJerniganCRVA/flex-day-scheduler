@@ -91,15 +91,16 @@ model FlexDay {
 }
 
 model Club {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   name             String
   description      String?
   maxCapacity      Int
   location         String?
-  googleCalendarId String?  @unique
+  defaultRotations RotationSlot[]
+  googleCalendarId String?        @unique
   ownerId          String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   clubSessions ClubSession[]
