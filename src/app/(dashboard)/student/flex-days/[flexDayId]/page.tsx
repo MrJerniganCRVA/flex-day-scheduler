@@ -28,7 +28,7 @@ export default async function StudentFlexDayPage({
               name: true,
               description: true,
               maxCapacity: true,
-              location: true,
+              
               owner: { select: { name: true } },
             },
           },
@@ -125,7 +125,7 @@ export default async function StudentFlexDayPage({
                           </p>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          {cs.club.location && <span>📍 {cs.club.location}</span>}
+                          
                           <span>
                             {cs._count.signups}/{cs.club.maxCapacity} enrolled
                           </span>

@@ -56,7 +56,7 @@ export async function POST(
     );
   }
 
-  const { flexDayId, rotations, locationOverride } = parsed.data;
+  const { flexDayId, rotations, roomOverrideId } = parsed.data;
 
   const flexDay = await prisma.flexDay.findUnique({ where: { id: flexDayId } });
   if (!flexDay) {
@@ -83,19 +83,20 @@ export async function POST(
 
   // Create the session
   const clubSession = await prisma.clubSession.create({
-    data: { clubId, flexDayId, rotations, locationOverride },
+    data: { clubId, flexDayId, rotations, roomOverrideId },
     include: {
       flexDay: { select: { id: true, date: true, label: true } },
-      club: { select: { name: true, location: true } },
+      club: { select: { name: true } },
     },
   });
 
-  // Create Google Calendar event (non-blocking); prefer session location override
+  // Create Google Calendar event (non-blocking)
+  // TODO: Add room name to calendar event once Room model is implemented
   if (club.googleCalendarId) {
     createEventForSession({
       calendarId: club.googleCalendarId,
       clubName: club.name,
-      location: locationOverride ?? club.location,
+      location: "TBD", // Room will be added in Step 5
       flexDayDate: flexDay.date,
       rotations,
     })

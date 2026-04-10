@@ -17,7 +17,6 @@ interface Props {
     name?: string;
     description?: string;
     maxCapacity?: number;
-    location?: string;
     defaultRotations?: RotationSlot[];
   };
   /** Admin only: list of assignable teachers */
@@ -42,7 +41,6 @@ export default function ClubForm({
     name: defaultValues?.name ?? "",
     description: defaultValues?.description ?? "",
     maxCapacity: defaultValues?.maxCapacity ?? 20,
-    location: defaultValues?.location ?? "",
   });
   const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
     defaultValues?.defaultRotations ?? []
@@ -74,7 +72,6 @@ export default function ClubForm({
         ...form,
         maxCapacity: Number(form.maxCapacity),
         description: form.description || undefined,
-        location: form.location || undefined,
         defaultRotations,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
@@ -125,36 +122,21 @@ export default function ClubForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-            Max Capacity <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            required
-            min={1}
-            max={500}
-            value={form.maxCapacity}
-            onChange={(e) =>
-              setForm({ ...form, maxCapacity: Number(e.target.value) })
-            }
-            className={inputClass}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-            Default Room / Location
-          </label>
-          <input
-            type="text"
-            value={form.location}
-            onChange={(e) => setForm({ ...form, location: e.target.value })}
-            placeholder="e.g. Room 204"
-            className={inputClass}
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Max Capacity <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="number"
+          required
+          min={1}
+          max={500}
+          value={form.maxCapacity}
+          onChange={(e) =>
+            setForm({ ...form, maxCapacity: Number(e.target.value) })
+          }
+          className={inputClass}
+        />
       </div>
 
       <div>

@@ -15,7 +15,7 @@ export const createClubSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   maxCapacity: z.number().int().positive(),
-  location: z.string().max(100).optional(),
+  defaultRoomId: z.string().cuid().optional(), // Optional until rooms are set up
   defaultRotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
@@ -26,7 +26,7 @@ export const updateClubSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   maxCapacity: z.number().int().positive(),
-  location: z.string().max(100).optional(),
+  defaultRoomId: z.string().cuid().optional(),
   defaultRotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
@@ -38,7 +38,7 @@ export const createClubSessionSchema = z.object({
   rotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
-  locationOverride: z.string().max(100).optional(), // overrides club's default room for this session
+  roomOverrideId: z.string().cuid().optional(), // overrides club's default room for this session
 });
 
 export const updateClubSessionSchema = z.object({
@@ -46,7 +46,7 @@ export const updateClubSessionSchema = z.object({
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required")
     .optional(),
-  locationOverride: z.string().max(100).optional(),
+  roomOverrideId: z.string().cuid().optional(),
 });
 
 export const createSignupSchema = z.object({

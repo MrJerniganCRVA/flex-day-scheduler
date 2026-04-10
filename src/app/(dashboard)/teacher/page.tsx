@@ -21,7 +21,7 @@ export default async function TeacherDashboard() {
         where: { club: { ownerId: session.user.id } },
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true, location: true },
+            select: { id: true, name: true, maxCapacity: true },
           },
           signups: {
             include: { student: { select: { id: true, name: true } } },
@@ -110,13 +110,6 @@ export default async function TeacherDashboard() {
                         </p>
                       ) : (
                         sessions.map((cs) => {
-                          const room =
-                            ("locationOverride" in cs &&
-                              (cs as { locationOverride?: string | null })
-                                .locationOverride) ||
-                            cs.club.location ||
-                            null;
-
                           return (
                             <div key={cs.id} className="px-4 py-4">
                               <div className="flex items-start justify-between gap-2 mb-1">
@@ -127,12 +120,6 @@ export default async function TeacherDashboard() {
                                   {cs._count.signups}/{cs.club.maxCapacity}
                                 </span>
                               </div>
-
-                              {room && (
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                                  {room}
-                                </div>
-                              )}
 
                               {/* capacity bar */}
                               <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">

@@ -52,7 +52,7 @@ export default async function ClubDetailPage({
           )}
           <div className="flex gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>Capacity: {club.maxCapacity}</span>
-            {club.location && <span>Location: {club.location}</span>}
+            
             <span>Owner: {club.owner.name}</span>
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>

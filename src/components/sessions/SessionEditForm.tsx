@@ -9,22 +9,15 @@ interface Props {
   clubId: string;
   sessionId: string;
   initialRotations: RotationSlot[];
-  initialLocationOverride?: string | null;
-  defaultLocation?: string | null;
 }
 
 export default function SessionEditForm({
   clubId,
   sessionId,
   initialRotations,
-  initialLocationOverride,
-  defaultLocation,
 }: Props) {
   const router = useRouter();
   const [rotations, setRotations] = useState<RotationSlot[]>(initialRotations);
-  const [locationOverride, setLocationOverride] = useState(
-    initialLocationOverride ?? ""
-  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +39,6 @@ export default function SessionEditForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         rotations,
-        locationOverride: locationOverride || undefined,
       }),
     });
 
@@ -94,22 +86,6 @@ export default function SessionEditForm({
             Please select at least one rotation
           </p>
         )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Location Override
-        </label>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-          Default: {defaultLocation || "None"}
-        </p>
-        <input
-          type="text"
-          value={locationOverride}
-          onChange={(e) => setLocationOverride(e.target.value)}
-          placeholder={defaultLocation || "Enter location"}
-          className={inputClass}
-        />
       </div>
 
       {error && (

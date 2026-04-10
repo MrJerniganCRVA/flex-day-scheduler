@@ -15,7 +15,7 @@ export default async function MySignupsPage() {
     include: {
       clubSession: {
         include: {
-          club: { select: { id: true, name: true, location: true } },
+          club: { select: { id: true, name: true } },
           flexDay: { select: { id: true, date: true, label: true } },
         },
       },
@@ -74,7 +74,7 @@ export default async function MySignupsPage() {
                       .join(", ")}
                   </td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    {signup.clubSession.club.location ?? "—"}
+                    —
                   </td>
                   <td className="px-4 py-3 text-right">
                     <CancelButton signupId={signup.id} />
