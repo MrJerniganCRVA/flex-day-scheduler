@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ profile }) {
       const email = profile?.email?.toLowerCase() ?? "";
       const domain = process.env.ALLOWED_EMAIL_DOMAIN ?? "";
 
@@ -34,39 +34,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
-      // Auto-assign role on first sign-in
-      if (account?.provider === "google" && user.id) {
-        const existingUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { role: true },
-        });
-
-        // Only auto-assign if user doesn't exist yet (first sign-in)
-        if (!existingUser) {
-          const assignedRole = isStudentEmail ? "STUDENT" : "TEACHER";
-
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { role: assignedRole },
-          });
-
-          console.log(`Auto-assigned role ${assignedRole} to ${email}`);
-        }
-      }
-
       return true;
     },
     async session({ session, user }) {
-      if (session.user && user) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { id: true, role: true },
-        });
-        if (dbUser) {
-          session.user.id = dbUser.id;
-          session.user.role = dbUser.role;
+      if (!session.user || !user) return session;
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true, role: true, email: true },
+      });
+
+      if (!dbUser) return session;
+
+      // Auto-assign role if still on the default STUDENT role
+      if (dbUser.role === "STUDENT") {
+        const email = dbUser.email.toLowerCase();
+        const domain = process.env.ALLOWED_EMAIL_DOMAIN ?? "";
+        const isTeacherEmail =
+          email.endsWith(`@${domain}`) &&
+          !email.endsWith(`@students.${domain}`);
+
+        if (isTeacherEmail) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { role: "TEACHER" },
+          });
+          session.user.role = "TEACHER";
+          console.log(`Auto-assigned TEACHER role to ${email}`);
+        } else {
+          session.user.role = "STUDENT";
         }
+      } else {
+        // TEACHER or ADMIN — never auto-downgrade
+        session.user.role = dbUser.role;
       }
+
+      session.user.id = dbUser.id;
       return session;
     },
   },
