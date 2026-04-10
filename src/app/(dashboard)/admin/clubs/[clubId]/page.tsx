@@ -128,11 +128,6 @@ export default async function AdminClubDetailPage({
                         {ROTATION_LABELS[r]}
                       </span>
                     ))}
-                    {"locationOverride" in cs && cs.locationOverride && (
-                      <span className="inline-block rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                        {cs.locationOverride as string}
-                      </span>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
