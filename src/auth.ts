@@ -19,12 +19,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ profile }) {
-      const email = profile?.email ?? "";
+    async signIn({ user, account, profile }) {
+      const email = profile?.email?.toLowerCase() ?? "";
       const domain = process.env.ALLOWED_EMAIL_DOMAIN ?? "";
-      if (domain && !email.endsWith(`@${domain}`)) {
+
+      if (!email || !domain) return false;
+
+      // Accept both @domain and @students.domain
+      const isStudentEmail = email.endsWith(`@students.${domain}`);
+      const isTeacherEmail = email.endsWith(`@${domain}`) && !isStudentEmail;
+
+      if (!isStudentEmail && !isTeacherEmail) {
+        console.log(`Rejected login: ${email} (not @${domain} or @students.${domain})`);
         return false;
       }
+
+      // Auto-assign role on first sign-in
+      if (account?.provider === "google" && user.id) {
+        const existingUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { role: true },
+        });
+
+        // Only auto-assign if user doesn't exist yet (first sign-in)
+        if (!existingUser) {
+          const assignedRole = isStudentEmail ? "STUDENT" : "TEACHER";
+
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { role: assignedRole },
+          });
+
+          console.log(`Auto-assigned role ${assignedRole} to ${email}`);
+        }
+      }
+
       return true;
     },
     async session({ session, user }) {

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
+import type { RotationSlot } from "@prisma/client";
 
 interface Teacher {
   id: string;
@@ -16,6 +18,7 @@ interface Props {
     description?: string;
     maxCapacity?: number;
     location?: string;
+    defaultRotations?: RotationSlot[];
   };
   /** Admin only: list of assignable teachers */
   teachers?: Teacher[];
@@ -41,9 +44,20 @@ export default function ClubForm({
     maxCapacity: defaultValues?.maxCapacity ?? 20,
     location: defaultValues?.location ?? "",
   });
+  const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
+    defaultValues?.defaultRotations ?? []
+  );
   const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function toggleRotation(rotation: RotationSlot) {
+    setDefaultRotations((prev) =>
+      prev.includes(rotation)
+        ? prev.filter((r) => r !== rotation)
+        : [...prev, rotation]
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,6 +75,7 @@ export default function ClubForm({
         maxCapacity: Number(form.maxCapacity),
         description: form.description || undefined,
         location: form.location || undefined,
+        defaultRotations,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
@@ -142,6 +157,39 @@ export default function ClubForm({
         </div>
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+          Default Rotations <span className="text-red-500">*</span>
+        </label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Which rotations does this club normally run in? This club will be
+          automatically scheduled for these rotations on every flex day.
+        </p>
+        <div className="space-y-2">
+          {ALL_ROTATIONS.map((rotation) => (
+            <label
+              key={rotation}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={defaultRotations.includes(rotation)}
+                onChange={() => toggleRotation(rotation)}
+                className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-200">
+                {ROTATION_LABELS[rotation]}
+              </span>
+            </label>
+          ))}
+        </div>
+        {defaultRotations.length === 0 && (
+          <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+            Please select at least one rotation
+          </p>
+        )}
+      </div>
+
       {teachers && teachers.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -177,7 +225,7 @@ export default function ClubForm({
         </button>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || defaultRotations.length === 0}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
           {loading

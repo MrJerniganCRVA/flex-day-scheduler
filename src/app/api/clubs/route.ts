@@ -69,5 +69,31 @@ export async function POST(request: NextRequest) {
     console.error("Google Calendar creation failed for club:", club.id, err);
   }
 
+  // Auto-schedule club on all future flex days with default rotations
+  if (clubData.defaultRotations && clubData.defaultRotations.length > 0) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const futureFlexDays = await prisma.flexDay.findMany({
+      where: {
+        date: { gte: today },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    const sessionPromises = futureFlexDays.map((fd) =>
+      prisma.clubSession.create({
+        data: {
+          flexDayId: fd.id,
+          clubId: club.id,
+          rotations: clubData.defaultRotations,
+        },
+      })
+    );
+
+    await Promise.all(sessionPromises);
+  }
+
   return NextResponse.json(club, { status: 201 });
 }
