@@ -88,11 +88,6 @@ export default async function AdminFlexDayDetailPage({
                           {cs._count.signups}/{cs.club.maxCapacity}
                         </span>
                       </div>
-                      {cs.club.location && (
-                        <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                          {cs.club.location}
-                        </div>
-                      )}
                       {cs.signups.length > 0 && (
                         <details>
                           <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
