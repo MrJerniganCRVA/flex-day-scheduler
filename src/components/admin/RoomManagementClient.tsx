@@ -35,6 +35,19 @@ export default function RoomManagementClient({ initialRooms }: Props) {
     return matchesSearch && matchesStatus;
   });
 
+  async function refreshRooms() {
+    try {
+      const res = await fetch("/api/admin/rooms");
+      if (res.ok) {
+        const updatedRooms = await res.json();
+        setRooms(updatedRooms);
+      }
+    } catch {
+      // Fallback to router.refresh if fetch fails
+      router.refresh();
+    }
+  }
+
   async function handleDelete(roomId: string) {
     const room = rooms.find((r) => r.id === roomId);
     if (!room) return;
@@ -60,20 +73,20 @@ export default function RoomManagementClient({ initialRooms }: Props) {
         return;
       }
 
-      router.refresh();
+      await refreshRooms();
     } catch {
       setDeleteError("Something went wrong");
     }
   }
 
-  function handleAddSuccess() {
+  async function handleAddSuccess() {
     setShowAddModal(false);
-    router.refresh();
+    await refreshRooms();
   }
 
-  function handleEditSuccess() {
+  async function handleEditSuccess() {
     setEditingRoom(null);
-    router.refresh();
+    await refreshRooms();
   }
 
   return (
