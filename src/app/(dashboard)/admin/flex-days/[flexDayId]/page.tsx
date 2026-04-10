@@ -20,7 +20,7 @@ export default async function AdminFlexDayDetailPage({
       clubSessions: {
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true, location: true },
+            select: { id: true, name: true, maxCapacity: true },
           },
           signups: {
             include: {

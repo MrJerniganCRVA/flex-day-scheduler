@@ -20,7 +20,7 @@ export default async function EditClubPage({
       name: true,
       description: true,
       maxCapacity: true,
-      location: true,
+      
       ownerId: true,
     },
   });
@@ -39,7 +39,6 @@ export default async function EditClubPage({
           name: club.name,
           description: club.description ?? undefined,
           maxCapacity: club.maxCapacity,
-          location: club.location ?? undefined,
         }}
       />
     </div>

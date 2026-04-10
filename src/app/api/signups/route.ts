@@ -159,7 +159,7 @@ export async function GET() {
     include: {
       clubSession: {
         include: {
-          club: { select: { id: true, name: true, location: true } },
+          club: { select: { id: true, name: true } },
           flexDay: { select: { id: true, date: true, label: true } },
         },
       },

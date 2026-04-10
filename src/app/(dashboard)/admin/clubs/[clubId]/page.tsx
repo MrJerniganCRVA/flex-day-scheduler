@@ -61,7 +61,7 @@ export default async function AdminClubDetailPage({
               <span className="text-gray-400 dark:text-gray-500">({club.owner.email})</span>
             </span>
             <span>Capacity: {club.maxCapacity}</span>
-            {club.location && <span>Default room: {club.location}</span>}
+            
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Calendar: Connected</span>
             ) : (

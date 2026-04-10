@@ -20,7 +20,7 @@ export async function GET(
     include: {
       flexDay: { select: { id: true, date: true, label: true } },
       club: {
-        select: { id: true, name: true, maxCapacity: true, location: true },
+        select: { id: true, name: true, maxCapacity: true },
       },
       _count: { select: { signups: true } },
       signups:
@@ -75,8 +75,8 @@ export async function PUT(
   if (parsed.data.rotations) {
     updateData.rotations = parsed.data.rotations;
   }
-  if (parsed.data.locationOverride !== undefined) {
-    updateData.locationOverride = parsed.data.locationOverride || null;
+  if (parsed.data.roomOverrideId !== undefined) {
+    updateData.roomOverrideId = parsed.data.roomOverrideId || null;
   }
 
   const updatedSession = await prisma.clubSession.update({

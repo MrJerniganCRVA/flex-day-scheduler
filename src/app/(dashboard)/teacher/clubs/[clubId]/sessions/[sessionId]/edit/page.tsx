@@ -24,7 +24,7 @@ export default async function EditSessionPage({
     where: { id: sessionId },
     include: {
       flexDay: { select: { date: true, label: true } },
-      club: { select: { name: true, location: true } },
+      club: { select: { name: true } },
     },
   });
 
@@ -50,8 +50,6 @@ export default async function EditSessionPage({
         clubId={clubId}
         sessionId={sessionId}
         initialRotations={clubSession.rotations}
-        initialLocationOverride={clubSession.locationOverride}
-        defaultLocation={clubSession.club.location}
       />
     </div>
   );
