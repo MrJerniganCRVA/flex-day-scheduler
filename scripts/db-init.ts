@@ -6,7 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 async function init() {
   // 1. Push schema to database (creates/alters tables directly — no migration files needed)
   console.log("Pushing schema to database...");
-  execSync("prisma db push", { stdio: "inherit" });
+  execSync("prisma db push --accept-data-loss", { stdio: "inherit" });
   console.log("Schema push complete.");
 
   // 2. Seed admin user (idempotent — safe on every deploy)
