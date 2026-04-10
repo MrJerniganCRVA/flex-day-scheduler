@@ -25,7 +25,6 @@ export async function GET(
               name: true,
               description: true,
               maxCapacity: true,
-              location: true,
               owner: { select: { name: true } },
             },
           },

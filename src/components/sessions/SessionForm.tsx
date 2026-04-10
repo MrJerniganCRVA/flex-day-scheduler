@@ -32,7 +32,6 @@ export default function SessionForm({
   const [flexDayId, setFlexDayId] = useState(flexDays[0]?.id ?? "");
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
   const [signupMode, setSignupMode] = useState<"linked" | "separate">("linked");
-  const [locationOverride, setLocationOverride] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +63,6 @@ export default function SessionForm({
             body: JSON.stringify({
               flexDayId,
               rotations: [r],
-              locationOverride: locationOverride || undefined,
             }),
           });
           if (!res.ok) {
@@ -82,7 +80,6 @@ export default function SessionForm({
           body: JSON.stringify({
             flexDayId,
             rotations,
-            locationOverride: locationOverride || undefined,
           }),
         });
         if (!res.ok) {
@@ -243,23 +240,6 @@ export default function SessionForm({
             become a single session block — students sign up once and attend all.
           </p>
         )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Location Override{" "}
-          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
-        </label>
-        <input
-          type="text"
-          value={locationOverride}
-          onChange={(e) => setLocationOverride(e.target.value)}
-          placeholder="Leave blank to use club's default room"
-          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
-        />
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-          Use this to move a single session to a different room without changing the club&apos;s default.
-        </p>
       </div>
 
       {error && (
