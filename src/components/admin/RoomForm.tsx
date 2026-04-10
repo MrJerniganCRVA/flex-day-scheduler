@@ -46,13 +46,18 @@ export default function RoomForm({ room, onSuccess, onCancel }: Props) {
       const url = isEditing ? `/api/admin/rooms/${room.id}` : "/api/admin/rooms";
       const method = isEditing ? "PUT" : "POST";
 
+      // Build request body - only include capacity if it has a value
+      const body: { name: string; capacity?: number } = {
+        name: name.trim(),
+      };
+      if (capacityNum !== null) {
+        body.capacity = capacityNum;
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          capacity: capacityNum,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
