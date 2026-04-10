@@ -90,12 +90,26 @@ model FlexDay {
   @@index([date])
 }
 
+model Room {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  capacity  Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clubsWithDefault Club[]        @relation("DefaultRoom")
+  sessionOverrides ClubSession[] @relation("SessionRoom")
+
+  @@index([name])
+}
+
 model Club {
   id               String         @id @default(cuid())
   name             String
   description      String?
   maxCapacity      Int
-  location         String?
+  defaultRoomId    String?
   defaultRotations RotationSlot[]
   googleCalendarId String?        @unique
   ownerId          String
@@ -103,27 +117,31 @@ model Club {
   updatedAt        DateTime       @updatedAt
 
   owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
 
   @@index([ownerId])
+  @@index([defaultRoomId])
 }
 
 model ClubSession {
-  id               String         @id @default(cuid())
-  flexDayId        String
-  clubId           String
-  rotations        RotationSlot[]
-  locationOverride String?
-  googleEventId    String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id             String         @id @default(cuid())
+  flexDayId      String
+  clubId         String
+  rotations      RotationSlot[]
+  roomOverrideId String?
+  googleEventId  String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  flexDay FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
-  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  signups Signup[]
+  flexDay      FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
+  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  roomOverride Room?    @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
+  signups      Signup[]
 
   @@index([flexDayId])
   @@index([clubId])
+  @@index([roomOverrideId])
 }
 
 model Signup {
