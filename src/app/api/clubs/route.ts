@@ -45,6 +45,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate that club capacity doesn't exceed room capacity
+  if (parsed.data.defaultRoomId) {
+    const room = await prisma.room.findUnique({
+      where: { id: parsed.data.defaultRoomId },
+      select: { capacity: true, name: true },
+    });
+
+    if (!room) {
+      return NextResponse.json(
+        { error: "Selected room not found" },
+        { status: 404 }
+      );
+    }
+
+    if (parsed.data.maxCapacity > room.capacity) {
+      return NextResponse.json(
+        {
+          error: `Club capacity (${parsed.data.maxCapacity}) cannot exceed room capacity (${room.capacity} for ${room.name})`,
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   // Admin can assign a club to a specific teacher; everyone else owns their own club
   const { ownerId: requestedOwnerId, ...clubData } = parsed.data;
   const ownerId =

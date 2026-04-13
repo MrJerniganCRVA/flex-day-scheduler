@@ -14,8 +14,8 @@ export const updateFlexDaySchema = z.object({
 export const createClubSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  maxCapacity: z.number().int().positive(),
-  defaultRoomId: z.string().cuid().optional(), // Optional until rooms are set up
+  maxCapacity: z.number().int().positive().min(1).max(1000),
+  defaultRoomId: z.string().cuid().optional(),
   defaultRotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
@@ -23,13 +23,14 @@ export const createClubSchema = z.object({
 });
 
 export const updateClubSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
-  maxCapacity: z.number().int().positive(),
+  maxCapacity: z.number().int().positive().min(1).max(1000).optional(),
   defaultRoomId: z.string().cuid().optional(),
   defaultRotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
-    .min(1, "At least one rotation is required"),
+    .min(1, "At least one rotation is required")
+    .optional(),
   ownerId: z.string().cuid().optional(), // admin can reassign club ownership
 });
 
@@ -59,11 +60,11 @@ export const updateUserRoleSchema = z.object({
 
 export const createRoomSchema = z.object({
   name: z.string().min(1, "Room name is required").max(100),
-  capacity: z.number().int().positive().optional(),
+  capacity: z.number().int().positive().min(1).max(1000),
 });
 
 export const updateRoomSchema = z.object({
   name: z.string().min(1, "Room name is required").max(100).optional(),
-  capacity: z.number().int().positive().optional(),
+  capacity: z.number().int().positive().min(1).max(1000).optional(),
   isActive: z.boolean().optional(),
 });

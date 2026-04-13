@@ -77,6 +77,19 @@ export default function ClubForm({
     fetchRooms();
   }, []);
 
+  // Auto-populate capacity when room changes
+  useEffect(() => {
+    if (defaultRoomId && rooms.length > 0) {
+      const selectedRoom = rooms.find((r) => r.id === defaultRoomId);
+      if (selectedRoom?.capacity) {
+        // Auto-populate only if current capacity exceeds room capacity or is default
+        if (form.maxCapacity === 20 || form.maxCapacity > selectedRoom.capacity) {
+          setForm((prev) => ({ ...prev, maxCapacity: selectedRoom.capacity }));
+        }
+      }
+    }
+  }, [defaultRoomId, rooms]);
+
   function toggleRotation(rotation: RotationSlot) {
     setDefaultRotations((prev) =>
       prev.includes(rotation)
@@ -159,13 +172,30 @@ export default function ClubForm({
           type="number"
           required
           min={1}
-          max={500}
+          max={rooms.find((r) => r.id === defaultRoomId)?.capacity || 1000}
           value={form.maxCapacity}
           onChange={(e) =>
             setForm({ ...form, maxCapacity: Number(e.target.value) })
           }
           className={inputClass}
         />
+        {defaultRoomId && rooms.find((r) => r.id === defaultRoomId) && (
+          <>
+            {form.maxCapacity > (rooms.find((r) => r.id === defaultRoomId)?.capacity || 0) && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                ⚠️ Capacity cannot exceed room limit ({rooms.find((r) => r.id === defaultRoomId)?.capacity})
+              </p>
+            )}
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Room capacity: {rooms.find((r) => r.id === defaultRoomId)?.capacity}. You can set a lower limit if needed.
+            </p>
+          </>
+        )}
+        {!defaultRoomId && (
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Select a room to auto-populate capacity, or set manually (1-1000)
+          </p>
+        )}
       </div>
 
       <div>
