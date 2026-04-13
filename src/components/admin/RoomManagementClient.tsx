@@ -7,7 +7,7 @@ import RoomForm from "./RoomForm";
 interface Room {
   id: string;
   name: string;
-  capacity: number | null;
+  capacity: number;
   isActive: boolean;
   _count: {
     clubsWithDefault: number;
@@ -175,7 +175,7 @@ export default function RoomManagementClient({ initialRooms }: Props) {
                       {room.name}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
-                      {room.capacity ?? "—"}
+                      {room.capacity}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
                       {totalUsage > 0 ? (

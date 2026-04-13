@@ -5,7 +5,7 @@ import { useState } from "react";
 interface Room {
   id: string;
   name: string;
-  capacity: number | null;
+  capacity: number;
 }
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 
 export default function RoomForm({ room, onSuccess, onCancel }: Props) {
   const [name, setName] = useState(room?.name ?? "");
-  const [capacity, setCapacity] = useState(room?.capacity?.toString() ?? "");
+  const [capacity, setCapacity] = useState(room?.capacity.toString() ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
