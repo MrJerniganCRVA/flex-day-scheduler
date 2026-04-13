@@ -14,7 +14,7 @@ interface Teacher {
 interface Room {
   id: string;
   name: string;
-  capacity: number | null;
+  capacity: number;
 }
 
 interface Props {
