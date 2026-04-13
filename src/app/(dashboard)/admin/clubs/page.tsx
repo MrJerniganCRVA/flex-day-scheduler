@@ -11,6 +11,7 @@ export default async function AdminClubsPage() {
   const clubs = await prisma.club.findMany({
     include: {
       owner: { select: { name: true, email: true } },
+      defaultRoom: { select: { name: true } },
       _count: { select: { clubSessions: true } },
     },
     orderBy: { name: "asc" },
@@ -63,7 +64,9 @@ export default async function AdminClubsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.owner.name}</td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">—</td>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                    {club.defaultRoom?.name ?? "—"}
+                  </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.maxCapacity}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club._count.clubSessions}</td>
                   <td className="px-4 py-3 text-right">

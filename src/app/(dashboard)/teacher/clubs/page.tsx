@@ -16,6 +16,7 @@ export default async function TeacherClubsPage() {
     where,
     include: {
       owner: { select: { name: true } },
+      defaultRoom: { select: { name: true } },
       _count: { select: { clubSessions: true } },
     },
     orderBy: { name: "asc" },
@@ -64,7 +65,7 @@ export default async function TeacherClubsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    —
+                    {club.defaultRoom?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.maxCapacity}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
