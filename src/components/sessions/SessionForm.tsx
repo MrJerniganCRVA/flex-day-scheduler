@@ -218,8 +218,7 @@ export default function SessionForm({
               </option>
               {rooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
-                  {room.capacity ? ` (capacity: ${room.capacity})` : ""}
+                  {room.name} (capacity: {room.capacity})
                 </option>
               ))}
             </select>

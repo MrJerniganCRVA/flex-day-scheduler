@@ -81,7 +81,7 @@ export default function ClubForm({
   useEffect(() => {
     if (defaultRoomId && rooms.length > 0) {
       const selectedRoom = rooms.find((r) => r.id === defaultRoomId);
-      if (selectedRoom?.capacity) {
+      if (selectedRoom) {
         // Auto-populate only if current capacity exceeds room capacity or is default
         if (form.maxCapacity === 20 || form.maxCapacity > selectedRoom.capacity) {
           setForm((prev) => ({ ...prev, maxCapacity: selectedRoom.capacity }));
@@ -221,8 +221,7 @@ export default function ClubForm({
               <option value="">-- No default room --</option>
               {rooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
-                  {room.capacity ? ` (capacity: ${room.capacity})` : ""}
+                  {room.name} (capacity: {room.capacity})
                 </option>
               ))}
             </select>
