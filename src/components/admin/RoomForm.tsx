@@ -36,8 +36,8 @@ export default function RoomForm({ room, onSuccess, onCancel }: Props) {
       return;
     }
 
-    if (capacity.trim() && (isNaN(capacityNum!) || capacityNum! <= 0)) {
-      setError("Capacity must be a positive number");
+    if (!capacityNum || isNaN(capacityNum) || capacityNum <= 0 || capacityNum > 1000) {
+      setError("Capacity must be between 1 and 1000");
       setLoading(false);
       return;
     }
@@ -46,18 +46,13 @@ export default function RoomForm({ room, onSuccess, onCancel }: Props) {
       const url = isEditing ? `/api/admin/rooms/${room.id}` : "/api/admin/rooms";
       const method = isEditing ? "PUT" : "POST";
 
-      // Build request body - only include capacity if it has a value
-      const body: { name: string; capacity?: number } = {
-        name: name.trim(),
-      };
-      if (capacityNum !== null) {
-        body.capacity = capacityNum;
-      }
-
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          name: name.trim(),
+          capacity: capacityNum,
+        }),
       });
 
       if (!res.ok) {
@@ -92,20 +87,21 @@ export default function RoomForm({ room, onSuccess, onCancel }: Props) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Capacity{" "}
-          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+          Capacity <span className="text-red-500">*</span>
         </label>
         <input
           type="number"
+          required
           value={capacity}
           onChange={(e) => setCapacity(e.target.value)}
           placeholder="e.g., 30"
           min="1"
+          max="1000"
           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           disabled={loading}
         />
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-          Maximum number of students the room can hold
+          Maximum number of students the room can hold (1-1000)
         </p>
       </div>
 

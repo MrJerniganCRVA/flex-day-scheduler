@@ -67,6 +67,40 @@ export async function PUT(
     );
   }
 
+  // Validate that club capacity doesn't exceed room capacity
+  // Need to check both current and updated values
+  const { defaultRoomId: newRoomId, maxCapacity: newMaxCapacity } = parsed.data;
+
+  if (newRoomId !== undefined || newMaxCapacity !== undefined) {
+    // Determine final values after update
+    const finalRoomId = newRoomId !== undefined ? newRoomId : club.defaultRoomId;
+    const finalMaxCapacity = newMaxCapacity !== undefined ? newMaxCapacity : club.maxCapacity;
+
+    // If there's a room, validate capacity constraint
+    if (finalRoomId && finalMaxCapacity) {
+      const room = await prisma.room.findUnique({
+        where: { id: finalRoomId },
+        select: { capacity: true, name: true },
+      });
+
+      if (!room) {
+        return NextResponse.json(
+          { error: "Selected room not found" },
+          { status: 404 }
+        );
+      }
+
+      if (finalMaxCapacity > room.capacity) {
+        return NextResponse.json(
+          {
+            error: `Club capacity (${finalMaxCapacity}) cannot exceed room capacity (${room.capacity} for ${room.name})`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   // Only admin can reassign ownership; strip ownerId from non-admin updates
   const { ownerId: newOwnerId, ...updateData } = parsed.data;
   const finalData =
