@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
@@ -11,6 +11,12 @@ interface Teacher {
   email: string;
 }
 
+interface Room {
+  id: string;
+  name: string;
+  capacity: number | null;
+}
+
 interface Props {
   clubId?: string;
   defaultValues?: {
@@ -18,6 +24,7 @@ interface Props {
     description?: string;
     maxCapacity?: number;
     defaultRotations?: RotationSlot[];
+    defaultRoomId?: string | null;
   };
   /** Admin only: list of assignable teachers */
   teachers?: Teacher[];
@@ -45,9 +52,30 @@ export default function ClubForm({
   const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
     defaultValues?.defaultRotations ?? []
   );
+  const [defaultRoomId, setDefaultRoomId] = useState(defaultValues?.defaultRoomId ?? "");
   const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch available rooms
+  useEffect(() => {
+    async function fetchRooms() {
+      try {
+        const res = await fetch("/api/admin/rooms");
+        if (res.ok) {
+          const data = await res.json();
+          setRooms(data);
+        }
+      } catch {
+        // Silent fail - form will show empty dropdown
+      } finally {
+        setLoadingRooms(false);
+      }
+    }
+    fetchRooms();
+  }, []);
 
   function toggleRotation(rotation: RotationSlot) {
     setDefaultRotations((prev) =>
@@ -73,6 +101,7 @@ export default function ClubForm({
         maxCapacity: Number(form.maxCapacity),
         description: form.description || undefined,
         defaultRotations,
+        defaultRoomId: defaultRoomId || undefined,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
@@ -137,6 +166,41 @@ export default function ClubForm({
           }
           className={inputClass}
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Default Room{" "}
+          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+        </label>
+        {loadingRooms ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            Loading rooms...
+          </div>
+        ) : rooms.length === 0 ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            No rooms available. Ask an admin to add rooms first.
+          </div>
+        ) : (
+          <>
+            <select
+              value={defaultRoomId}
+              onChange={(e) => setDefaultRoomId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">-- No default room --</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                  {room.capacity ? ` (capacity: ${room.capacity})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              This room will be used for all sessions unless overridden
+            </p>
+          </>
+        )}
       </div>
 
       <div>

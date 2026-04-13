@@ -22,7 +22,8 @@ export default async function AdminEditClubPage({
         name: true,
         description: true,
         maxCapacity: true,
-        
+        defaultRoomId: true,
+        defaultRotations: true,
         ownerId: true,
       },
     }),
@@ -52,6 +53,8 @@ export default async function AdminEditClubPage({
           name: club.name,
           description: club.description ?? undefined,
           maxCapacity: club.maxCapacity,
+          defaultRoomId: club.defaultRoomId,
+          defaultRotations: club.defaultRotations,
         }}
         teachers={teachers}
         defaultOwnerId={club.ownerId}
