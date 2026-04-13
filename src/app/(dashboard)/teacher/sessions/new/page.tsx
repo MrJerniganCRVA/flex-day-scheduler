@@ -21,7 +21,11 @@ export default async function NewSessionPage({
   const [clubs, flexDays] = await Promise.all([
     prisma.club.findMany({
       where,
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        defaultRoom: { select: { id: true, name: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.flexDay.findMany({

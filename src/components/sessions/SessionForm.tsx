@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
@@ -8,12 +8,19 @@ import type { RotationSlot } from "@prisma/client";
 interface Club {
   id: string;
   name: string;
+  defaultRoom?: { id: string; name: string } | null;
 }
 
 interface FlexDay {
   id: string;
   date: Date | string;
   label: string | null;
+}
+
+interface Room {
+  id: string;
+  name: string;
+  capacity: number | null;
 }
 
 interface Props {
@@ -32,8 +39,31 @@ export default function SessionForm({
   const [flexDayId, setFlexDayId] = useState(flexDays[0]?.id ?? "");
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
   const [signupMode, setSignupMode] = useState<"linked" | "separate">("linked");
+  const [roomOverrideId, setRoomOverrideId] = useState<string>("");
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch available rooms
+  useEffect(() => {
+    async function fetchRooms() {
+      try {
+        const res = await fetch("/api/admin/rooms");
+        if (res.ok) {
+          const data = await res.json();
+          setRooms(data);
+        }
+      } catch {
+        // Silent fail - form will show empty dropdown
+      } finally {
+        setLoadingRooms(false);
+      }
+    }
+    fetchRooms();
+  }, []);
+
+  const selectedClub = clubs.find((c) => c.id === clubId);
 
   function toggleRotation(r: RotationSlot) {
     setRotations((prev) => {
@@ -63,6 +93,7 @@ export default function SessionForm({
             body: JSON.stringify({
               flexDayId,
               rotations: [r],
+              roomOverrideId: roomOverrideId || undefined,
             }),
           });
           if (!res.ok) {
@@ -80,6 +111,7 @@ export default function SessionForm({
           body: JSON.stringify({
             flexDayId,
             rotations,
+            roomOverrideId: roomOverrideId || undefined,
           }),
         });
         if (!res.ok) {
@@ -162,6 +194,40 @@ export default function SessionForm({
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Room Override{" "}
+          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+        </label>
+        {loadingRooms ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            Loading rooms...
+          </div>
+        ) : (
+          <>
+            <select
+              value={roomOverrideId}
+              onChange={(e) => setRoomOverrideId(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">
+                Use club default
+                {selectedClub?.defaultRoom && ` (${selectedClub.defaultRoom.name})`}
+              </option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                  {room.capacity ? ` (capacity: ${room.capacity})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Override the club&apos;s default room for this session only
+            </p>
+          </>
+        )}
       </div>
 
       <div>
