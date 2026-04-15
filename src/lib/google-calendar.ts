@@ -58,6 +58,28 @@ export async function createCalendarForClub(clubName: string): Promise<string> {
 }
 
 /**
+ * Share a club's Google Calendar with the teacher who owns it.
+ * Grants owner role so the teacher can edit events and manage the calendar
+ * directly from their Google Calendar — no domain-wide delegation needed.
+ */
+export async function shareCalendarWithTeacher(
+  calendarId: string,
+  teacherEmail: string
+): Promise<void> {
+  const calendar = getCalendarClient();
+  await calendar.acl.insert({
+    calendarId,
+    requestBody: {
+      role: "owner",
+      scope: {
+        type: "user",
+        value: teacherEmail,
+      },
+    },
+  });
+}
+
+/**
  * Create a calendar event for a club session on a flex day.
  * If the session spans multiple rotations, the event spans from the start
  * of the first rotation to the end of the last rotation.
