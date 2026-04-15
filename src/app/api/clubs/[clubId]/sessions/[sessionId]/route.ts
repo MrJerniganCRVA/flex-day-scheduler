@@ -53,7 +53,10 @@ export async function PUT(
   const { clubId, sessionId } = await params;
 
   // Verify access: owner or admin
-  const club = await prisma.club.findUnique({ where: { id: clubId } });
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true, maxCapacity: true },
+  });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
@@ -70,8 +73,57 @@ export async function PUT(
     );
   }
 
+  // Fetch the existing session to get its flexDayId for conflict checking
+  const existingSession = await prisma.clubSession.findUnique({
+    where: { id: sessionId },
+    select: { flexDayId: true },
+  });
+  if (!existingSession) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // If rotations are being changed, re-run teacher conflict check (excluding this session)
+  if (parsed.data.rotations) {
+    const teacherConflict = await prisma.clubSession.findFirst({
+      where: {
+        id: { not: sessionId },
+        flexDayId: existingSession.flexDayId,
+        club: { ownerId: club.ownerId },
+        rotations: { hasSome: parsed.data.rotations },
+      },
+      include: { club: { select: { name: true } } },
+    });
+    if (teacherConflict) {
+      return NextResponse.json(
+        {
+          error: `This teacher already has "${teacherConflict.club.name}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  // If a room override is being set, validate it fits the club's capacity
+  if (parsed.data.roomOverrideId) {
+    const room = await prisma.room.findUnique({
+      where: { id: parsed.data.roomOverrideId },
+      select: { capacity: true, name: true },
+    });
+    if (!room) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+    if (room.capacity < club.maxCapacity) {
+      return NextResponse.json(
+        {
+          error: `Room capacity (${room.capacity}) is less than the club's max capacity (${club.maxCapacity} for ${room.name})`,
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   // Build update data - only include fields that were provided
-  const updateData: any = {};
+  const updateData: Partial<{ rotations: typeof parsed.data.rotations; roomOverrideId: string | null }> = {};
   if (parsed.data.rotations) {
     updateData.rotations = parsed.data.rotations;
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { createSignupSchema } from "@/lib/validations";
 import { addAttendeeToEvent } from "@/lib/google-calendar";
 import { isPastSignupDeadline } from "@/lib/flex-day-utils";
@@ -10,10 +11,10 @@ export async function POST(request: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Teachers and admins should not sign up for clubs
-  if (session.user.role === "ADMIN") {
+  // Only students can sign up for clubs
+  if (session.user.role !== "STUDENT") {
     return NextResponse.json(
-      { error: "Admins cannot sign up for clubs" },
+      { error: "Only students can sign up for clubs" },
       { status: 403 }
     );
   }
@@ -136,8 +137,8 @@ export async function POST(request: NextRequest) {
     }
     // Unique constraint = already signed up for this exact session
     if (
-      error instanceof Error &&
-      error.message.toLowerCase().includes("unique constraint")
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
     ) {
       return NextResponse.json(
         { error: "You are already signed up for this session" },

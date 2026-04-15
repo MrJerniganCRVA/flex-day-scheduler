@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSchema } from "@/lib/validations";
-import { createCalendarForClub } from "@/lib/google-calendar";
+import { createCalendarForClub, createEventForSession } from "@/lib/google-calendar";
 
 export async function GET() {
   const session = await auth();
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
         date: { gte: today },
         isActive: true,
       },
-      select: { id: true },
+      select: { id: true, date: true },
     });
 
     const sessionPromises = futureFlexDays.map((fd) =>
@@ -116,7 +116,34 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    await Promise.all(sessionPromises);
+    const createdSessions = await Promise.all(sessionPromises);
+
+    // Create Google Calendar events for each auto-scheduled session (non-blocking)
+    if (club.googleCalendarId) {
+      for (let i = 0; i < futureFlexDays.length; i++) {
+        const fd = futureFlexDays[i];
+        const createdSession = createdSessions[i];
+        createEventForSession({
+          calendarId: club.googleCalendarId,
+          clubName: club.name,
+          location: null,
+          flexDayDate: fd.date,
+          rotations: clubData.defaultRotations,
+        })
+          .then((eventId) =>
+            prisma.clubSession.update({
+              where: { id: createdSession.id },
+              data: { googleEventId: eventId },
+            })
+          )
+          .catch((err) =>
+            console.error(
+              `Failed to create calendar event for auto-scheduled session ${createdSession.id}:`,
+              err
+            )
+          );
+      }
+    }
   }
 
   return NextResponse.json(club, { status: 201 });

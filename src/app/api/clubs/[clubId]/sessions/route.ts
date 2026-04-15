@@ -15,6 +15,17 @@ export async function GET(
 
   const { clubId } = await params;
 
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+  if (!club) {
+    return NextResponse.json({ error: "Club not found" }, { status: 404 });
+  }
+  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const sessions = await prisma.clubSession.findMany({
     where: { clubId },
     include: {
@@ -39,7 +50,10 @@ export async function POST(
   const { clubId } = await params;
 
   // Verify access: owner or admin
-  const club = await prisma.club.findUnique({ where: { id: clubId } });
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    include: { defaultRoom: { select: { name: true } } },
+  });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
@@ -90,13 +104,24 @@ export async function POST(
     },
   });
 
+  // Resolve the room name: session override takes priority, then club default
+  let roomName: string | null = null;
+  if (roomOverrideId) {
+    const overrideRoom = await prisma.room.findUnique({
+      where: { id: roomOverrideId },
+      select: { name: true },
+    });
+    roomName = overrideRoom?.name ?? null;
+  } else {
+    roomName = club.defaultRoom?.name ?? null;
+  }
+
   // Create Google Calendar event (non-blocking)
-  // TODO: Add room name to calendar event once Room model is implemented
   if (club.googleCalendarId) {
     createEventForSession({
       calendarId: club.googleCalendarId,
       clubName: club.name,
-      location: "TBD", // Room will be added in Step 5
+      location: roomName,
       flexDayDate: flexDay.date,
       rotations,
     })
