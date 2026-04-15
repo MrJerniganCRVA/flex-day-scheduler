@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { createFlexDaySchema } from "@/lib/validations";
+import { createEventForSession } from "@/lib/google-calendar";
 
 export async function GET() {
   const session = await auth();
@@ -50,29 +52,57 @@ export async function POST(request: NextRequest) {
 
     // Auto-schedule all existing clubs with their default rotations
     const clubs = await prisma.club.findMany({
-      select: { id: true, defaultRotations: true },
+      select: { id: true, name: true, googleCalendarId: true, defaultRotations: true },
     });
 
     // Create sessions for all clubs that have default rotations
-    const sessionPromises = clubs
-      .filter((club) => club.defaultRotations && club.defaultRotations.length > 0)
-      .map((club) =>
-        prisma.clubSession.create({
-          data: {
-            flexDayId: flexDay.id,
-            clubId: club.id,
-            rotations: club.defaultRotations,
-          },
-        })
-      );
+    const eligibleClubs = clubs.filter(
+      (club) => club.defaultRotations && club.defaultRotations.length > 0
+    );
+    const sessionPromises = eligibleClubs.map((club) =>
+      prisma.clubSession.create({
+        data: {
+          flexDayId: flexDay.id,
+          clubId: club.id,
+          rotations: club.defaultRotations,
+        },
+      })
+    );
 
-    await Promise.all(sessionPromises);
+    const createdSessions = await Promise.all(sessionPromises);
+
+    // Create Google Calendar events for each auto-scheduled session (non-blocking)
+    for (let i = 0; i < eligibleClubs.length; i++) {
+      const club = eligibleClubs[i];
+      const createdSession = createdSessions[i];
+      if (club.googleCalendarId) {
+        createEventForSession({
+          calendarId: club.googleCalendarId,
+          clubName: club.name,
+          location: null,
+          flexDayDate: flexDay.date,
+          rotations: club.defaultRotations,
+        })
+          .then((eventId) =>
+            prisma.clubSession.update({
+              where: { id: createdSession.id },
+              data: { googleEventId: eventId },
+            })
+          )
+          .catch((err) =>
+            console.error(
+              `Failed to create calendar event for auto-scheduled session ${createdSession.id}:`,
+              err
+            )
+          );
+      }
+    }
 
     return NextResponse.json(flexDay, { status: 201 });
   } catch (error: unknown) {
     if (
-      error instanceof Error &&
-      error.message.includes("Unique constraint")
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
     ) {
       return NextResponse.json(
         { error: "A Flex Day already exists on this date" },

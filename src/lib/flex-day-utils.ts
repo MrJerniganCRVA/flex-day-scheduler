@@ -5,11 +5,12 @@
 export function getSignupDeadline(flexDayDate: Date): Date {
   const flexDay = new Date(flexDayDate);
 
-  // Work with local time - set to midnight local time
+  // Read the UTC date components (dates are stored as UTC midnight in the DB)
+  // and construct a local-midnight Date from them, so arithmetic is timezone-safe.
   const flexDayLocal = new Date(
-    flexDay.getFullYear(),
-    flexDay.getMonth(),
-    flexDay.getDate()
+    flexDay.getUTCFullYear(),
+    flexDay.getUTCMonth(),
+    flexDay.getUTCDate()
   );
 
   // Get day of week in local time (0 = Sunday, 6 = Saturday)
