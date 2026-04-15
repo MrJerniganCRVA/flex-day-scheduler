@@ -19,7 +19,12 @@ export async function POST(
     include: {
       clubSessions: {
         include: {
-          club: { select: { googleCalendarId: true } },
+          club: {
+            select: {
+              googleCalendarId: true,
+              owner: { select: { email: true } },
+            },
+          },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -51,9 +56,12 @@ export async function POST(
       syncEventAttendees({
         calendarId: cs.club.googleCalendarId!,
         eventId: cs.googleEventId!,
-        attendeeEmails: cs.signups
-          .map((s) => s.student.email)
-          .filter((email): email is string => Boolean(email)),
+        attendeeEmails: [
+          cs.club.owner.email,
+          ...cs.signups
+            .map((s) => s.student.email)
+            .filter((email): email is string => Boolean(email)),
+        ],
       })
     )
   );

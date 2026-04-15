@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSchema } from "@/lib/validations";
-import { createCalendarForClub, createEventForSession } from "@/lib/google-calendar";
+import { createCalendarForClub, createEventForSession, shareCalendarWithTeacher } from "@/lib/google-calendar";
 
 export async function GET() {
   const session = await auth();
@@ -76,6 +76,12 @@ export async function POST(request: NextRequest) {
       ? requestedOwnerId
       : session.user.id;
 
+  // Fetch owner email for calendar sharing (needed whether teacher or admin-assigned)
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerId },
+    select: { email: true },
+  });
+
   // Create the club record first
   const club = await prisma.club.create({
     data: { ...clubData, ownerId },
@@ -89,6 +95,14 @@ export async function POST(request: NextRequest) {
       data: { googleCalendarId: calendarId },
     });
     club.googleCalendarId = calendarId;
+
+    // Share the calendar with the teacher so it appears in their Google Calendar
+    // and they can edit events directly — no domain-wide delegation required
+    if (owner?.email) {
+      shareCalendarWithTeacher(calendarId, owner.email).catch((err) =>
+        console.error("Failed to share calendar with teacher:", club.id, err)
+      );
+    }
   } catch (err) {
     console.error("Google Calendar creation failed for club:", club.id, err);
   }
