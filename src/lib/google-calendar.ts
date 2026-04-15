@@ -103,6 +103,27 @@ export async function createEventForSession(params: {
 }
 
 /**
+ * Replace the full attendee list on a calendar event with the provided emails.
+ * Used during finalization to batch-sync all signups at once.
+ * sendUpdates: "all" ensures each student receives a calendar invite email.
+ */
+export async function syncEventAttendees(params: {
+  calendarId: string;
+  eventId: string;
+  attendeeEmails: string[];
+}): Promise<void> {
+  const calendar = getCalendarClient();
+  await calendar.events.patch({
+    calendarId: params.calendarId,
+    eventId: params.eventId,
+    sendUpdates: "all",
+    requestBody: {
+      attendees: params.attendeeEmails.map((email) => ({ email })),
+    },
+  });
+}
+
+/**
  * Add a student as an attendee to a club session's calendar event.
  */
 export async function addAttendeeToEvent(params: {

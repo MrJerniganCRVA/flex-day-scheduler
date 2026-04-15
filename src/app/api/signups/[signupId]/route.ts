@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { removeAttendeeFromEvent } from "@/lib/google-calendar";
 import { isPastSignupDeadline } from "@/lib/flex-day-utils";
 
 export async function DELETE(
@@ -20,11 +19,9 @@ export async function DELETE(
     include: {
       clubSession: {
         include: {
-          club: { select: { googleCalendarId: true } },
           flexDay: { select: { date: true } },
         },
       },
-      student: { select: { email: true } },
     },
   });
 
@@ -52,19 +49,6 @@ export async function DELETE(
   }
 
   await prisma.signup.delete({ where: { id: signupId } });
-
-  // Remove from Google Calendar (non-blocking)
-  const { googleCalendarId } = signup.clubSession.club;
-  const { googleEventId } = signup.clubSession;
-  if (googleCalendarId && googleEventId && signup.student.email) {
-    removeAttendeeFromEvent({
-      calendarId: googleCalendarId,
-      eventId: googleEventId,
-      studentEmail: signup.student.email,
-    }).catch((err) =>
-      console.error("Failed to remove attendee from Google Calendar:", err)
-    );
-  }
 
   return new NextResponse(null, { status: 204 });
 }
