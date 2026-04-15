@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+import FinalizeButton from "@/components/flex-days/FinalizeButton";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -42,20 +43,26 @@ export default async function AdminFlexDayDetailPage({
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {flexDay.label ??
-            new Date(flexDay.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              timeZone: "UTC",
-            })}
-        </h1>
-        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {flexDay.clubSessions.length} sessions · {totalSignups} total signups
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {flexDay.label ??
+              new Date(flexDay.date).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                timeZone: "UTC",
+              })}
+          </h1>
+          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {flexDay.clubSessions.length} sessions · {totalSignups} total signups
+          </div>
         </div>
+        <FinalizeButton
+          flexDayId={flexDay.id}
+          isFinalized={flexDay.isFinalized}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

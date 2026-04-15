@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { createSignupSchema } from "@/lib/validations";
-import { addAttendeeToEvent } from "@/lib/google-calendar";
 import { isPastSignupDeadline } from "@/lib/flex-day-utils";
 
 export async function POST(request: NextRequest) {
@@ -95,18 +94,6 @@ export async function POST(request: NextRequest) {
         },
       });
     });
-
-    // Add to Google Calendar (non-blocking)
-    const cs = signup.clubSession;
-    if (cs.club.googleCalendarId && cs.googleEventId && session.user.email) {
-      addAttendeeToEvent({
-        calendarId: cs.club.googleCalendarId,
-        eventId: cs.googleEventId,
-        studentEmail: session.user.email,
-      }).catch((err) =>
-        console.error("Failed to add attendee to Google Calendar:", err)
-      );
-    }
 
     return NextResponse.json(signup, { status: 201 });
   } catch (error: unknown) {

@@ -77,12 +77,13 @@ model User {
 }
 
 model FlexDay {
-  id        String   @id @default(cuid())
-  date      DateTime @db.Date
-  label     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  label       String?
+  isActive    Boolean  @default(true)
+  isFinalized Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   clubSessions ClubSession[]
 
