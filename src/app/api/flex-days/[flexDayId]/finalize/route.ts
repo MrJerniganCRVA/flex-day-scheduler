@@ -25,6 +25,8 @@ export async function POST(
               owner: { select: { email: true } },
             },
           },
+          primaryTeacher: { select: { email: true } },
+          secondaryTeacher: { select: { email: true } },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -57,7 +59,8 @@ export async function POST(
         calendarId: cs.club.googleCalendarId!,
         eventId: cs.googleEventId!,
         attendeeEmails: [
-          cs.club.owner.email,
+          cs.primaryTeacher?.email ?? cs.club.owner.email,
+          ...(cs.secondaryTeacher?.email ? [cs.secondaryTeacher.email] : []),
           ...cs.signups
             .map((s) => s.student.email)
             .filter((email): email is string => Boolean(email)),

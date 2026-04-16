@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { RotationSlot } from "@prisma/client";
 
 const HIGH_ENROLLMENT_THRESHOLD = 20;
@@ -27,6 +27,8 @@ export type CoverageClub = {
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
+  primaryTeacherId: string | null;
+  secondaryTeacherId: string | null;
 };
 
 export type CoverageTeacher = {
@@ -36,6 +38,7 @@ export type CoverageTeacher = {
 
 type Assignment = { t1: string | null; t2: string | null }; // teacher IDs
 type Assignments = Record<string, Assignment>;
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function urgencyOf(
   club: CoverageClub,
@@ -60,16 +63,48 @@ export default function CoverageDashboard({
 }) {
   const [assignments, setAssignments] = useState<Assignments>(() =>
     Object.fromEntries(
-      clubs.map((c) => [c.sessionId, { t1: c.ownerId, t2: null }])
+      clubs.map((c) => [
+        c.sessionId,
+        {
+          t1: c.primaryTeacherId ?? c.ownerId,
+          t2: c.secondaryTeacherId,
+        },
+      ])
     )
   );
 
-  function assign(sessionId: string, slot: "t1" | "t2", value: string | null) {
-    setAssignments((prev) => ({
-      ...prev,
-      [sessionId]: { ...prev[sessionId], [slot]: value },
-    }));
-  }
+  const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>(
+    () => Object.fromEntries(clubs.map((c) => [c.sessionId, "idle"]))
+  );
+
+  const assign = useCallback(
+    async (sessionId: string, slot: "t1" | "t2", value: string | null) => {
+      setAssignments((prev) => ({
+        ...prev,
+        [sessionId]: { ...prev[sessionId], [slot]: value },
+      }));
+      setSaveStatus((prev) => ({ ...prev, [sessionId]: "saving" }));
+      try {
+        const body =
+          slot === "t1" ? { primary: value } : { secondary: value };
+        const res = await fetch(
+          `/api/club-sessions/${sessionId}/coverage`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        );
+        setSaveStatus((prev) => ({
+          ...prev,
+          [sessionId]: res.ok ? "saved" : "error",
+        }));
+      } catch {
+        setSaveStatus((prev) => ({ ...prev, [sessionId]: "error" }));
+      }
+    },
+    []
+  );
 
   // Teachers available for a given slot, filtered by rotation conflicts
   function getAvailableTeachers(
@@ -188,6 +223,7 @@ export default function CoverageDashboard({
                               club={club}
                               rotation={rotation}
                               assignment={assignments[club.sessionId]}
+                              saveStatus={saveStatus[club.sessionId]}
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -213,6 +249,7 @@ export default function CoverageDashboard({
                               club={club}
                               rotation={rotation}
                               assignment={assignments[club.sessionId]}
+                              saveStatus={saveStatus[club.sessionId]}
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -238,6 +275,7 @@ export default function CoverageDashboard({
                               club={club}
                               rotation={rotation}
                               assignment={assignments[club.sessionId]}
+                              saveStatus={saveStatus[club.sessionId]}
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -355,6 +393,7 @@ function ClubCard({
   club,
   rotation,
   assignment,
+  saveStatus,
   teachers,
   availableTeachers,
   urgency,
@@ -363,6 +402,7 @@ function ClubCard({
   club: CoverageClub;
   rotation: RotationSlot;
   assignment: Assignment;
+  saveStatus: SaveStatus;
   teachers: CoverageTeacher[];
   availableTeachers: (slot: "t1" | "t2") => CoverageTeacher[];
   urgency: "needs" | "consider" | "covered";
@@ -377,6 +417,19 @@ function ClubCard({
 
   const isHighEnrollment = club.studentCount >= HIGH_ENROLLMENT_THRESHOLD;
 
+  const statusIndicator =
+    saveStatus === "saving" ? (
+      <span className="text-gray-400 dark:text-gray-500 text-xs animate-pulse">
+        ●
+      </span>
+    ) : saveStatus === "saved" ? (
+      <span className="text-green-500 dark:text-green-400 text-xs">✓</span>
+    ) : saveStatus === "error" ? (
+      <span className="text-red-500 dark:text-red-400 text-xs font-bold">
+        !
+      </span>
+    ) : null;
+
   return (
     <div
       className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${borderColor}`}
@@ -388,17 +441,20 @@ function ClubCard({
         >
           {club.name}
         </span>
-        {club.studentCount > 0 && (
-          <span
-            className={`text-xs shrink-0 ${
-              isHighEnrollment
-                ? "text-red-600 dark:text-red-400 font-semibold"
-                : "text-gray-500 dark:text-gray-400"
-            }`}
-          >
-            👤 {club.studentCount}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {statusIndicator}
+          {club.studentCount > 0 && (
+            <span
+              className={`text-xs ${
+                isHighEnrollment
+                  ? "text-red-600 dark:text-red-400 font-semibold"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              👤 {club.studentCount}
+            </span>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5">
         <TeacherDropdown
