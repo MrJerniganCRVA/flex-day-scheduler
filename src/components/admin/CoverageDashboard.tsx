@@ -27,8 +27,12 @@ export type CoverageClub = {
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
-  primaryTeacherId: string | null;
-  secondaryTeacherId: string | null;
+  coverage: Partial<
+    Record<
+      RotationSlot,
+      { primaryTeacherId: string | null; secondaryTeacherId: string | null }
+    >
+  >;
 };
 
 export type CoverageTeacher = {
@@ -36,15 +40,17 @@ export type CoverageTeacher = {
   name: string;
 };
 
-type Assignment = { t1: string | null; t2: string | null }; // teacher IDs
-type Assignments = Record<string, Assignment>;
+// assignments[sessionId][rotation] = { t1, t2 }
+type Assignment = { t1: string | null; t2: string | null };
+type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
 
 function urgencyOf(
   club: CoverageClub,
-  assignment: Assignment
+  assignment: Assignment | undefined
 ): "needs" | "consider" | "covered" {
-  if (!assignment.t1) return "needs";
+  if (!assignment?.t1) return "needs";
   if (club.studentCount >= HIGH_ENROLLMENT_THRESHOLD && !assignment.t2)
     return "consider";
   return "covered";
@@ -65,42 +71,71 @@ export default function CoverageDashboard({
     Object.fromEntries(
       clubs.map((c) => [
         c.sessionId,
-        {
-          t1: c.primaryTeacherId ?? c.ownerId,
-          t2: c.secondaryTeacherId,
-        },
+        Object.fromEntries(
+          c.rotations.map((r) => [
+            r,
+            {
+              t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId,
+              t2: c.coverage[r]?.secondaryTeacherId ?? null,
+            },
+          ])
+        ),
       ])
     )
   );
 
-  const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>(
-    () => Object.fromEntries(clubs.map((c) => [c.sessionId, "idle"]))
+  const [saveStatus, setSaveStatus] = useState<SaveStatuses>(() =>
+    Object.fromEntries(
+      clubs.map((c) => [
+        c.sessionId,
+        Object.fromEntries(c.rotations.map((r) => [r, "idle" as SaveStatus])),
+      ])
+    )
   );
 
   const assign = useCallback(
-    async (sessionId: string, slot: "t1" | "t2", value: string | null) => {
+    async (
+      sessionId: string,
+      rotation: RotationSlot,
+      slot: "t1" | "t2",
+      value: string | null
+    ) => {
       setAssignments((prev) => ({
         ...prev,
-        [sessionId]: { ...prev[sessionId], [slot]: value },
+        [sessionId]: {
+          ...prev[sessionId],
+          [rotation]: {
+            ...(prev[sessionId]?.[rotation] ?? { t1: null, t2: null }),
+            [slot]: value,
+          },
+        },
       }));
-      setSaveStatus((prev) => ({ ...prev, [sessionId]: "saving" }));
+      setSaveStatus((prev) => ({
+        ...prev,
+        [sessionId]: { ...prev[sessionId], [rotation]: "saving" },
+      }));
       try {
         const body =
-          slot === "t1" ? { primary: value } : { secondary: value };
-        const res = await fetch(
-          `/api/club-sessions/${sessionId}/coverage`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }
-        );
+          slot === "t1"
+            ? { rotation, primary: value }
+            : { rotation, secondary: value };
+        const res = await fetch(`/api/club-sessions/${sessionId}/coverage`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
         setSaveStatus((prev) => ({
           ...prev,
-          [sessionId]: res.ok ? "saved" : "error",
+          [sessionId]: {
+            ...prev[sessionId],
+            [rotation]: res.ok ? "saved" : "error",
+          },
         }));
       } catch {
-        setSaveStatus((prev) => ({ ...prev, [sessionId]: "error" }));
+        setSaveStatus((prev) => ({
+          ...prev,
+          [sessionId]: { ...prev[sessionId], [rotation]: "error" },
+        }));
       }
     },
     []
@@ -117,14 +152,14 @@ export default function CoverageDashboard({
       c.rotations.includes(rotation)
     );
     for (const s of sessionsInRotation) {
-      const a = assignments[s.sessionId];
+      const a = assignments[s.sessionId]?.[rotation];
       if (s.sessionId === sessionId) {
         // Exclude the sibling slot in the same card
-        const other = slot === "t1" ? a.t2 : a.t1;
+        const other = slot === "t1" ? a?.t2 : a?.t1;
         if (other) taken.add(other);
       } else {
-        if (a.t1) taken.add(a.t1);
-        if (a.t2) taken.add(a.t2);
+        if (a?.t1) taken.add(a.t1);
+        if (a?.t2) taken.add(a.t2);
       }
     }
     return teachers.filter((t) => !taken.has(t.id));
@@ -136,9 +171,12 @@ export default function CoverageDashboard({
       .map((t) => {
         const assignedRotations = new Set<RotationSlot>();
         for (const club of clubs) {
-          const a = assignments[club.sessionId];
-          if (a.t1 === t.id || a.t2 === t.id) {
-            for (const r of club.rotations) assignedRotations.add(r);
+          for (const [r, a] of Object.entries(
+            assignments[club.sessionId] ?? {}
+          ) as [RotationSlot, Assignment][]) {
+            if (a.t1 === t.id || a.t2 === t.id) {
+              assignedRotations.add(r);
+            }
           }
         }
         const freeCount = ALL_ROTATIONS.filter(
@@ -169,13 +207,18 @@ export default function CoverageDashboard({
             );
             const grouped = {
               needs: sessionsInRotation.filter(
-                (c) => urgencyOf(c, assignments[c.sessionId]) === "needs"
+                (c) =>
+                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) === "needs"
               ),
               consider: sessionsInRotation.filter(
-                (c) => urgencyOf(c, assignments[c.sessionId]) === "consider"
+                (c) =>
+                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) ===
+                  "consider"
               ),
               covered: sessionsInRotation.filter(
-                (c) => urgencyOf(c, assignments[c.sessionId]) === "covered"
+                (c) =>
+                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) ===
+                  "covered"
               ),
             };
             const uncoveredCount = grouped.needs.length;
@@ -213,17 +256,21 @@ export default function CoverageDashboard({
                     <>
                       {grouped.needs.length > 0 && (
                         <>
-                          <SectionLabel
-                            label="Needs teacher"
-                            color="red"
-                          />
+                          <SectionLabel label="Needs teacher" color="red" />
                           {grouped.needs.map((club) => (
                             <ClubCard
                               key={club.sessionId}
                               club={club}
                               rotation={rotation}
-                              assignment={assignments[club.sessionId]}
-                              saveStatus={saveStatus[club.sessionId]}
+                              assignment={
+                                assignments[club.sessionId]?.[rotation] ?? {
+                                  t1: null,
+                                  t2: null,
+                                }
+                              }
+                              saveStatus={
+                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
+                              }
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -234,7 +281,7 @@ export default function CoverageDashboard({
                               }
                               urgency="needs"
                               onAssign={(slot, val) =>
-                                assign(club.sessionId, slot, val)
+                                assign(club.sessionId, rotation, slot, val)
                               }
                             />
                           ))}
@@ -248,8 +295,15 @@ export default function CoverageDashboard({
                               key={club.sessionId}
                               club={club}
                               rotation={rotation}
-                              assignment={assignments[club.sessionId]}
-                              saveStatus={saveStatus[club.sessionId]}
+                              assignment={
+                                assignments[club.sessionId]?.[rotation] ?? {
+                                  t1: null,
+                                  t2: null,
+                                }
+                              }
+                              saveStatus={
+                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
+                              }
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -260,7 +314,7 @@ export default function CoverageDashboard({
                               }
                               urgency="consider"
                               onAssign={(slot, val) =>
-                                assign(club.sessionId, slot, val)
+                                assign(club.sessionId, rotation, slot, val)
                               }
                             />
                           ))}
@@ -274,8 +328,15 @@ export default function CoverageDashboard({
                               key={club.sessionId}
                               club={club}
                               rotation={rotation}
-                              assignment={assignments[club.sessionId]}
-                              saveStatus={saveStatus[club.sessionId]}
+                              assignment={
+                                assignments[club.sessionId]?.[rotation] ?? {
+                                  t1: null,
+                                  t2: null,
+                                }
+                              }
+                              saveStatus={
+                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
+                              }
                               teachers={teachers}
                               availableTeachers={(slot) =>
                                 getAvailableTeachers(
@@ -286,7 +347,7 @@ export default function CoverageDashboard({
                               }
                               urgency="covered"
                               onAssign={(slot, val) =>
-                                assign(club.sessionId, slot, val)
+                                assign(club.sessionId, rotation, slot, val)
                               }
                             />
                           ))}
@@ -408,6 +469,9 @@ function ClubCard({
   urgency: "needs" | "consider" | "covered";
   onAssign: (slot: "t1" | "t2", value: string | null) => void;
 }) {
+  // rotation is used by the parent to route onAssign correctly; kept in signature for clarity
+  void rotation;
+
   const borderColor =
     urgency === "needs"
       ? "border-l-red-400"
@@ -510,8 +574,7 @@ function TeacherDropdown({
 
   // Always include the currently selected teacher even if they'd be filtered out
   const inOptions = value && options.some((t) => t.id === value);
-  const extraOption =
-    currentTeacher && !inOptions ? currentTeacher : null;
+  const extraOption = currentTeacher && !inOptions ? currentTeacher : null;
 
   return (
     <div className="flex items-center gap-2">
