@@ -569,8 +569,8 @@ function TeacherDropdown({
   const selectClass = isAssigned
     ? "bg-green-50 dark:bg-green-950/40 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
     : required
-      ? "bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 text-gray-500 dark:text-gray-400"
-      : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400";
+      ? "bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
+      : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-200";
 
   // Always include the currently selected teacher even if they'd be filtered out
   const inOptions = value && options.some((t) => t.id === value);
