@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import CoverageDashboard from "@/components/admin/CoverageDashboard";
 import type { CoverageClub, CoverageTeacher } from "@/components/admin/CoverageDashboard";
+import type { RotationSlot } from "@prisma/client";
 
 export default async function AdminCoveragePage() {
   const session = await auth();
@@ -26,6 +27,13 @@ export default async function AdminCoveragePage() {
             },
           },
           _count: { select: { signups: true } },
+          rotationCoverage: {
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
+            },
+          },
         },
       },
     },
@@ -63,8 +71,20 @@ export default async function AdminCoveragePage() {
     ownerName: cs.club.owner.name ?? cs.club.ownerId,
     rotations: cs.rotations,
     studentCount: cs._count.signups,
-    primaryTeacherId: cs.primaryTeacherId,
-    secondaryTeacherId: cs.secondaryTeacherId,
+    coverage: Object.fromEntries(
+      cs.rotationCoverage.map((rc) => [
+        rc.rotation,
+        {
+          primaryTeacherId: rc.primaryTeacherId,
+          secondaryTeacherId: rc.secondaryTeacherId,
+        },
+      ])
+    ) as Partial<
+      Record<
+        RotationSlot,
+        { primaryTeacherId: string | null; secondaryTeacherId: string | null }
+      >
+    >,
   }));
 
   const flexDayLabel = nextFlexDay.label

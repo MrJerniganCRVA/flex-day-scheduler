@@ -68,12 +68,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts          Account[]
-  sessions          Session[]
-  clubsOwned        Club[]        @relation("ClubOwner")
-  signups           Signup[]
-  primarySessions   ClubSession[] @relation("SessionPrimary")
-  secondarySessions ClubSession[] @relation("SessionSecondary")
+  accounts        Account[]
+  sessions        Session[]
+  clubsOwned      Club[]                    @relation("ClubOwner")
+  signups         Signup[]
+  rotCovPrimary   SessionRotationCoverage[] @relation("RotCovPrimary")
+  rotCovSecondary SessionRotationCoverage[] @relation("RotCovSecondary")
 
   @@index([email])
 }
@@ -128,27 +128,38 @@ model Club {
 }
 
 model ClubSession {
-  id                 String         @id @default(cuid())
-  flexDayId          String
-  clubId             String
-  rotations          RotationSlot[]
-  roomOverrideId     String?
-  googleEventId      String?
-  primaryTeacherId   String?
-  secondaryTeacherId String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  id             String         @id @default(cuid())
+  flexDayId      String
+  clubId         String
+  rotations      RotationSlot[]
+  roomOverrideId String?
+  googleEventId  String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  flexDay          FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
-  club             Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  roomOverride     Room?    @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
-  primaryTeacher   User?    @relation("SessionPrimary", fields: [primaryTeacherId], references: [id], onDelete: SetNull)
-  secondaryTeacher User?    @relation("SessionSecondary", fields: [secondaryTeacherId], references: [id], onDelete: SetNull)
+  flexDay          FlexDay                   @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
+  club             Club                      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  roomOverride     Room?                     @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
   signups          Signup[]
+  rotationCoverage SessionRotationCoverage[]
 
   @@index([flexDayId])
   @@index([clubId])
   @@index([roomOverrideId])
+}
+
+model SessionRotationCoverage {
+  id                 String       @id @default(cuid())
+  sessionId          String
+  rotation           RotationSlot
+  primaryTeacherId   String?
+  secondaryTeacherId String?
+
+  session          ClubSession @relation(fields: [sessionId],          references: [id], onDelete: Cascade)
+  primaryTeacher   User?       @relation("RotCovPrimary",   fields: [primaryTeacherId],   references: [id], onDelete: SetNull)
+  secondaryTeacher User?       @relation("RotCovSecondary", fields: [secondaryTeacherId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, rotation])
   @@index([primaryTeacherId])
   @@index([secondaryTeacherId])
 }

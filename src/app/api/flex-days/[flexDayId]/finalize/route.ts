@@ -25,8 +25,12 @@ export async function POST(
               owner: { select: { email: true } },
             },
           },
-          primaryTeacher: { select: { email: true } },
-          secondaryTeacher: { select: { email: true } },
+          rotationCoverage: {
+            include: {
+              primaryTeacher: { select: { email: true } },
+              secondaryTeacher: { select: { email: true } },
+            },
+          },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -54,19 +58,34 @@ export async function POST(
   );
 
   const results = await Promise.allSettled(
-    syncableSessions.map((cs) =>
-      syncEventAttendees({
+    syncableSessions.map((cs) => {
+      // Collect unique teacher emails across all rotation coverage records.
+      // Fall back to the club owner if no coverage was explicitly assigned.
+      const coverageEmails = new Set<string>();
+      for (const rc of cs.rotationCoverage) {
+        const primaryEmail =
+          rc.primaryTeacher?.email ?? cs.club.owner.email;
+        coverageEmails.add(primaryEmail);
+        if (rc.secondaryTeacher?.email) {
+          coverageEmails.add(rc.secondaryTeacher.email);
+        }
+      }
+      if (coverageEmails.size === 0) {
+        // No coverage records at all — owner handles the session
+        if (cs.club.owner.email) coverageEmails.add(cs.club.owner.email);
+      }
+
+      return syncEventAttendees({
         calendarId: cs.club.googleCalendarId!,
         eventId: cs.googleEventId!,
         attendeeEmails: [
-          cs.primaryTeacher?.email ?? cs.club.owner.email,
-          ...(cs.secondaryTeacher?.email ? [cs.secondaryTeacher.email] : []),
+          ...coverageEmails,
           ...cs.signups
             .map((s) => s.student.email)
             .filter((email): email is string => Boolean(email)),
         ],
-      })
-    )
+      });
+    })
   );
 
   const failures = results.filter((r) => r.status === "rejected");

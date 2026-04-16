@@ -5,6 +5,7 @@ import { z } from "zod";
 
 const patchSchema = z
   .object({
+    rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"]),
     primary: z.string().nullable().optional(),
     secondary: z.string().nullable().optional(),
   })
@@ -32,7 +33,7 @@ export async function PATCH(
     );
   }
 
-  const { primary, secondary } = parsed.data;
+  const { rotation, primary, secondary } = parsed.data;
 
   // Verify referenced teachers exist and have an appropriate role
   for (const [field, teacherId] of [
@@ -59,25 +60,25 @@ export async function PATCH(
     }
   }
 
-  // Build update only from fields present in the request body
+  // Build update data from only the fields present in the request body
   const updateData: {
     primaryTeacherId?: string | null;
     secondaryTeacherId?: string | null;
   } = {};
-
   if ("primary" in parsed.data) updateData.primaryTeacherId = primary ?? null;
   if ("secondary" in parsed.data)
     updateData.secondaryTeacherId = secondary ?? null;
 
-  const updated = await prisma.clubSession.update({
-    where: { id: sessionId },
-    data: updateData,
-    select: { id: true },
+  await prisma.sessionRotationCoverage.upsert({
+    where: { sessionId_rotation: { sessionId, rotation } },
+    create: {
+      sessionId,
+      rotation,
+      primaryTeacherId: updateData.primaryTeacherId ?? null,
+      secondaryTeacherId: updateData.secondaryTeacherId ?? null,
+    },
+    update: updateData,
   });
-
-  if (!updated) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  }
 
   return NextResponse.json({ ok: true });
 }
