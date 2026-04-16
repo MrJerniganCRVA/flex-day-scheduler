@@ -68,10 +68,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts   Account[]
-  sessions   Session[]
-  clubsOwned Club[]    @relation("ClubOwner")
-  signups    Signup[]
+  accounts          Account[]
+  sessions          Session[]
+  clubsOwned        Club[]        @relation("ClubOwner")
+  signups           Signup[]
+  primarySessions   ClubSession[] @relation("SessionPrimary")
+  secondarySessions ClubSession[] @relation("SessionSecondary")
 
   @@index([email])
 }
@@ -126,23 +128,29 @@ model Club {
 }
 
 model ClubSession {
-  id             String         @id @default(cuid())
-  flexDayId      String
-  clubId         String
-  rotations      RotationSlot[]
-  roomOverrideId String?
-  googleEventId  String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  flexDayId          String
+  clubId             String
+  rotations          RotationSlot[]
+  roomOverrideId     String?
+  googleEventId      String?
+  primaryTeacherId   String?
+  secondaryTeacherId String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  flexDay      FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
-  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  roomOverride Room?    @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
-  signups      Signup[]
+  flexDay          FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
+  club             Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  roomOverride     Room?    @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
+  primaryTeacher   User?    @relation("SessionPrimary", fields: [primaryTeacherId], references: [id], onDelete: SetNull)
+  secondaryTeacher User?    @relation("SessionSecondary", fields: [secondaryTeacherId], references: [id], onDelete: SetNull)
+  signups          Signup[]
 
   @@index([flexDayId])
   @@index([clubId])
   @@index([roomOverrideId])
+  @@index([primaryTeacherId])
+  @@index([secondaryTeacherId])
 }
 
 model Signup {

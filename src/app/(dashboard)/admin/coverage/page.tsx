@@ -63,6 +63,8 @@ export default async function AdminCoveragePage() {
     ownerName: cs.club.owner.name ?? cs.club.ownerId,
     rotations: cs.rotations,
     studentCount: cs._count.signups,
+    primaryTeacherId: cs.primaryTeacherId,
+    secondaryTeacherId: cs.secondaryTeacherId,
   }));
 
   const flexDayLabel = nextFlexDay.label
