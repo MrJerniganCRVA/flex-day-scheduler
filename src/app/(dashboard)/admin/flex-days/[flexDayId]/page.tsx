@@ -91,9 +91,17 @@ export default async function AdminFlexDayDetailPage({
                         <div className="font-medium text-gray-900 dark:text-white text-sm">
                           {cs.club.name}
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {cs._count.signups}/{cs.club.maxCapacity}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <a
+                            href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Edit
+                          </a>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {cs._count.signups}/{cs.club.maxCapacity}
+                          </span>
+                        </div>
                       </div>
                       {cs.signups.length > 0 && (
                         <details>

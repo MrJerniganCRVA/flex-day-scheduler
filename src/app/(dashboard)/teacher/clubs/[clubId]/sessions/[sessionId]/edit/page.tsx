@@ -5,13 +5,16 @@ import SessionEditForm from "@/components/sessions/SessionEditForm";
 
 export default async function EditSessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clubId: string; sessionId: string }>;
+  searchParams: Promise<{ return?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
   const { clubId, sessionId } = await params;
+  const { return: returnPath } = await searchParams;
 
   // Verify access
   const club = await prisma.club.findUnique({ where: { id: clubId } });
@@ -29,6 +32,16 @@ export default async function EditSessionPage({
   });
 
   if (!clubSession || clubSession.clubId !== clubId) notFound();
+
+  // Fetch other sessions of the same club on the same flex day for the link UI
+  const siblingSessionOptions = await prisma.clubSession.findMany({
+    where: {
+      clubId,
+      flexDayId: clubSession.flexDayId,
+      id: { not: sessionId },
+    },
+    select: { id: true, rotations: true },
+  });
 
   return (
     <div>
@@ -50,6 +63,8 @@ export default async function EditSessionPage({
         clubId={clubId}
         sessionId={sessionId}
         initialRotations={clubSession.rotations}
+        returnPath={returnPath}
+        siblingSessionOptions={siblingSessionOptions}
       />
     </div>
   );
