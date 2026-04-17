@@ -65,15 +65,10 @@ export default async function ClubDetailPage({
             )}
           </div>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href={`/teacher/clubs/${clubId}/edit`}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            Edit
-          </Link>
-          <DeleteClubButton clubId={clubId} />
-        </div>
+        <DeleteClubButton
+          clubId={clubId}
+          editHref={`/teacher/clubs/${clubId}/edit`}
+        />
       </div>
 
       <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">

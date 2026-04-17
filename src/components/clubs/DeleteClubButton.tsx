@@ -2,13 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function DeleteClubButton({
   clubId,
   redirectTo = "/teacher/clubs",
+  editHref,
 }: {
   clubId: string;
   redirectTo?: string;
+  editHref?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -58,11 +61,21 @@ export default function DeleteClubButton({
   }
 
   return (
-    <button
-      onClick={() => setConfirming(true)}
-      className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/80 transition-colors"
-    >
-      Delete Club
-    </button>
+    <div className="flex gap-2">
+      {editHref && (
+        <Link
+          href={editHref}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        >
+          Edit
+        </Link>
+      )}
+      <button
+        onClick={() => setConfirming(true)}
+        className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/80 transition-colors"
+      >
+        Delete Club
+      </button>
+    </div>
   );
 }
