@@ -56,7 +56,12 @@ export default async function AdminClubsPage() {
               {clubs.map((club) => (
                 <tr key={club.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900 dark:text-white">{club.name}</div>
+                    <Link
+                      href={`/admin/clubs/${club.id}`}
+                      className="font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400"
+                    >
+                      {club.name}
+                    </Link>
                     {club.description && (
                       <div className="text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
                         {club.description}
@@ -71,12 +76,6 @@ export default async function AdminClubsPage() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club._count.clubSessions}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
-                      <Link
-                        href={`/admin/clubs/${club.id}`}
-                        className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
-                      >
-                        Manage
-                      </Link>
                       <Link
                         href={`/admin/clubs/${club.id}/edit`}
                         className="text-gray-500 dark:text-gray-400 hover:underline text-xs font-medium"
