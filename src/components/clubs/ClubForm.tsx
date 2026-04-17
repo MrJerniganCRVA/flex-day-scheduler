@@ -238,7 +238,8 @@ export default function ClubForm({
         </label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Which rotations does this club normally run in? This club will be
-          automatically scheduled for these rotations on every flex day.
+          automatically scheduled for these rotations on every flex day. This
+          can be modified later for any and all flex days if needed.
         </p>
         <div className="space-y-2">
           {ALL_ROTATIONS.map((rotation) => (
