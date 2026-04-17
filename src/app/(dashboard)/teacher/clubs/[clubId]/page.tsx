@@ -17,11 +17,15 @@ export default async function ClubDetailPage({
 
   const { clubId } = await params;
 
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
   const club = await prisma.club.findUnique({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true } },
       clubSessions: {
+        where: { flexDay: { date: { gte: today } } },
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
           _count: { select: { signups: true } },
@@ -78,7 +82,7 @@ export default async function ClubDetailPage({
 
       {club.clubSessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
-          No sessions scheduled yet. Sessions will be automatically created when new flex days are added.
+          No upcoming sessions scheduled. Sessions are automatically created when new flex days are added.
         </div>
       ) : (
         <div className="space-y-4">
