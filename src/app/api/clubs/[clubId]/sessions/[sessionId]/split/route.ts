@@ -48,46 +48,56 @@ export async function POST(
   const location =
     original.roomOverride?.name ?? original.club.defaultRoom?.name ?? null;
 
-  const newSessions: { id: string; rotation: string }[] = [];
+  // Run all DB mutations atomically: create new sessions + migrate data + delete original
+  const newSessions = await prisma.$transaction(async (tx) => {
+    const created: { id: string; rotation: typeof original.rotations[number] }[] = [];
 
-  for (const rotation of original.rotations) {
-    const newSession = await prisma.clubSession.create({
-      data: {
-        flexDayId: original.flexDayId,
-        clubId: original.clubId,
-        rotations: [rotation],
-        roomOverrideId: original.roomOverrideId,
-      },
-    });
-
-    // Migrate matching coverage record
-    const coverage = original.rotationCoverage.find(
-      (rc) => rc.rotation === rotation
-    );
-    if (coverage) {
-      await prisma.sessionRotationCoverage.create({
+    for (const rotation of original.rotations) {
+      const newSession = await tx.clubSession.create({
         data: {
-          sessionId: newSession.id,
-          rotation,
-          primaryTeacherId: coverage.primaryTeacherId,
-          secondaryTeacherId: coverage.secondaryTeacherId,
+          flexDayId: original.flexDayId,
+          clubId: original.clubId,
+          rotations: [rotation],
+          roomOverrideId: original.roomOverrideId,
         },
       });
+
+      const coverage = original.rotationCoverage.find(
+        (rc) => rc.rotation === rotation
+      );
+      if (coverage) {
+        await tx.sessionRotationCoverage.create({
+          data: {
+            sessionId: newSession.id,
+            rotation,
+            primaryTeacherId: coverage.primaryTeacherId,
+            secondaryTeacherId: coverage.secondaryTeacherId,
+          },
+        });
+      }
+
+      if (studentIds.length > 0) {
+        await tx.signup.createMany({
+          data: studentIds.map((studentId) => ({
+            studentId,
+            clubSessionId: newSession.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      created.push({ id: newSession.id, rotation });
     }
 
-    // Migrate signups
-    if (studentIds.length > 0) {
-      await prisma.signup.createMany({
-        data: studentIds.map((studentId) => ({
-          studentId,
-          clubSessionId: newSession.id,
-        })),
-        skipDuplicates: true,
-      });
-    }
+    // Delete original (cascades signups and rotationCoverage)
+    await tx.clubSession.delete({ where: { id: sessionId } });
 
-    // Create Google Calendar event non-blocking
-    if (original.club.googleCalendarId) {
+    return created;
+  });
+
+  // Fire calendar events non-blocking after the transaction commits
+  if (original.club.googleCalendarId) {
+    for (const { id: newSessionId, rotation } of newSessions) {
       createEventForSession({
         calendarId: original.club.googleCalendarId,
         clubName: original.club.name,
@@ -97,23 +107,18 @@ export async function POST(
       })
         .then((eventId) =>
           prisma.clubSession.update({
-            where: { id: newSession.id },
+            where: { id: newSessionId },
             data: { googleEventId: eventId },
           })
         )
         .catch((err) =>
           console.error(
-            `Failed to create calendar event for split session ${newSession.id}:`,
+            `Failed to create calendar event for split session ${newSessionId}:`,
             err
           )
         );
     }
-
-    newSessions.push({ id: newSession.id, rotation });
   }
-
-  // Delete original session (cascades signups and rotationCoverage)
-  await prisma.clubSession.delete({ where: { id: sessionId } });
 
   // Delete original Google Calendar event non-blocking
   if (original.club.googleCalendarId && original.googleEventId) {

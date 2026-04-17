@@ -175,51 +175,52 @@ export async function POST(
     }
   }
 
-  // Update target session with combined rotations
-  await prisma.clubSession.update({
-    where: { id: sessionId },
-    data: { rotations: combinedRotations },
-  });
-
-  // Migrate signups from merged sessions to target (skip duplicates)
+  // Run all DB mutations atomically
   const allIncomingStudentIds = [
     ...new Set(merges.flatMap((m) => m!.signups.map((s) => s.studentId))),
   ];
-  if (allIncomingStudentIds.length > 0) {
-    await prisma.signup.createMany({
-      data: allIncomingStudentIds.map((studentId) => ({
-        studentId,
-        clubSessionId: sessionId,
-      })),
-      skipDuplicates: true,
-    });
-  }
 
-  // Migrate rotationCoverage from merged sessions to target (upsert per rotation)
-  for (const m of merges) {
-    for (const rc of m!.rotationCoverage) {
-      await prisma.sessionRotationCoverage.upsert({
-        where: { sessionId_rotation: { sessionId, rotation: rc.rotation } },
-        create: {
-          sessionId,
-          rotation: rc.rotation,
-          primaryTeacherId: rc.primaryTeacherId,
-          secondaryTeacherId: rc.secondaryTeacherId,
-        },
-        update: {
-          primaryTeacherId: rc.primaryTeacherId,
-          secondaryTeacherId: rc.secondaryTeacherId,
-        },
+  await prisma.$transaction(async (tx) => {
+    await tx.clubSession.update({
+      where: { id: sessionId },
+      data: { rotations: combinedRotations },
+    });
+
+    if (allIncomingStudentIds.length > 0) {
+      await tx.signup.createMany({
+        data: allIncomingStudentIds.map((studentId) => ({
+          studentId,
+          clubSessionId: sessionId,
+        })),
+        skipDuplicates: true,
       });
     }
-  }
 
-  // Delete merged sessions (cascade removes their signups and rotationCoverage)
-  await prisma.clubSession.deleteMany({
-    where: { id: { in: mergeSessionIds } },
+    for (const m of merges) {
+      for (const rc of m!.rotationCoverage) {
+        await tx.sessionRotationCoverage.upsert({
+          where: { sessionId_rotation: { sessionId, rotation: rc.rotation } },
+          create: {
+            sessionId,
+            rotation: rc.rotation,
+            primaryTeacherId: rc.primaryTeacherId,
+            secondaryTeacherId: rc.secondaryTeacherId,
+          },
+          update: {
+            primaryTeacherId: rc.primaryTeacherId,
+            secondaryTeacherId: rc.secondaryTeacherId,
+          },
+        });
+      }
+    }
+
+    // Delete merged sessions (cascade removes their signups and rotationCoverage)
+    await tx.clubSession.deleteMany({
+      where: { id: { in: mergeSessionIds } },
+    });
   });
 
-  // Delete merged sessions' Google Calendar events non-blocking
+  // Delete merged sessions' Google Calendar events non-blocking after commit
   for (const m of merges) {
     if (m!.club.googleCalendarId && m!.googleEventId) {
       deleteEvent(m!.club.googleCalendarId, m!.googleEventId).catch((err) =>
