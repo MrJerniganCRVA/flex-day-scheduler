@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionSchema } from "@/lib/validations";
-import { deleteEvent } from "@/lib/google-calendar";
+import { deleteEvent, updateEventForSession } from "@/lib/google-calendar";
 
 export async function GET(
   _req: NextRequest,
@@ -55,7 +55,12 @@ export async function PUT(
   // Verify access: owner or admin
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    select: { ownerId: true, maxCapacity: true },
+    select: {
+      ownerId: true,
+      maxCapacity: true,
+      googleCalendarId: true,
+      defaultRoom: { select: { name: true } },
+    },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
@@ -73,10 +78,10 @@ export async function PUT(
     );
   }
 
-  // Fetch the existing session to get its flexDayId for conflict checking
+  // Fetch the existing session to get flexDayId, googleEventId, and room for calendar sync
   const existingSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
-    select: { flexDayId: true },
+    select: { flexDayId: true, googleEventId: true, roomOverrideId: true },
   });
   if (!existingSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -137,8 +142,34 @@ export async function PUT(
     include: {
       flexDay: { select: { date: true, label: true } },
       club: { select: { name: true } },
+      roomOverride: { select: { name: true } },
     },
   });
+
+  // Sync the Google Calendar event if rotations or room changed
+  const rotationsChanged = Boolean(parsed.data.rotations);
+  const roomChanged = parsed.data.roomOverrideId !== undefined;
+  if (
+    (rotationsChanged || roomChanged) &&
+    club.googleCalendarId &&
+    existingSession.googleEventId
+  ) {
+    const location =
+      updatedSession.roomOverride?.name ?? club.defaultRoom?.name ?? null;
+    updateEventForSession({
+      calendarId: club.googleCalendarId,
+      eventId: existingSession.googleEventId,
+      clubName: updatedSession.club.name,
+      location,
+      flexDayDate: updatedSession.flexDay.date,
+      rotations: updatedSession.rotations,
+    }).catch((err) =>
+      console.error(
+        `Failed to update calendar event for session ${sessionId}:`,
+        err
+      )
+    );
+  }
 
   return NextResponse.json(updatedSession);
 }

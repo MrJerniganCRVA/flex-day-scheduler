@@ -125,6 +125,46 @@ export async function createEventForSession(params: {
 }
 
 /**
+ * Update a calendar event's title, time, and location when a session's rotations
+ * or room changes. Attendees are left untouched.
+ */
+export async function updateEventForSession(params: {
+  calendarId: string;
+  eventId: string;
+  clubName: string;
+  location: string | null | undefined;
+  flexDayDate: Date;
+  rotations: RotationSlot[];
+}): Promise<void> {
+  const calendar = getCalendarClient();
+  const tz = process.env.SCHOOL_TIMEZONE ?? "America/New_York";
+  const dateStr = params.flexDayDate.toISOString().split("T")[0];
+
+  const sortedRotations = [...params.rotations].sort();
+  const firstRotation = sortedRotations[0];
+  const lastRotation = sortedRotations[sortedRotations.length - 1];
+
+  const startTime = getRotationTime(firstRotation).start;
+  const endTime = getRotationTime(lastRotation).end;
+
+  const rotationLabel = sortedRotations
+    .map((r) => r.replace("FLEX_", "Flex "))
+    .join(" + ");
+
+  await calendar.events.patch({
+    calendarId: params.calendarId,
+    eventId: params.eventId,
+    sendUpdates: "none",
+    requestBody: {
+      summary: `${params.clubName} (${rotationLabel})`,
+      location: params.location ?? undefined,
+      start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
+      end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
+    },
+  });
+}
+
+/**
  * Replace the full attendee list on a calendar event with the provided emails.
  * Used during finalization to batch-sync all signups at once.
  * sendUpdates: "all" ensures each student receives a calendar invite email.
