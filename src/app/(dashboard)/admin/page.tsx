@@ -40,25 +40,17 @@ export default async function AdminDashboard() {
   const overallPct =
     overallCapacity > 0 ? Math.round((overallSignups / overallCapacity) * 100) : 0;
 
-  const [studentCount, clubCount] = await Promise.all([
-    prisma.user.count({ where: { role: "STUDENT" } }),
-    prisma.club.count(),
-  ]);
-
-  const upcomingFlexDays = await prisma.flexDay.findMany({
-    where: {
-      isActive: true,
-      date: { gte: today },
-      ...(nextFlexDay ? { id: { not: nextFlexDay.id } } : {}),
-    },
-    orderBy: { date: "asc" },
-    take: 6,
-    include: { _count: { select: { clubSessions: true } } },
-  });
-
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
+        <Link
+          href="/admin/flex-days/new"
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+        >
+          + New Flex Day
+        </Link>
+      </div>
 
       {nextFlexDay ? (
         <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-6">
@@ -129,74 +121,6 @@ export default async function AdminDashboard() {
             Add one
           </Link>
         </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Students", value: studentCount, href: "/admin/users" },
-          { label: "Clubs", value: clubCount, href: "/admin/clubs" },
-          { label: "Flex Days", value: upcomingFlexDays.length + (nextFlexDay ? 1 : 0), href: "/admin/flex-days" },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
-            <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stat.value}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              <Link href={stat.href} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">
-                {stat.label}
-              </Link>
-            </div>
-          </div>
-        ))}
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4 flex items-center justify-center">
-          <Link
-            href="/admin/flex-days/new"
-            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            + New Flex Day
-          </Link>
-        </div>
-      </div>
-
-      {upcomingFlexDays.length > 0 && (
-        <>
-          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">Also Coming Up</h2>
-          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Label</th>
-                  <th className="px-4 py-3 text-left">Club Sessions</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                {upcomingFlexDays.map((fd) => (
-                  <tr key={fd.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-200">
-                      {new Date(fd.date).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        timeZone: "UTC",
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{fd.label ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{fd._count.clubSessions}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/admin/flex-days/${fd.id}`}
-                        className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
       )}
     </div>
   );
