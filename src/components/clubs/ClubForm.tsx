@@ -63,7 +63,8 @@ export default function ClubForm({
   useEffect(() => {
     async function fetchRooms() {
       try {
-        const res = await fetch("/api/admin/rooms");
+        const url = clubId ? `/api/rooms?excludeClubId=${clubId}` : "/api/rooms";
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setRooms(data);

@@ -14,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ clubId: string; sessionId: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -63,6 +63,11 @@ export async function POST(
 
   if (!target || target.clubId !== clubId) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Auth: admin or club owner
+  if (session.user.role !== "ADMIN" && target.club.ownerId !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Validate all merge sessions exist and belong to the same club + flex day
