@@ -28,7 +28,6 @@ export default async function StudentFlexDayPage({
               name: true,
               description: true,
               maxCapacity: true,
-              
               owner: { select: { name: true } },
             },
           },
@@ -105,7 +104,12 @@ export default async function StudentFlexDayPage({
                     const isMySignup = cs.signups.length > 0;
                     const signupId = cs.signups[0]?.id;
                     const spansRotations = cs.rotations.length > 1;
-                    const otherRotations = cs.rotations.filter((r) => r !== slot);
+                    const conflictingRotation = cs.rotations.find((r) =>
+                      bookedRotations.has(r)
+                    );
+                    const conflictLabel = conflictingRotation
+                      ? `You're in ${ROTATION_LABELS[conflictingRotation]}`
+                      : undefined;
 
                     return (
                       <div
@@ -124,16 +128,16 @@ export default async function StudentFlexDayPage({
                             {cs.club.description}
                           </p>
                         )}
+                        <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {cs.club.owner.name}
+                        </div>
                         <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          
                           <span>
                             {cs._count.signups}/{cs.club.maxCapacity} enrolled
                           </span>
                           {spansRotations && (
                             <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              Also: {otherRotations
-                                .map((r) => ROTATION_LABELS[r])
-                                .join(", ")}
+                              Spans {cs.rotations.map((r) => ROTATION_LABELS[r]).join(" + ")}
                             </span>
                           )}
                         </div>
@@ -147,6 +151,7 @@ export default async function StudentFlexDayPage({
                               !isMySignup &&
                               cs.rotations.some((r) => bookedRotations.has(r))
                             }
+                            conflictLabel={conflictLabel}
                             isPastDeadline={pastDeadline}
                           />
                         </div>
