@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const rooms = await prisma.room.findMany({
     where: {
       isActive: true,
-      clubs: {
+      clubsWithDefault: {
         none: excludeClubId ? { id: { not: excludeClubId } } : {},
       },
     },
