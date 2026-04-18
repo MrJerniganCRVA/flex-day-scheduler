@@ -27,7 +27,6 @@ export default async function StudentDashboard() {
               name: true,
               description: true,
               maxCapacity: true,
-              
               owner: { select: { name: true } },
             },
           },
@@ -137,13 +136,11 @@ export default async function StudentDashboard() {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
-                timeZone: "UTC",
               })}{" "}
               at{" "}
               {deadline.toLocaleTimeString("en-US", {
                 hour: "numeric",
                 minute: "2-digit",
-                timeZone: "UTC",
               })}
             </>
           )}
@@ -178,7 +175,6 @@ export default async function StudentDashboard() {
                 ) : (
                   sessions
                     .sort((a, b) => {
-                      // Signed-up clubs first
                       const aSignedUp = a.signups.length > 0 ? 1 : 0;
                       const bSignedUp = b.signups.length > 0 ? 1 : 0;
                       return bSignedUp - aSignedUp;
@@ -188,56 +184,60 @@ export default async function StudentDashboard() {
                       const isMySignup = cs.signups.length > 0;
                       const signupId = cs.signups[0]?.id;
                       const spansRotations = cs.rotations.length > 1;
-                      const otherRotations = cs.rotations.filter(
-                        (r) => r !== slot
+                      const conflictingRotation = cs.rotations.find((r) =>
+                        bookedRotations.has(r)
                       );
+                      const conflictLabel = conflictingRotation
+                        ? `You're in ${ROTATION_LABELS[conflictingRotation]}`
+                        : undefined;
 
                       return (
-                      <div
-                        key={cs.id}
-                        className={`rounded-lg border p-3 ${
-                          isMySignup
-                            ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30"
-                            : "border-gray-200 dark:border-gray-700"
-                        }`}
-                      >
-                        <div className="font-medium text-sm text-gray-900 dark:text-white">
-                          {cs.club.name}
-                        </div>
-                        {cs.club.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {cs.club.description}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          
-                          <span>
-                            {cs._count.signups}/{cs.club.maxCapacity} enrolled
-                          </span>
-                          {spansRotations && (
-                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              Also: {otherRotations
-                                .map((r) => ROTATION_LABELS[r])
-                                .join(", ")}
-                            </span>
+                        <div
+                          key={cs.id}
+                          className={`rounded-lg border p-3 ${
+                            isMySignup
+                              ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30"
+                              : "border-gray-200 dark:border-gray-700"
+                          }`}
+                        >
+                          <div className="font-medium text-sm text-gray-900 dark:text-white">
+                            {cs.club.name}
+                          </div>
+                          {cs.club.description && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              {cs.club.description}
+                            </p>
                           )}
+                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {cs.club.owner.name}
+                          </div>
+                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>
+                              {cs._count.signups}/{cs.club.maxCapacity} enrolled
+                            </span>
+                            {spansRotations && (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                                Spans {cs.rotations.map((r) => ROTATION_LABELS[r]).join(" + ")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3">
+                            <SignupButton
+                              clubSessionId={cs.id}
+                              signupId={signupId}
+                              isMySignup={isMySignup}
+                              isFull={isFull && !isMySignup}
+                              isConflicted={
+                                !isMySignup &&
+                                cs.rotations.some((r) => bookedRotations.has(r))
+                              }
+                              conflictLabel={conflictLabel}
+                              isPastDeadline={pastDeadline}
+                            />
+                          </div>
                         </div>
-                        <div className="mt-3">
-                          <SignupButton
-                            clubSessionId={cs.id}
-                            signupId={signupId}
-                            isMySignup={isMySignup}
-                            isFull={isFull && !isMySignup}
-                            isConflicted={
-                              !isMySignup &&
-                              cs.rotations.some((r) => bookedRotations.has(r))
-                            }
-                            isPastDeadline={pastDeadline}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
                 )}
               </div>
             </div>
