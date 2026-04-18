@@ -43,16 +43,7 @@ export default async function ClubDetailPage({
     session.user.role === "ADMIN" || club.owner.id === session.user.id;
   if (!canManage) redirect("/unauthorized");
 
-  const sessions = club.clubSessions as Array<{
-    id: string;
-    rotations: string[];
-    flexDay: { id: string; date: Date; label: string | null };
-    _count: { signups: number };
-    signups: Array<{
-      id: string;
-      student: { id: string; name: string; email: string };
-    }>;
-  }>;
+  const sessions = club.clubSessions;
 
   return (
     <div>
@@ -95,13 +86,13 @@ export default async function ClubDetailPage({
               sessionId={cs.id}
               flexDayDate={cs.flexDay.date.toISOString()}
               flexDayLabel={cs.flexDay.label}
-              rotations={cs.rotations as string[]}
+              rotations={cs.rotations}
               enrollmentCount={cs._count.signups}
               maxCapacity={club.maxCapacity}
               signups={cs.signups}
               siblingSessionOptions={sessions
                 .filter((s) => s.flexDay.id === cs.flexDay.id && s.id !== cs.id)
-                .map((s) => ({ id: s.id, rotations: s.rotations as string[] }))}
+                .map((s) => ({ id: s.id, rotations: s.rotations }))}
             />
           ))}
         </div>
