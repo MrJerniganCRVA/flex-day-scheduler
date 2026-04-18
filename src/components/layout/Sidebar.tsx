@@ -24,6 +24,7 @@ const adminNav: NavItem[] = [
   { label: "Rooms", href: "/admin/rooms" },
   { label: "Users", href: "/admin/users" },
   { label: "All Clubs", href: "/admin/clubs" },
+  { label: "Student View ↗", href: "/student", exact: true },
 ];
 
 export default function Sidebar() {
