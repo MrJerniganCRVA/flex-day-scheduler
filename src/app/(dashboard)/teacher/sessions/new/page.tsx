@@ -18,7 +18,7 @@ export default async function NewSessionPage({
       ? undefined
       : { ownerId: session.user.id };
 
-  const [clubs, flexDays] = await Promise.all([
+  const [clubs, flexDays, existingSessions] = await Promise.all([
     prisma.club.findMany({
       where,
       select: {
@@ -33,7 +33,17 @@ export default async function NewSessionPage({
       select: { id: true, date: true, label: true },
       orderBy: { date: "asc" },
     }),
+    prisma.clubSession.findMany({
+      where: { club: where ?? {} },
+      select: { clubId: true, flexDayId: true },
+    }),
   ]);
+
+  // Build a map of clubId → flexDayIds already scheduled
+  const takenFlexDaysByClub: Record<string, string[]> = {};
+  for (const s of existingSessions) {
+    (takenFlexDaysByClub[s.clubId] ??= []).push(s.flexDayId);
+  }
 
   return (
     <div className="max-w-xl">
@@ -44,6 +54,7 @@ export default async function NewSessionPage({
         clubs={clubs}
         flexDays={flexDays}
         preselectedClubId={preselectedClubId}
+        takenFlexDaysByClub={takenFlexDaysByClub}
       />
     </div>
   );

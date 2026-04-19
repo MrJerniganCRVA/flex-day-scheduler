@@ -27,16 +27,24 @@ interface Props {
   clubs: Club[];
   flexDays: FlexDay[];
   preselectedClubId?: string;
+  takenFlexDaysByClub?: Record<string, string[]>;
 }
 
 export default function SessionForm({
   clubs,
   flexDays,
   preselectedClubId,
+  takenFlexDaysByClub = {},
 }: Props) {
   const router = useRouter();
-  const [clubId, setClubId] = useState(preselectedClubId ?? clubs[0]?.id ?? "");
-  const [flexDayId, setFlexDayId] = useState(flexDays[0]?.id ?? "");
+
+  const initialClubId = preselectedClubId ?? clubs[0]?.id ?? "";
+  const initialAvailable = flexDays.filter(
+    (fd) => !takenFlexDaysByClub[initialClubId]?.includes(fd.id)
+  );
+
+  const [clubId, setClubId] = useState(initialClubId);
+  const [flexDayId, setFlexDayId] = useState(initialAvailable[0]?.id ?? "");
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
   const [signupMode, setSignupMode] = useState<"linked" | "separate">("linked");
   const [roomOverrideId, setRoomOverrideId] = useState<string>("");
@@ -62,6 +70,18 @@ export default function SessionForm({
     }
     fetchRooms();
   }, []);
+
+  // When club changes, reset flex day to first available for that club
+  useEffect(() => {
+    const available = flexDays.filter(
+      (fd) => !takenFlexDaysByClub[clubId]?.includes(fd.id)
+    );
+    setFlexDayId(available[0]?.id ?? "");
+  }, [clubId]);
+
+  const availableFlexDays = flexDays.filter(
+    (fd) => !takenFlexDaysByClub[clubId]?.includes(fd.id)
+  );
 
   const selectedClub = clubs.find((c) => c.id === clubId);
 
@@ -176,24 +196,30 @@ export default function SessionForm({
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Flex Day <span className="text-red-500">*</span>
         </label>
-        <select
-          value={flexDayId}
-          onChange={(e) => setFlexDayId(e.target.value)}
-          className={selectClass}
-        >
-          {flexDays.map((fd) => (
-            <option key={fd.id} value={fd.id}>
-              {new Date(fd.date).toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                timeZone: "UTC",
-              })}
-              {fd.label ? ` — ${fd.label}` : ""}
-            </option>
-          ))}
-        </select>
+        {availableFlexDays.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            This club already has a session on every upcoming Flex Day.
+          </p>
+        ) : (
+          <select
+            value={flexDayId}
+            onChange={(e) => setFlexDayId(e.target.value)}
+            className={selectClass}
+          >
+            {availableFlexDays.map((fd) => (
+              <option key={fd.id} value={fd.id}>
+                {new Date(fd.date).toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  timeZone: "UTC",
+                })}
+                {fd.label ? ` — ${fd.label}` : ""}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div>
@@ -323,7 +349,7 @@ export default function SessionForm({
         </button>
         <button
           type="submit"
-          disabled={loading || rotations.length === 0}
+          disabled={loading || rotations.length === 0 || availableFlexDays.length === 0}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
           {loading
