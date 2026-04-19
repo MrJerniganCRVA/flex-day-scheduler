@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import SessionCard from "@/components/sessions/SessionCard";
+import AddSessionInline from "@/components/sessions/AddSessionInline";
 
 export default async function ClubDetailPage({
   params,
@@ -17,10 +18,12 @@ export default async function ClubDetailPage({
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const club = await prisma.club.findUnique({
+  const [club, unscheduledFlexDays] = await Promise.all([
+  prisma.club.findUnique({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true } },
+      defaultRoom: { select: { id: true, name: true } },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
         include: {
@@ -35,7 +38,17 @@ export default async function ClubDetailPage({
         orderBy: { flexDay: { date: "asc" } },
       },
     },
-  });
+  }),
+  prisma.flexDay.findMany({
+    where: {
+      isActive: true,
+      date: { gte: today },
+      clubSessions: { none: { clubId } },
+    },
+    select: { id: true, date: true, label: true },
+    orderBy: { date: "asc" },
+  }),
+  ]);
 
   if (!club) notFound();
 
@@ -96,6 +109,22 @@ export default async function ClubDetailPage({
             />
           ))}
         </div>
+      )}
+
+      {unscheduledFlexDays.length > 0 && (
+        <>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mt-8 mb-3">
+            Add to a Flex Day
+          </h2>
+          <AddSessionInline
+            clubId={clubId}
+            flexDays={unscheduledFlexDays.map((fd) => ({
+              ...fd,
+              date: fd.date.toISOString(),
+            }))}
+            defaultRoomId={club.defaultRoomId}
+          />
+        </>
       )}
     </div>
   );
