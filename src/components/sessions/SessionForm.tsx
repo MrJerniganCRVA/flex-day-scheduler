@@ -57,7 +57,7 @@ export default function SessionForm({
   useEffect(() => {
     async function fetchRooms() {
       try {
-        const res = await fetch("/api/admin/rooms");
+        const res = await fetch("/api/rooms");
         if (res.ok) {
           const data = await res.json();
           setRooms(data);
@@ -165,7 +165,7 @@ export default function SessionForm({
   if (flexDays.length === 0) {
     return (
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-6 text-gray-500 dark:text-gray-400">
-        No Flex Days have been scheduled. Ask an administrator to create one.
+        No upcoming Flex Days are scheduled. Ask an administrator to create one.
       </div>
     );
   }
