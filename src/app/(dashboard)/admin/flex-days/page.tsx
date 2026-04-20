@@ -4,11 +4,20 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteFlexDayButton from "@/components/flex-days/DeleteFlexDayButton";
 
-export default async function AdminFlexDaysPage() {
+export default async function AdminFlexDaysPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ showPast?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
+  const { showPast } = await searchParams;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
   const flexDays = await prisma.flexDay.findMany({
+    where: showPast ? undefined : { date: { gte: today } },
     include: {
       _count: { select: { clubSessions: true } },
       clubSessions: {
@@ -39,12 +48,20 @@ export default async function AdminFlexDaysPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Flex Days</h1>
-        <Link
-          href="/admin/flex-days/new"
-          className="rounded-lg border border-indigo-300 dark:border-indigo-700 px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
-        >
-          + New Flex Day
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={showPast ? "/admin/flex-days" : "/admin/flex-days?showPast=1"}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+          >
+            {showPast ? "Hide past" : "Show past"}
+          </Link>
+          <Link
+            href="/admin/flex-days/new"
+            className="rounded-lg border border-indigo-300 dark:border-indigo-700 px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
+          >
+            + New Flex Day
+          </Link>
+        </div>
       </div>
 
       {flexDaysWithStats.length === 0 ? (
@@ -60,8 +77,7 @@ export default async function AdminFlexDaysPage() {
             <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 text-left">Date</th>
-                <th className="px-4 py-3 text-left">Label</th>
-                <th className="px-4 py-3 text-left">Sessions</th>
+                <th className="px-4 py-3 text-left">Clubs</th>
                 <th className="px-4 py-3 text-left">Signups</th>
                 <th className="px-4 py-3 text-left">Filled</th>
                 <th className="px-4 py-3 text-left">Status</th>
@@ -80,7 +96,6 @@ export default async function AdminFlexDaysPage() {
                       timeZone: "UTC",
                     })}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{fd.label ?? "—"}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{fd._count.clubSessions}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                     {fd.totalSignups}/{fd.totalCapacity}
@@ -103,15 +118,22 @@ export default async function AdminFlexDaysPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        fd.isActive
-                          ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                          : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
-                      }`}
-                    >
-                      {fd.isActive ? "Active" : "Inactive"}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          fd.isActive
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                            : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                        }`}
+                      >
+                        {fd.isActive ? "Active" : "Inactive"}
+                      </span>
+                      {fd.isFinalized && (
+                        <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                          Finalized
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
