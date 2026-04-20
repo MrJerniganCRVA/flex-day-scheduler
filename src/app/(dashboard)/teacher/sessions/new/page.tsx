@@ -13,6 +13,9 @@ export default async function NewSessionPage({
 
   const { clubId: preselectedClubId } = await searchParams;
 
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
   const where =
     session.user.role === "ADMIN"
       ? undefined
@@ -29,7 +32,7 @@ export default async function NewSessionPage({
       orderBy: { name: "asc" },
     }),
     prisma.flexDay.findMany({
-      where: { isActive: true },
+      where: { isActive: true, date: { gte: today } },
       select: { id: true, date: true, label: true },
       orderBy: { date: "asc" },
     }),
