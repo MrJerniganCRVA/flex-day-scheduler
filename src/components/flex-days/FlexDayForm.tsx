@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 interface Props {
   flexDayId?: string;
-  defaultValues?: { label?: string; isActive?: boolean };
+  defaultValues?: { isActive?: boolean };
 }
 
 export default function FlexDayForm({ flexDayId, defaultValues }: Props) {
@@ -13,7 +13,6 @@ export default function FlexDayForm({ flexDayId, defaultValues }: Props) {
   const isEdit = !!flexDayId;
 
   const [date, setDate] = useState("");
-  const [label, setLabel] = useState(defaultValues?.label ?? "");
   const [isActive, setIsActive] = useState(defaultValues?.isActive ?? true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +25,8 @@ export default function FlexDayForm({ flexDayId, defaultValues }: Props) {
     const url = isEdit ? `/api/flex-days/${flexDayId}` : "/api/flex-days";
     const method = isEdit ? "PUT" : "POST";
     const body = isEdit
-      ? { label: label || undefined, isActive }
-      : { date, label: label || undefined };
+      ? { isActive }
+      : { date };
 
     const res = await fetch(url, {
       method,
@@ -69,21 +68,6 @@ export default function FlexDayForm({ flexDayId, defaultValues }: Props) {
           />
         </div>
       )}
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Label{" "}
-          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
-        </label>
-        <input
-          type="text"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. Spring Flex Day 1"
-          maxLength={100}
-          className={inputClass}
-        />
-      </div>
 
       {isEdit && (
         <div className="flex items-center gap-2">

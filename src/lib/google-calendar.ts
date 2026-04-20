@@ -49,8 +49,8 @@ export async function createCalendarForClub(clubName: string): Promise<string> {
   const calendar = getCalendarClient();
   const response = await calendar.calendars.insert({
     requestBody: {
-      summary: `CodeRVA – ${clubName}`,
-      description: `Club calendar for ${clubName} at CodeRVA Regional High School`,
+      summary: clubName,
+      description: `Club calendar for ${clubName}`,
       timeZone: process.env.SCHOOL_TIMEZONE ?? "America/New_York",
     },
   });

@@ -76,7 +76,7 @@ export default async function TeacherClubsPage() {
                       href={`/teacher/clubs/${club.id}`}
                       className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
                     >
-                      Manage
+                      View
                     </Link>
                   </td>
                 </tr>
