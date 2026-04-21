@@ -68,3 +68,14 @@ export const updateRoomSchema = z.object({
   capacity: z.number().int().positive().min(1).max(1000).optional(),
   isActive: z.boolean().optional(),
 });
+
+export const bulkAttendanceSchema = z.object({
+  records: z
+    .array(
+      z.object({
+        signupId: z.string().cuid(),
+        attended: z.boolean(),
+      })
+    )
+    .min(1),
+});

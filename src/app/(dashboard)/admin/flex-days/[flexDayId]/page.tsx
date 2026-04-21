@@ -24,7 +24,9 @@ export default async function AdminFlexDayDetailPage({
             select: { id: true, name: true, maxCapacity: true },
           },
           signups: {
-            include: {
+            select: {
+              id: true,
+              attended: true,
               student: { select: { id: true, name: true, email: true } },
             },
           },
@@ -85,43 +87,71 @@ export default async function AdminFlexDayDetailPage({
                     No clubs scheduled.
                   </p>
                 ) : (
-                  sessions.map((cs) => (
-                    <div key={cs.id} className="px-5 py-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-medium text-gray-900 dark:text-white text-sm">
-                          {cs.club.name}
+                  sessions.map((cs) => {
+                    const present = cs.signups.filter(
+                      (s) => s.attended === true
+                    ).length;
+                    const recorded = cs.signups.filter(
+                      (s) => s.attended !== null
+                    ).length;
+                    return (
+                      <div key={cs.id} className="px-5 py-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-medium text-gray-900 dark:text-white text-sm">
+                            {cs.club.name}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <a
+                              href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
+                              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >
+                              Edit
+                            </a>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {cs._count.signups}/{cs.club.maxCapacity}
+                              {recorded > 0 && (
+                                <span className="ml-1 text-green-600 dark:text-green-400">
+                                  · {present}/{cs._count.signups} present
+                                </span>
+                              )}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <a
-                            href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
-                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                          >
-                            Edit
-                          </a>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {cs._count.signups}/{cs.club.maxCapacity}
-                          </span>
-                        </div>
+                        {cs.signups.length > 0 && (
+                          <details>
+                            <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                              Roster ({cs.signups.length})
+                            </summary>
+                            <ul className="mt-2 space-y-1">
+                              {cs.signups.map((s) => (
+                                <li
+                                  key={s.id}
+                                  className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+                                >
+                                  <span
+                                    className={
+                                      s.attended === true
+                                        ? "font-medium text-green-600 dark:text-green-400"
+                                        : s.attended === false
+                                          ? "font-medium text-red-500 dark:text-red-400"
+                                          : "text-gray-400 dark:text-gray-500"
+                                    }
+                                  >
+                                    {s.attended === true
+                                      ? "P"
+                                      : s.attended === false
+                                        ? "A"
+                                        : "–"}
+                                  </span>
+                                  {s.student.name}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                       </div>
-                      {cs.signups.length > 0 && (
-                        <details>
-                          <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                            Roster ({cs.signups.length})
-                          </summary>
-                          <ul className="mt-2 space-y-1">
-                            {cs.signups.map((s) => (
-                              <li
-                                key={s.id}
-                                className="text-xs text-gray-600 dark:text-gray-300"
-                              >
-                                {s.student.name}
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
