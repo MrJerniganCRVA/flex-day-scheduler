@@ -79,7 +79,7 @@ export default async function MySignupsPage() {
               const deadlinePast = isPastSignupDeadline(signup.clubSession.flexDay.date);
               const location =
                 signup.clubSession.roomOverride?.name ??
-                signup.clubSession.club.defaultRoom?.name ??
+                signup.clubSession.club?.defaultRoom?.name ??
                 null;
 
               return (
@@ -98,7 +98,7 @@ export default async function MySignupsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                    {signup.clubSession.club.name}
+                    {signup.clubSession.club?.name ?? signup.clubSession.title ?? "Session"}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                     {signup.clubSession.rotations

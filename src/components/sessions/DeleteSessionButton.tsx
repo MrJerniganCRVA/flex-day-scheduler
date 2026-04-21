@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 export default function DeleteSessionButton({
   clubId,
   sessionId,
+  label = "Remove",
 }: {
   clubId: string;
   sessionId: string;
+  label?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -50,7 +52,7 @@ export default function DeleteSessionButton({
       onClick={() => setConfirming(true)}
       className="text-xs text-red-500 dark:text-red-400 hover:underline"
     >
-      Remove
+      {label}
     </button>
   );
 }

@@ -89,7 +89,7 @@ export async function POST(
   if (teacherConflict) {
     return NextResponse.json(
       {
-        error: `This teacher already has "${teacherConflict.club.name}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
+        error: `This teacher already has "${teacherConflict.club?.name ?? "another session"}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
       },
       { status: 409 }
     );

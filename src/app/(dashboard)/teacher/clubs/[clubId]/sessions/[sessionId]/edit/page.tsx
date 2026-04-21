@@ -49,7 +49,7 @@ export default async function EditSessionPage({
         Edit Session
       </h1>
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
-        {clubSession.club.name} —{" "}
+        {clubSession.club?.name ?? "Session"} —{" "}
         {new Date(clubSession.flexDay.date).toLocaleDateString("en-US", {
           weekday: "long",
           month: "long",

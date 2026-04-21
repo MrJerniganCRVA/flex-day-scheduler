@@ -23,6 +23,7 @@ export default async function AdminFlexDayDetailPage({
           club: {
             select: { id: true, name: true, maxCapacity: true },
           },
+          oneOffOwner: { select: { name: true } },
           signups: {
             select: {
               id: true,
@@ -97,18 +98,27 @@ export default async function AdminFlexDayDetailPage({
                     return (
                       <div key={cs.id} className="px-5 py-4">
                         <div className="flex items-center justify-between mb-2">
-                          <div className="font-medium text-gray-900 dark:text-white text-sm">
-                            {cs.club.name}
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900 dark:text-white text-sm">
+                              {cs.title ?? cs.club?.name ?? "Session"}
+                            </span>
+                            {cs.teacherAbsent && (
+                              <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
+                                Coverage Needed
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3">
-                            <a
-                              href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
-                              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                            >
-                              Edit
-                            </a>
+                            {cs.club && (
+                              <a
+                                href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
+                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                Edit
+                              </a>
+                            )}
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {cs._count.signups}/{cs.club.maxCapacity}
+                              {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"}
                               {recorded > 0 && (
                                 <span className="ml-1 text-green-600 dark:text-green-400">
                                   · {present}/{cs._count.signups} present

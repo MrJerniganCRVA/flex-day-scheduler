@@ -1,0 +1,116 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import prisma from "@/lib/prisma";
+import { updateClubSessionPerDaySchema } from "@/lib/validations";
+import { deleteEvent } from "@/lib/google-calendar";
+
+async function resolveOwnerAndSession(sessionId: string, userId: string, userRole: string) {
+  const clubSession = await prisma.clubSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      club: { select: { ownerId: true, googleCalendarId: true } },
+    },
+  });
+  if (!clubSession) return { error: "Session not found", status: 404, clubSession: null };
+
+  const isAdmin = userRole === "ADMIN";
+  const isClubOwner = clubSession.club?.ownerId === userId;
+  const isOneOffOwner = clubSession.oneOffOwnerId === userId;
+
+  if (!isAdmin && !isClubOwner && !isOneOffOwner) {
+    return { error: "Forbidden", status: 403, clubSession: null };
+  }
+
+  return { error: null, status: 200, clubSession };
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { sessionId } = await params;
+
+  const { error, status, clubSession } = await resolveOwnerAndSession(
+    sessionId,
+    session.user.id,
+    session.user.role
+  );
+  if (error || !clubSession) {
+    return NextResponse.json({ error }, { status });
+  }
+
+  const body = await request.json();
+  const parsed = updateClubSessionPerDaySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid input", details: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  if (parsed.data.roomOverrideId) {
+    const room = await prisma.room.findUnique({
+      where: { id: parsed.data.roomOverrideId },
+      select: { id: true },
+    });
+    if (!room) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (parsed.data.rotations !== undefined) updateData.rotations = parsed.data.rotations;
+  if ("roomOverrideId" in parsed.data) updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
+  if ("capacityOverride" in parsed.data) updateData.capacityOverride = parsed.data.capacityOverride ?? null;
+  if (parsed.data.teacherAbsent !== undefined) updateData.teacherAbsent = parsed.data.teacherAbsent;
+
+  const updated = await prisma.clubSession.update({
+    where: { id: sessionId },
+    data: updateData,
+    select: {
+      id: true,
+      rotations: true,
+      roomOverrideId: true,
+      capacityOverride: true,
+      teacherAbsent: true,
+    },
+  });
+
+  return NextResponse.json(updated);
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { sessionId } = await params;
+
+  const { error, status, clubSession } = await resolveOwnerAndSession(
+    sessionId,
+    session.user.id,
+    session.user.role
+  );
+  if (error || !clubSession) {
+    return NextResponse.json({ error }, { status });
+  }
+
+  await prisma.clubSession.delete({ where: { id: sessionId } });
+
+  if (clubSession.club?.googleCalendarId && clubSession.googleEventId) {
+    deleteEvent(clubSession.club.googleCalendarId, clubSession.googleEventId).catch((err) =>
+      console.error("Failed to delete Google Calendar event:", err)
+    );
+  }
+
+  return new NextResponse(null, { status: 204 });
+}

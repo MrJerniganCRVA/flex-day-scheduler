@@ -3,7 +3,6 @@ import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import SessionCard from "@/components/sessions/SessionCard";
-import AddSessionInline from "@/components/sessions/AddSessionInline";
 
 export default async function ClubDetailPage({
   params,
@@ -18,8 +17,7 @@ export default async function ClubDetailPage({
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const [club, unscheduledFlexDays] = await Promise.all([
-  prisma.club.findUnique({
+  const club = await prisma.club.findUnique({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true } },
@@ -38,17 +36,7 @@ export default async function ClubDetailPage({
         orderBy: { flexDay: { date: "asc" } },
       },
     },
-  }),
-  prisma.flexDay.findMany({
-    where: {
-      isActive: true,
-      date: { gte: today },
-      clubSessions: { none: { clubId } },
-    },
-    select: { id: true, date: true, label: true },
-    orderBy: { date: "asc" },
-  }),
-  ]);
+  });
 
   if (!club) notFound();
 
@@ -83,12 +71,12 @@ export default async function ClubDetailPage({
       </div>
 
       <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
-        Scheduled Sessions
+        Flex Days
       </h2>
 
       {sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
-          No upcoming sessions scheduled. Sessions are automatically created when new flex days are added.
+          No upcoming flex days scheduled. Sessions are automatically created when new flex days are added.
         </div>
       ) : (
         <div className="space-y-4">
@@ -102,6 +90,10 @@ export default async function ClubDetailPage({
               rotations={cs.rotations}
               enrollmentCount={cs._count.signups}
               maxCapacity={club.maxCapacity}
+              capacityOverride={cs.capacityOverride}
+              teacherAbsent={cs.teacherAbsent}
+              roomOverrideId={cs.roomOverrideId}
+              defaultRoomName={club.defaultRoom?.name ?? null}
               signups={cs.signups}
               siblingSessionOptions={sessions
                 .filter((s) => s.flexDay.id === cs.flexDay.id && s.id !== cs.id)
@@ -109,22 +101,6 @@ export default async function ClubDetailPage({
             />
           ))}
         </div>
-      )}
-
-      {unscheduledFlexDays.length > 0 && (
-        <>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mt-8 mb-3">
-            Add to a Flex Day
-          </h2>
-          <AddSessionInline
-            clubId={clubId}
-            flexDays={unscheduledFlexDays.map((fd) => ({
-              ...fd,
-              date: fd.date.toISOString(),
-            }))}
-            defaultRoomId={club.defaultRoomId}
-          />
-        </>
       )}
     </div>
   );

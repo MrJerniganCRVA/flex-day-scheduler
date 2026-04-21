@@ -28,6 +28,7 @@ export async function PUT(
     select: {
       flexDay: { select: { date: true } },
       club: { select: { ownerId: true } },
+      oneOffOwnerId: true,
     },
   });
 
@@ -36,7 +37,9 @@ export async function PUT(
   }
 
   const isAdmin = session.user.role === "ADMIN";
-  const isOwner = clubSession.club.ownerId === session.user.id;
+  const isOwner =
+    clubSession.club?.ownerId === session.user.id ||
+    clubSession.oneOffOwnerId === session.user.id;
   if (!isAdmin && !isOwner) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

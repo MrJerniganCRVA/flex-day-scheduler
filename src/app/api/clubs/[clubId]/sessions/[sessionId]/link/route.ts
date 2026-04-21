@@ -66,7 +66,7 @@ export async function POST(
   }
 
   // Auth: admin or club owner
-  if (session.user.role !== "ADMIN" && target.club.ownerId !== session.user.id) {
+  if (session.user.role !== "ADMIN" && target.club!.ownerId !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -116,7 +116,7 @@ export async function POST(
       where: {
         id: { notIn: [sessionId, ...mergeSessionIds] },
         flexDayId: target.flexDayId,
-        club: { ownerId: target.club.ownerId },
+        club: { ownerId: target.club!.ownerId },
         rotations: { hasSome: newRotations },
       },
       include: { club: { select: { name: true } } },
@@ -124,7 +124,7 @@ export async function POST(
     if (teacherConflict) {
       return NextResponse.json(
         {
-          error: `The teacher already has "${teacherConflict.club.name}" scheduled in one of these rotations. Cannot link.`,
+          error: `The teacher already has "${teacherConflict.club?.name ?? "another session"}" scheduled in one of these rotations. Cannot link.`,
         },
         { status: 409 }
       );
@@ -172,7 +172,7 @@ export async function POST(
             rotation: c.clubSession.rotations.find((r) =>
               newRotations.includes(r)
             ),
-            conflictingClub: c.clubSession.club.name,
+            conflictingClub: c.clubSession.club?.name ?? "another session",
           })),
         },
         { status: 409 }
@@ -227,8 +227,8 @@ export async function POST(
 
   // Delete merged sessions' Google Calendar events non-blocking after commit
   for (const m of merges) {
-    if (m!.club.googleCalendarId && m!.googleEventId) {
-      deleteEvent(m!.club.googleCalendarId, m!.googleEventId).catch((err) =>
+    if (m!.club?.googleCalendarId && m!.googleEventId) {
+      deleteEvent(m!.club!.googleCalendarId, m!.googleEventId).catch((err) =>
         console.error(
           `Failed to delete calendar event for merged session ${m!.id}:`,
           err

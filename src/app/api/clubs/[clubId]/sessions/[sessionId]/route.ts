@@ -101,7 +101,7 @@ export async function PUT(
     if (teacherConflict) {
       return NextResponse.json(
         {
-          error: `This teacher already has "${teacherConflict.club.name}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
+          error: `This teacher already has "${teacherConflict.club?.name ?? "another session"}" scheduled in one of these rotations on this day. A teacher cannot be in two places at once.`,
         },
         { status: 409 }
       );
@@ -128,12 +128,19 @@ export async function PUT(
   }
 
   // Build update data - only include fields that were provided
-  const updateData: Partial<{ rotations: typeof parsed.data.rotations; roomOverrideId: string | null }> = {};
+  const updateData: Partial<{
+    rotations: typeof parsed.data.rotations;
+    roomOverrideId: string | null;
+    capacityOverride: number | null;
+  }> = {};
   if (parsed.data.rotations) {
     updateData.rotations = parsed.data.rotations;
   }
-  if (parsed.data.roomOverrideId !== undefined) {
-    updateData.roomOverrideId = parsed.data.roomOverrideId || null;
+  if ("roomOverrideId" in parsed.data) {
+    updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
+  }
+  if ("capacityOverride" in parsed.data) {
+    updateData.capacityOverride = parsed.data.capacityOverride ?? null;
   }
 
   const updatedSession = await prisma.clubSession.update({
@@ -159,7 +166,7 @@ export async function PUT(
     updateEventForSession({
       calendarId: club.googleCalendarId,
       eventId: existingSession.googleEventId,
-      clubName: updatedSession.club.name,
+      clubName: updatedSession.club!.name,
       location,
       flexDayDate: updatedSession.flexDay.date,
       rotations: updatedSession.rotations,

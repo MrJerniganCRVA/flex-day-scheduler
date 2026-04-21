@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@/types";
@@ -22,17 +22,30 @@ interface SiblingSession {
   rotations: RotationSlot[];
 }
 
+interface Room {
+  id: string;
+  name: string;
+  capacity: number;
+}
+
 interface Props {
   clubId: string;
   sessionId: string;
-  flexDayDate: string; // ISO string from server
+  flexDayDate: string;
   flexDayLabel: string | null;
   rotations: RotationSlot[];
   enrollmentCount: number;
   maxCapacity: number;
+  capacityOverride?: number | null;
+  teacherAbsent?: boolean;
+  roomOverrideId?: string | null;
+  defaultRoomName?: string | null;
   signups: Signup[];
   siblingSessionOptions: SiblingSession[];
 }
+
+const selectClass =
+  "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
 
 export default function SessionCard({
   clubId,
@@ -42,22 +55,48 @@ export default function SessionCard({
   rotations: initialRotations,
   enrollmentCount,
   maxCapacity,
+  capacityOverride: initialCapacityOverride,
+  teacherAbsent: initialTeacherAbsent = false,
+  roomOverrideId: initialRoomOverrideId,
+  defaultRoomName,
   signups,
   siblingSessionOptions,
 }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [rotations, setRotations] = useState<RotationSlot[]>(initialRotations);
+  const [roomOverrideId, setRoomOverrideId] = useState(initialRoomOverrideId ?? "");
+  const [capacityOverride, setCapacityOverride] = useState<number | "">(
+    initialCapacityOverride ?? ""
+  );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [absent, setAbsent] = useState(initialTeacherAbsent);
+  const [markingAbsent, setMarkingAbsent] = useState(false);
+
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
 
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linkConflicts, setLinkConflicts] = useState<ConflictDetail[]>([]);
 
+  useEffect(() => {
+    if (!editing || rooms.length > 0) return;
+    setLoadingRooms(true);
+    fetch("/api/rooms")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: Room[]) => setRooms(data))
+      .catch(() => {})
+      .finally(() => setLoadingRooms(false));
+  }, [editing]);
+
   function cancelEdit() {
     setRotations(initialRotations);
+    setRoomOverrideId(initialRoomOverrideId ?? "");
+    setCapacityOverride(initialCapacityOverride ?? "");
     setSaveError(null);
     setLinkError(null);
     setLinkConflicts([]);
@@ -83,7 +122,11 @@ export default function SessionCard({
     const res = await fetch(`/api/clubs/${clubId}/sessions/${sessionId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rotations }),
+      body: JSON.stringify({
+        rotations,
+        roomOverrideId: roomOverrideId || null,
+        capacityOverride: capacityOverride === "" ? null : Number(capacityOverride),
+      }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -93,6 +136,21 @@ export default function SessionCard({
     }
     setEditing(false);
     router.refresh();
+  }
+
+  async function handleToggleAbsent() {
+    setMarkingAbsent(true);
+    const newAbsent = !absent;
+    const res = await fetch(`/api/club-sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teacherAbsent: newAbsent }),
+    });
+    setMarkingAbsent(false);
+    if (res.ok) {
+      setAbsent(newAbsent);
+      router.refresh();
+    }
   }
 
   async function handleLink() {
@@ -123,11 +181,17 @@ export default function SessionCard({
     timeZone: "UTC",
   });
 
-  const showLinkSection =
-    rotations.length === 1 && siblingSessionOptions.length > 0;
+  const displayCapacity = initialCapacityOverride ?? maxCapacity;
+  const showLinkSection = rotations.length === 1 && siblingSessionOptions.length > 0;
 
   return (
-    <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-5">
+    <div
+      className={`rounded-xl bg-white dark:bg-gray-900 border p-5 ${
+        absent
+          ? "border-amber-300 dark:border-amber-700"
+          : "border-gray-200 dark:border-gray-700"
+      }`}
+    >
       {editing ? (
         /* ── Edit mode ─────────────────────────────────────────── */
         <div className="space-y-4">
@@ -139,7 +203,7 @@ export default function SessionCard({
               )}
             </div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {enrollmentCount}/{maxCapacity} enrolled
+              {enrollmentCount}/{displayCapacity} enrolled
             </span>
           </div>
 
@@ -168,6 +232,50 @@ export default function SessionCard({
                 Select at least one rotation
               </p>
             )}
+          </div>
+
+          {/* Room override */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Room</p>
+            {loadingRooms ? (
+              <div className="text-sm text-gray-400 dark:text-gray-500">Loading rooms…</div>
+            ) : (
+              <select
+                value={roomOverrideId}
+                onChange={(e) => setRoomOverrideId(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">
+                  Use club default{defaultRoomName ? ` (${defaultRoomName})` : ""}
+                </option>
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name} (capacity: {room.capacity})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Capacity override */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+              Capacity for this day
+            </p>
+            <input
+              type="number"
+              value={capacityOverride}
+              onChange={(e) =>
+                setCapacityOverride(e.target.value === "" ? "" : Number(e.target.value))
+              }
+              placeholder={String(maxCapacity)}
+              min={1}
+              max={1000}
+              className="w-28 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Leave blank to use club default ({maxCapacity})
+            </p>
           </div>
 
           {saveError && (
@@ -251,7 +359,14 @@ export default function SessionCard({
         <>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-semibold text-gray-900 dark:text-white">{dateLabel}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-900 dark:text-white">{dateLabel}</span>
+                {absent && (
+                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
+                    Absent
+                  </span>
+                )}
+              </div>
               {flexDayLabel && (
                 <div className="text-xs text-gray-400 dark:text-gray-500">{flexDayLabel}</div>
               )}
@@ -268,8 +383,24 @@ export default function SessionCard({
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500 dark:text-gray-400">
-                {enrollmentCount}/{maxCapacity} enrolled
+                {enrollmentCount}/{displayCapacity} enrolled
               </span>
+              <button
+                type="button"
+                onClick={handleToggleAbsent}
+                disabled={markingAbsent}
+                className={`text-xs font-medium hover:underline disabled:opacity-50 ${
+                  absent
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-gray-500 dark:text-gray-400"
+                }`}
+              >
+                {markingAbsent
+                  ? "…"
+                  : absent
+                    ? "Mark Present"
+                    : "Mark Absent"}
+              </button>
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -277,7 +408,7 @@ export default function SessionCard({
               >
                 Edit
               </button>
-              <DeleteSessionButton clubId={clubId} sessionId={sessionId} />
+              <DeleteSessionButton clubId={clubId} sessionId={sessionId} label="Remove from Day" />
             </div>
           </div>
 

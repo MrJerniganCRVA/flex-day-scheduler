@@ -46,7 +46,7 @@ export async function POST(
 
   const studentIds = original.signups.map((s) => s.studentId);
   const location =
-    original.roomOverride?.name ?? original.club.defaultRoom?.name ?? null;
+    original.roomOverride?.name ?? original.club?.defaultRoom?.name ?? null;
 
   // Run all DB mutations atomically: create new sessions + migrate data + delete original
   const newSessions = await prisma.$transaction(async (tx) => {
@@ -96,11 +96,11 @@ export async function POST(
   });
 
   // Fire calendar events non-blocking after the transaction commits
-  if (original.club.googleCalendarId) {
+  if (original.club?.googleCalendarId) {
     for (const { id: newSessionId, rotation } of newSessions) {
       createEventForSession({
-        calendarId: original.club.googleCalendarId,
-        clubName: original.club.name,
+        calendarId: original.club.googleCalendarId!,
+        clubName: original.club.name!,
         location,
         flexDayDate: original.flexDay.date,
         rotations: [rotation],
@@ -121,8 +121,8 @@ export async function POST(
   }
 
   // Delete original Google Calendar event non-blocking
-  if (original.club.googleCalendarId && original.googleEventId) {
-    deleteEvent(original.club.googleCalendarId, original.googleEventId).catch(
+  if (original.club?.googleCalendarId && original.googleEventId) {
+    deleteEvent(original.club!.googleCalendarId, original.googleEventId).catch(
       (err) =>
         console.error(
           `Failed to delete original calendar event for split session ${sessionId}:`,
