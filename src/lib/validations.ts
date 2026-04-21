@@ -47,7 +47,8 @@ export const updateClubSessionSchema = z.object({
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required")
     .optional(),
-  roomOverrideId: z.string().cuid().optional(),
+  roomOverrideId: z.string().cuid().nullable().optional(),
+  capacityOverride: z.number().int().positive().min(1).nullable().optional(),
 });
 
 export const createSignupSchema = z.object({
@@ -78,4 +79,24 @@ export const bulkAttendanceSchema = z.object({
       })
     )
     .min(1),
+});
+
+export const createOneOffSchema = z.object({
+  flexDayId: z.string().cuid(),
+  title: z.string().min(1).max(100),
+  rotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1, "At least one rotation is required"),
+  roomOverrideId: z.string().cuid(),
+  capacity: z.number().int().positive().min(1).max(1000),
+});
+
+export const updateClubSessionPerDaySchema = z.object({
+  rotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1, "At least one rotation is required")
+    .optional(),
+  roomOverrideId: z.string().cuid().nullable().optional(),
+  capacityOverride: z.number().int().positive().min(1).nullable().optional(),
+  teacherAbsent: z.boolean().optional(),
 });

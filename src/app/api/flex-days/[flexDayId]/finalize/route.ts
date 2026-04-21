@@ -54,7 +54,7 @@ export async function POST(
 
   // Sync attendees for every session that has a Google Calendar event
   const syncableSessions = flexDay.clubSessions.filter(
-    (cs) => cs.club.googleCalendarId && cs.googleEventId
+    (cs) => cs.club?.googleCalendarId && cs.googleEventId
   );
 
   const results = await Promise.allSettled(
@@ -64,19 +64,19 @@ export async function POST(
       const coverageEmails = new Set<string>();
       for (const rc of cs.rotationCoverage) {
         const primaryEmail =
-          rc.primaryTeacher?.email ?? cs.club.owner.email;
-        coverageEmails.add(primaryEmail);
+          rc.primaryTeacher?.email ?? cs.club?.owner.email;
+        if (primaryEmail) coverageEmails.add(primaryEmail);
         if (rc.secondaryTeacher?.email) {
           coverageEmails.add(rc.secondaryTeacher.email);
         }
       }
       if (coverageEmails.size === 0) {
         // No coverage records at all — owner handles the session
-        if (cs.club.owner.email) coverageEmails.add(cs.club.owner.email);
+        if (cs.club?.owner.email) coverageEmails.add(cs.club.owner.email);
       }
 
       return syncEventAttendees({
-        calendarId: cs.club.googleCalendarId!,
+        calendarId: cs.club!.googleCalendarId!,
         eventId: cs.googleEventId!,
         attendeeEmails: [
           ...coverageEmails,

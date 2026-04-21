@@ -63,12 +63,14 @@ export default async function AdminCoveragePage() {
     );
   }
 
-  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => ({
+  const clubs: CoverageClub[] = nextFlexDay.clubSessions
+    .filter((cs) => cs.club !== null)
+    .map((cs) => ({
     sessionId: cs.id,
-    clubId: cs.club.id,
-    name: cs.club.name,
-    ownerId: cs.club.ownerId,
-    ownerName: cs.club.owner.name ?? cs.club.ownerId,
+    clubId: cs.club!.id,
+    name: cs.club!.name,
+    ownerId: cs.club!.ownerId,
+    ownerName: cs.club!.owner.name ?? cs.club!.ownerId,
     rotations: cs.rotations,
     studentCount: cs._count.signups,
     coverage: Object.fromEntries(

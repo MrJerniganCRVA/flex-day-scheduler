@@ -17,7 +17,6 @@ export default async function TeacherClubsPage() {
     include: {
       owner: { select: { name: true } },
       defaultRoom: { select: { name: true } },
-      _count: { select: { clubSessions: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -49,7 +48,7 @@ export default async function TeacherClubsPage() {
                 <th className="px-4 py-3 text-left">Club</th>
                 <th className="px-4 py-3 text-left">Location</th>
                 <th className="px-4 py-3 text-left">Capacity</th>
-                <th className="px-4 py-3 text-left">Sessions</th>
+                <th className="px-4 py-3 text-left">Rotations</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -68,8 +67,21 @@ export default async function TeacherClubsPage() {
                     {club.defaultRoom?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.maxCapacity}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                    {club._count.clubSessions}
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1 flex-wrap">
+                      {club.defaultRotations.length === 0 ? (
+                        <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                      ) : (
+                        club.defaultRotations.map((r) => (
+                          <span
+                            key={r}
+                            className="inline-block rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium"
+                          >
+                            {r === "FLEX_1" ? "Flex 1" : r === "FLEX_2" ? "Flex 2" : "Flex 3"}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

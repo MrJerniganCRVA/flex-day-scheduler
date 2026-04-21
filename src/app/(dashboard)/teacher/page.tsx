@@ -111,10 +111,10 @@ export default async function TeacherDashboard() {
                             <div key={cs.id} className="px-4 py-4">
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <div className="font-medium text-gray-900 dark:text-white text-sm">
-                                  {cs.club.name}
+                                  {cs.club?.name ?? cs.title ?? "Session"}
                                 </div>
                                 <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                                  {cs._count.signups}/{cs.club.maxCapacity}
+                                  {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
                                 </span>
                               </div>
 
@@ -127,7 +127,7 @@ export default async function TeacherDashboard() {
                                       100,
                                       Math.round(
                                         (cs._count.signups /
-                                          cs.club.maxCapacity) *
+                                          (cs.capacityOverride ?? cs.club?.maxCapacity ?? 1)) *
                                           100
                                       )
                                     )}%`,

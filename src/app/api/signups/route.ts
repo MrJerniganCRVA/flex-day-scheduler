@@ -49,11 +49,13 @@ export async function POST(request: NextRequest) {
         throw Object.assign(new Error("SIGNUPS_CLOSED"), { status: 403 });
       }
 
-      // Check capacity
+      // Check capacity — per-day override takes precedence over club default
+      const maxCapacity =
+        targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
       const currentCount = await tx.signup.count({
         where: { clubSessionId },
       });
-      if (currentCount >= targetSession.club.maxCapacity) {
+      if (currentCount >= maxCapacity) {
         throw Object.assign(new Error("CAPACITY_FULL"), { status: 409 });
       }
 

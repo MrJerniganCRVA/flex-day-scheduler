@@ -30,6 +30,7 @@ export default async function StudentDashboard() {
               owner: { select: { name: true } },
             },
           },
+          oneOffOwner: { select: { name: true } },
           _count: { select: { signups: true } },
           signups: {
             where: { studentId: session.user.id },
@@ -70,7 +71,10 @@ export default async function StudentDashboard() {
   const mySignups: Array<{ clubName: string; rotations: RotationSlot[] }> = [];
   for (const cs of nextFlexDay.clubSessions) {
     if (cs.signups.length > 0) {
-      mySignups.push({ clubName: cs.club.name, rotations: cs.rotations });
+      mySignups.push({
+        clubName: cs.title ?? cs.club?.name ?? "Session",
+        rotations: cs.rotations,
+      });
       for (const r of cs.rotations) bookedRotations.add(r);
     }
   }
@@ -180,7 +184,8 @@ export default async function StudentDashboard() {
                       return bSignedUp - aSignedUp;
                     })
                     .map((cs) => {
-                      const isFull = cs._count.signups >= cs.club.maxCapacity;
+                      const capacity = cs.capacityOverride ?? cs.club?.maxCapacity ?? 0;
+                      const isFull = cs._count.signups >= capacity;
                       const isMySignup = cs.signups.length > 0;
                       const signupId = cs.signups[0]?.id;
                       const spansRotations = cs.rotations.length > 1;
@@ -190,6 +195,8 @@ export default async function StudentDashboard() {
                       const conflictLabel = conflictingRotation
                         ? `You're in ${ROTATION_LABELS[conflictingRotation]}`
                         : undefined;
+                      const sessionName = cs.title ?? cs.club?.name ?? "Session";
+                      const teacherName = cs.oneOffOwner?.name ?? cs.club?.owner.name;
 
                       return (
                         <div
@@ -201,19 +208,21 @@ export default async function StudentDashboard() {
                           }`}
                         >
                           <div className="font-medium text-sm text-gray-900 dark:text-white">
-                            {cs.club.name}
+                            {sessionName}
                           </div>
-                          {cs.club.description && (
+                          {cs.club?.description && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                               {cs.club.description}
                             </p>
                           )}
-                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                            {cs.club.owner.name}
-                          </div>
+                          {teacherName && (
+                            <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                              {teacherName}
+                            </div>
+                          )}
                           <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
                             <span>
-                              {cs._count.signups}/{cs.club.maxCapacity} enrolled
+                              {cs._count.signups}/{capacity} enrolled
                             </span>
                             {spansRotations && (
                               <span className="text-indigo-600 dark:text-indigo-400 font-medium">

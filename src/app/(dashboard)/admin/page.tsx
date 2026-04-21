@@ -29,7 +29,7 @@ export default async function AdminDashboard() {
     const sessions = (nextFlexDay?.clubSessions ?? []).filter((cs) =>
       cs.rotations.includes(slot as RotationSlot)
     );
-    const totalCapacity = sessions.reduce((s, cs) => s + cs.club.maxCapacity, 0);
+    const totalCapacity = sessions.reduce((s, cs) => s + (cs.club?.maxCapacity ?? cs.capacityOverride ?? 0), 0);
     const totalSignups = sessions.reduce((s, cs) => s + cs._count.signups, 0);
     const pct = totalCapacity > 0 ? Math.round((totalSignups / totalCapacity) * 100) : 0;
     return { slot, clubCount: sessions.length, totalCapacity, totalSignups, pct };

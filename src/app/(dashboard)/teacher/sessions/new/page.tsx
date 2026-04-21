@@ -1,63 +1,36 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import SessionForm from "@/components/sessions/SessionForm";
+import OneOffForm from "@/components/sessions/OneOffForm";
 
 export default async function NewSessionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clubId?: string }>;
+  searchParams: Promise<{ flexDayId?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role === "STUDENT") redirect("/student");
 
-  const { clubId: preselectedClubId } = await searchParams;
+  const { flexDayId: preselectedFlexDayId } = await searchParams;
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const where =
-    session.user.role === "ADMIN"
-      ? undefined
-      : { ownerId: session.user.id };
-
-  const [clubs, flexDays, existingSessions] = await Promise.all([
-    prisma.club.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        defaultRoom: { select: { id: true, name: true } },
-      },
-      orderBy: { name: "asc" },
-    }),
-    prisma.flexDay.findMany({
-      where: { isActive: true, date: { gte: today } },
-      select: { id: true, date: true, label: true },
-      orderBy: { date: "asc" },
-    }),
-    prisma.clubSession.findMany({
-      where: { club: where ?? {} },
-      select: { clubId: true, flexDayId: true },
-    }),
-  ]);
-
-  // Build a map of clubId → flexDayIds already scheduled
-  const takenFlexDaysByClub: Record<string, string[]> = {};
-  for (const s of existingSessions) {
-    (takenFlexDaysByClub[s.clubId] ??= []).push(s.flexDayId);
-  }
+  const flexDays = await prisma.flexDay.findMany({
+    where: { isActive: true, date: { gte: today } },
+    select: { id: true, date: true, label: true },
+    orderBy: { date: "asc" },
+  });
 
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        Schedule a Club Session
+        New Session
       </h1>
-      <SessionForm
-        clubs={clubs}
+      <OneOffForm
         flexDays={flexDays}
-        preselectedClubId={preselectedClubId}
-        takenFlexDaysByClub={takenFlexDaysByClub}
+        preselectedFlexDayId={preselectedFlexDayId}
       />
     </div>
   );

@@ -32,7 +32,7 @@ export default async function AdminFlexDaysPage({
 
   const flexDaysWithStats = flexDays.map((fd) => {
     const totalCapacity = fd.clubSessions.reduce(
-      (sum, cs) => sum + cs.club.maxCapacity,
+      (sum, cs) => sum + (cs.club?.maxCapacity ?? cs.capacityOverride ?? 0),
       0
     );
     const totalSignups = fd.clubSessions.reduce(
