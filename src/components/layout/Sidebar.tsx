@@ -8,12 +8,12 @@ type NavItem = { label: string; href: string; exact?: boolean };
 
 const studentNav: NavItem[] = [
   { label: "Flex Days", href: "/student", exact: true },
-  { label: "My Signups", href: "/student/my-signups" },
+  { label: "Signups", href: "/student/my-signups" },
 ];
 
 const teacherNav: NavItem[] = [
   { label: "Dashboard", href: "/teacher", exact: true },
-  { label: "My Clubs", href: "/teacher/clubs" },
+  { label: "Clubs", href: "/teacher/clubs" },
   { label: "Schedule Session", href: "/teacher/sessions/new" },
 ];
 
