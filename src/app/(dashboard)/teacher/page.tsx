@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -12,7 +13,7 @@ export default async function TeacherDashboard() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  // Next upcoming flex day, filtered to only this teacher's sessions
+  // Next upcoming flex day (includes today), filtered to only this teacher's sessions
   const nextFlexDay = await prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
@@ -24,7 +25,12 @@ export default async function TeacherDashboard() {
             select: { id: true, name: true, maxCapacity: true },
           },
           signups: {
-            include: { student: { select: { id: true, name: true } } },
+            select: {
+              id: true,
+              attended: true,
+              student: { select: { id: true, name: true } },
+            },
+            orderBy: { student: { name: "asc" } },
           },
           _count: { select: { signups: true } },
         },
@@ -32,18 +38,9 @@ export default async function TeacherDashboard() {
     },
   });
 
-  // My clubs for the section below
-  const clubs = await prisma.club.findMany({
-    where: { ownerId: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      maxCapacity: true,
-      _count: { select: { clubSessions: true } },
-    },
-    orderBy: { name: "asc" },
-  });
+  const isToday = nextFlexDay
+    ? nextFlexDay.date.getTime() === today.getTime()
+    : false;
 
   return (
     <div className="space-y-8">
@@ -59,10 +56,10 @@ export default async function TeacherDashboard() {
         </Link>
       </div>
 
-      {/* ── Next Flex Day ─────────────────────────────────────────── */}
+      {/* ── Next / Today's Flex Day ──────────────────────────────────── */}
       <section>
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-2">
-          Next Flex Day
+          {isToday ? "Today's Flex Day" : "Next Flex Day"}
         </p>
 
         {nextFlexDay ? (
@@ -139,21 +136,28 @@ export default async function TeacherDashboard() {
                               </div>
 
                               {cs.signups.length > 0 ? (
-                                <details>
-                                  <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                                    Roster ({cs.signups.length})
-                                  </summary>
-                                  <ul className="mt-2 space-y-0.5">
-                                    {cs.signups.map((s) => (
-                                      <li
-                                        key={s.id}
-                                        className="text-xs text-gray-600 dark:text-gray-300"
-                                      >
-                                        {s.student.name}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </details>
+                                isToday ? (
+                                  <SessionAttendanceForm
+                                    sessionId={cs.id}
+                                    signups={cs.signups}
+                                  />
+                                ) : (
+                                  <details>
+                                    <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                      Roster ({cs.signups.length})
+                                    </summary>
+                                    <ul className="mt-2 space-y-0.5">
+                                      {cs.signups.map((s) => (
+                                        <li
+                                          key={s.id}
+                                          className="text-xs text-gray-600 dark:text-gray-300"
+                                        >
+                                          {s.student.name}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                )
                               ) : (
                                 <p className="text-xs text-gray-400 dark:text-gray-500 italic">
                                   No signups yet
@@ -191,56 +195,6 @@ export default async function TeacherDashboard() {
         ) : (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
             No upcoming Flex Days scheduled yet.
-          </div>
-        )}
-      </section>
-
-      {/* ── My Clubs ─────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">
-            My Clubs
-          </h2>
-          <Link
-            href="/teacher/clubs"
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            View all →
-          </Link>
-        </div>
-
-        {clubs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center text-gray-400 dark:text-gray-500 text-sm">
-            No clubs yet.{" "}
-            <Link
-              href="/teacher/clubs/new"
-              className="text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              Create your first club
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {clubs.map((club) => (
-              <Link
-                key={club.id}
-                href={`/teacher/clubs/${club.id}`}
-                className="block rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-all"
-              >
-                <div className="font-semibold text-gray-900 dark:text-white mb-1 text-sm">
-                  {club.name}
-                </div>
-                {club.description && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 line-clamp-1">
-                    {club.description}
-                  </p>
-                )}
-                <div className="text-xs text-gray-400 dark:text-gray-500">
-                  Cap {club.maxCapacity} · {club._count.clubSessions} session
-                  {club._count.clubSessions !== 1 ? "s" : ""}
-                </div>
-              </Link>
-            ))}
           </div>
         )}
       </section>

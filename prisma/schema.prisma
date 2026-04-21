@@ -168,6 +168,7 @@ model Signup {
   id            String   @id @default(cuid())
   studentId     String
   clubSessionId String
+  attended      Boolean?
   createdAt     DateTime @default(now())
 
   student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
