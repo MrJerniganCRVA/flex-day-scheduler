@@ -5,7 +5,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import Link from "next/link";
 import CancelButton from "@/components/signups/CancelButton";
-import { isPastSignupDeadline } from "@/lib/flex-day-utils";
+import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
 
 export default async function MySignupsPage() {
   const session = await auth();
@@ -58,9 +58,11 @@ export default async function MySignupsPage() {
   function SignupTable({
     rows,
     showCancel,
+    showAttendance,
   }: {
     rows: typeof signups;
     showCancel: boolean;
+    showAttendance: boolean;
   }) {
     return (
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -71,12 +73,15 @@ export default async function MySignupsPage() {
               <th className="px-4 py-3 text-left">Club</th>
               <th className="px-4 py-3 text-left">Rotations</th>
               <th className="px-4 py-3 text-left">Location</th>
+              {showCancel && <th className="px-4 py-3 text-left">Status</th>}
+              {showAttendance && <th className="px-4 py-3 text-left">Attended</th>}
               {showCancel && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
             {rows.map((signup) => {
               const deadlinePast = isPastSignupDeadline(signup.clubSession.flexDay.date);
+              const deadline = getSignupDeadline(signup.clubSession.flexDay.date);
               const location =
                 signup.clubSession.roomOverride?.name ??
                 signup.clubSession.club?.defaultRoom?.name ??
@@ -111,6 +116,37 @@ export default async function MySignupsPage() {
                     )}
                   </td>
                   {showCancel && (
+                    <td className="px-4 py-3">
+                      {deadlinePast ? (
+                        <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+                          Deadline passed
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          Cancel by{" "}
+                          {deadline.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}{" "}
+                          at{" "}
+                          {deadline.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </td>
+                  )}
+                  {showAttendance && (
+                    <td className="px-4 py-3">
+                      {signup.attended === true ? (
+                        <span className="inline-flex items-center rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+                          Present
+                        </span>
+                      ) : signup.attended === false ? (
+                        <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+                          Absent
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+                  )}
+                  {showCancel && (
                     <td className="px-4 py-3 text-right">
                       <CancelButton signupId={signup.id} disabled={deadlinePast} />
                     </td>
@@ -133,7 +169,7 @@ export default async function MySignupsPage() {
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
             Upcoming
           </h2>
-          <SignupTable rows={upcoming} showCancel={true} />
+          <SignupTable rows={upcoming} showCancel={true} showAttendance={false} />
         </section>
       )}
 
@@ -143,7 +179,7 @@ export default async function MySignupsPage() {
             Past
           </h2>
           <div className="opacity-60">
-            <SignupTable rows={past} showCancel={false} />
+            <SignupTable rows={past} showCancel={false} showAttendance={true} />
           </div>
         </section>
       )}

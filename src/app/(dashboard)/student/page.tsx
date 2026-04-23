@@ -173,9 +173,14 @@ export default async function StudentDashboard() {
               </div>
               <div className="p-4 space-y-3">
                 {sessions.length === 0 ? (
-                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-                    No clubs scheduled for this rotation.
-                  </p>
+                  <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 p-4 text-center">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      No clubs scheduled for this rotation.
+                    </p>
+                    <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">
+                      Check the other rotations above.
+                    </p>
+                  </div>
                 ) : (
                   sessions
                     .sort((a, b) => {
@@ -242,6 +247,8 @@ export default async function StudentDashboard() {
                               }
                               conflictLabel={conflictLabel}
                               isPastDeadline={pastDeadline}
+                              enrolledCount={cs._count.signups}
+                              capacity={capacity}
                             />
                           </div>
                         </div>

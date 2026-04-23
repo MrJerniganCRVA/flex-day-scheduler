@@ -45,6 +45,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
+  // Check that the creator is not already scheduled in any of these rotations on this flex day
+  const conflict = await prisma.clubSession.findFirst({
+    where: {
+      flexDayId,
+      rotations: { hasSome: rotations },
+      OR: [
+        { club: { ownerId: session.user.id } },
+        { oneOffOwnerId: session.user.id },
+      ],
+    },
+    include: { club: { select: { name: true } } },
+  });
+  if (conflict) {
+    const conflictName = conflict.title ?? conflict.club?.name ?? "another session";
+    return NextResponse.json(
+      {
+        error: `You already have "${conflictName}" scheduled in one of these rotations on this flex day.`,
+      },
+      { status: 409 }
+    );
+  }
+
   const clubSession = await prisma.clubSession.create({
     data: {
       flexDayId,

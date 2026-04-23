@@ -11,6 +11,8 @@ interface Props {
   isConflicted: boolean;
   conflictLabel?: string;
   isPastDeadline?: boolean;
+  enrolledCount?: number;
+  capacity?: number;
 }
 
 export default function SignupButton({
@@ -21,6 +23,8 @@ export default function SignupButton({
   isConflicted,
   conflictLabel,
   isPastDeadline = false,
+  enrolledCount,
+  capacity,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -54,18 +58,18 @@ export default function SignupButton({
     startTransition(() => router.refresh());
   }
 
-  if (isPastDeadline) {
-    return (
-      <button
-        disabled
-        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
-      >
-        Signups Closed
-      </button>
-    );
-  }
-
+  // isMySignup always takes priority — show enrollment status regardless of deadline
   if (isMySignup) {
+    if (isPastDeadline) {
+      return (
+        <div className="space-y-1">
+          <div className="w-full rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-700 dark:text-green-400 text-center">
+            Signed Up
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center">Cancellations closed</p>
+        </div>
+      );
+    }
     if (confirming) {
       return (
         <div className="space-y-1">
@@ -103,6 +107,17 @@ export default function SignupButton({
     );
   }
 
+  if (isPastDeadline) {
+    return (
+      <button
+        disabled
+        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
+      >
+        Signups Closed
+      </button>
+    );
+  }
+
   if (isConflicted) {
     return (
       <div className="space-y-1">
@@ -120,12 +135,16 @@ export default function SignupButton({
   }
 
   if (isFull) {
+    const countLabel =
+      enrolledCount !== undefined && capacity !== undefined
+        ? ` — ${enrolledCount}/${capacity}`
+        : "";
     return (
       <button
         disabled
         className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
       >
-        Full
+        Full{countLabel}
       </button>
     );
   }
