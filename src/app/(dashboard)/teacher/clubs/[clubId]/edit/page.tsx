@@ -23,6 +23,7 @@ export default async function EditClubPage({
       defaultRoomId: true,
       defaultRotations: true,
       ownerId: true,
+      allowRandomAssignment: true,
     },
   });
 
@@ -42,6 +43,7 @@ export default async function EditClubPage({
           maxCapacity: club.maxCapacity,
           defaultRoomId: club.defaultRoomId,
           defaultRotations: club.defaultRotations,
+          allowRandomAssignment: club.allowRandomAssignment,
         }}
       />
     </div>

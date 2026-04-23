@@ -25,6 +25,7 @@ interface Props {
     maxCapacity?: number;
     defaultRotations?: RotationSlot[];
     defaultRoomId?: string | null;
+    allowRandomAssignment?: boolean;
   };
   /** Admin only: list of assignable teachers */
   teachers?: Teacher[];
@@ -49,6 +50,9 @@ export default function ClubForm({
     description: defaultValues?.description ?? "",
     maxCapacity: defaultValues?.maxCapacity ?? 20,
   });
+  const [allowRandomAssignment, setAllowRandomAssignment] = useState(
+    defaultValues?.allowRandomAssignment ?? true
+  );
   const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
     defaultValues?.defaultRotations ?? []
   );
@@ -116,6 +120,7 @@ export default function ClubForm({
         description: form.description || undefined,
         defaultRotations,
         defaultRoomId: defaultRoomId || undefined,
+        allowRandomAssignment,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
@@ -285,6 +290,27 @@ export default function ClubForm({
           </select>
         </div>
       )}
+
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={allowRandomAssignment}
+            onChange={(e) => setAllowRandomAssignment(e.target.checked)}
+            className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+          />
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              Allow random assignment
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              When an admin runs auto-assign, students may be randomly placed in
+              this club. Uncheck for clubs that should never receive randomly
+              assigned students (e.g. religious or opt-in-only clubs).
+            </div>
+          </div>
+        </label>
+      </div>
 
       {error && (
         <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">

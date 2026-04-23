@@ -109,16 +109,17 @@ model Room {
 }
 
 model Club {
-  id               String         @id @default(cuid())
-  name             String
-  description      String?
-  maxCapacity      Int
-  defaultRoomId    String?
-  defaultRotations RotationSlot[]
-  googleCalendarId String?        @unique
-  ownerId          String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                    String         @id @default(cuid())
+  name                  String
+  description           String?
+  maxCapacity           Int
+  defaultRoomId         String?
+  defaultRotations      RotationSlot[]
+  googleCalendarId      String?        @unique
+  ownerId               String
+  allowRandomAssignment Boolean        @default(true)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)

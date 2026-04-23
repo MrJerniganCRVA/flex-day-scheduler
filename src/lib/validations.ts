@@ -20,6 +20,7 @@ export const createClubSchema = z.object({
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
   ownerId: z.string().cuid().optional(), // admin only — ignored for teachers
+  allowRandomAssignment: z.boolean().optional(),
 });
 
 export const updateClubSchema = z.object({
@@ -32,6 +33,7 @@ export const updateClubSchema = z.object({
     .min(1, "At least one rotation is required")
     .optional(),
   ownerId: z.string().cuid().optional(), // admin can reassign club ownership
+  allowRandomAssignment: z.boolean().optional(),
 });
 
 export const createClubSessionSchema = z.object({
