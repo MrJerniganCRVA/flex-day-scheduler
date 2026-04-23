@@ -34,9 +34,15 @@ export default async function TeacherClubsPage() {
       </div>
 
       {clubs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-12 text-center text-gray-400 dark:text-gray-500">
-          No clubs yet.{" "}
-          <Link href="/teacher/clubs/new" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-12 text-center">
+          <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">No clubs yet</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+            Create a club and it will be automatically scheduled on all upcoming Flex Days.
+          </p>
+          <Link
+            href="/teacher/clubs/new"
+            className="inline-flex rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+          >
             Create your first club
           </Link>
         </div>

@@ -8,7 +8,13 @@ async function resolveOwnerAndSession(sessionId: string, userId: string, userRol
   const clubSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
     include: {
-      club: { select: { ownerId: true, googleCalendarId: true } },
+      club: {
+        select: {
+          ownerId: true,
+          googleCalendarId: true,
+          defaultRoom: { select: { id: true, capacity: true } },
+        },
+      },
     },
   });
   if (!clubSession) return { error: "Session not found", status: 404, clubSession: null };
@@ -56,10 +62,39 @@ export async function PATCH(
   if (parsed.data.roomOverrideId) {
     const room = await prisma.room.findUnique({
       where: { id: parsed.data.roomOverrideId },
-      select: { id: true },
+      select: { id: true, capacity: true },
     });
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+  }
+
+  // Validate capacityOverride does not exceed the applicable room's capacity
+  if ("capacityOverride" in parsed.data && parsed.data.capacityOverride != null) {
+    // Resolve which room applies: new override from body > existing session override > club default room
+    const effectiveRoomId =
+      "roomOverrideId" in parsed.data
+        ? (parsed.data.roomOverrideId ?? null)
+        : (clubSession.roomOverrideId ?? null);
+
+    let roomCapacity: number | null = null;
+    if (effectiveRoomId) {
+      const room = await prisma.room.findUnique({
+        where: { id: effectiveRoomId },
+        select: { capacity: true },
+      });
+      roomCapacity = room?.capacity ?? null;
+    } else if (clubSession.club?.defaultRoom) {
+      roomCapacity = clubSession.club.defaultRoom.capacity;
+    }
+
+    if (roomCapacity !== null && parsed.data.capacityOverride > roomCapacity) {
+      return NextResponse.json(
+        {
+          error: `Capacity override (${parsed.data.capacityOverride}) exceeds room capacity (${roomCapacity})`,
+        },
+        { status: 400 }
+      );
     }
   }
 

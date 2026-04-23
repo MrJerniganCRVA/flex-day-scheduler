@@ -65,11 +65,23 @@ export default async function AdminFlexDaysPage({
       </div>
 
       {flexDaysWithStats.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-12 text-center text-gray-400 dark:text-gray-500">
-          No Flex Days yet.{" "}
-          <Link href="/admin/flex-days/new" className="text-indigo-600 dark:text-indigo-400 hover:underline">
-            Create the first one
-          </Link>
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-12 text-center">
+          <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">
+            {showPast ? "No past Flex Days" : "No upcoming Flex Days"}
+          </p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+            {showPast
+              ? "Past flex days will appear here once they've occurred."
+              : "Creating a Flex Day will auto-schedule all clubs with their default rotations."}
+          </p>
+          {!showPast && (
+            <Link
+              href="/admin/flex-days/new"
+              className="inline-flex rounded-lg border border-indigo-300 dark:border-indigo-700 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
+            >
+              Create the first Flex Day
+            </Link>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
