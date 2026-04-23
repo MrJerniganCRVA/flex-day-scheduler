@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { ROTATION_LABELS } from "@/types";
+import type { RotationSlot } from "@prisma/client";
 
 interface PreviewData {
   totalStudents: number;
@@ -12,8 +14,12 @@ interface PreviewData {
 }
 
 interface ResultData {
-  created: number;
+  signupsCreated: number;
   studentsAffected: number;
+  breakdown: {
+    studentName: string;
+    sessions: { name: string; rotations: RotationSlot[] }[];
+  }[];
 }
 
 export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
@@ -32,8 +38,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
     try {
       const res = await fetch(`/api/admin/flex-days/${flexDayId}/auto-assign`);
       if (!res.ok) throw new Error("Failed to load preview");
-      const data = await res.json();
-      setPreview(data);
+      setPreview(await res.json());
     } catch {
       setPreviewError("Could not load assignment preview. Please refresh.");
     } finally {
@@ -59,7 +64,6 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
       }
       const data: ResultData = await res.json();
       setResult(data);
-      // Reload preview to show updated numbers
       await loadPreview();
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Something went wrong.");
@@ -90,57 +94,24 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
 
   return (
     <div className="space-y-6 max-w-xl">
-      {/* Result banner */}
-      {result && (
-        <div className="rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 px-4 py-3">
-          <div className="font-medium text-sm text-green-800 dark:text-green-200">
-            Auto-assignment complete
-          </div>
-          <div className="text-sm text-green-700 dark:text-green-300 mt-0.5">
-            {result.created} signup{result.created !== 1 ? "s" : ""} created for{" "}
-            {result.studentsAffected} student{result.studentsAffected !== 1 ? "s" : ""}.
-          </div>
-        </div>
-      )}
-
       {/* Stats card */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5 space-y-3">
         <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
           Current assignment status
         </h3>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {preview.totalStudents}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Total students
-            </div>
-          </div>
-          <div className={`rounded-lg p-3 ${preview.fullyUnassigned > 0 ? "bg-red-50 dark:bg-red-950/30" : "bg-gray-50 dark:bg-gray-800"}`}>
-            <div className={`text-2xl font-bold ${preview.fullyUnassigned > 0 ? "text-red-700 dark:text-red-300" : "text-gray-900 dark:text-white"}`}>
-              {preview.fullyUnassigned}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              No signups at all
-            </div>
-          </div>
-          <div className={`rounded-lg p-3 ${preview.partiallyAssigned > 0 ? "bg-amber-50 dark:bg-amber-950/30" : "bg-gray-50 dark:bg-gray-800"}`}>
-            <div className={`text-2xl font-bold ${preview.partiallyAssigned > 0 ? "text-amber-700 dark:text-amber-300" : "text-gray-900 dark:text-white"}`}>
-              {preview.partiallyAssigned}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Partially signed up
-            </div>
-          </div>
-          <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {preview.sessionsEligible}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Sessions in pool
-            </div>
-          </div>
+          <StatTile label="Total students" value={preview.totalStudents} />
+          <StatTile
+            label="No signups at all"
+            value={preview.fullyUnassigned}
+            highlight={preview.fullyUnassigned > 0 ? "red" : undefined}
+          />
+          <StatTile
+            label="Partially signed up"
+            value={preview.partiallyAssigned}
+            highlight={preview.partiallyAssigned > 0 ? "amber" : undefined}
+          />
+          <StatTile label="Sessions in pool" value={preview.sessionsEligible} />
         </div>
 
         {preview.excludedClubs.length > 0 && (
@@ -162,9 +133,10 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
         </h3>
         <ul className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
           <li>• Only fills rotations a student has not already signed up for</li>
-          <li>• Clubs with more open seats are weighted higher (more likely to be picked)</li>
+          <li>• Clubs with more open seats are weighted higher</li>
           <li>• Each student is guaranteed at least 2 different clubs across the day</li>
-          <li>• Excluded clubs (e.g. opt-in or religious clubs) are never randomly assigned</li>
+          <li>• One-off sessions (e.g. competitions) are included in the pool</li>
+          <li>• Excluded clubs are never randomly assigned</li>
           <li>• If no eligible session exists for a slot, it is left unassigned</li>
         </ul>
       </div>
@@ -191,8 +163,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400">
                 This will fill all unassigned rotation slots using weighted random
-                selection. It cannot be undone automatically — you can remove
-                individual signups from the session roster if needed.
+                selection. It cannot be undone automatically.
               </p>
               <div className="flex gap-2">
                 <button
@@ -220,6 +191,79 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
           )}
         </div>
       )}
+
+      {/* Result breakdown */}
+      {result && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 px-4 py-3">
+            <div className="font-medium text-sm text-green-800 dark:text-green-200">
+              Auto-assignment complete
+            </div>
+            <div className="text-sm text-green-700 dark:text-green-300 mt-0.5">
+              {result.signupsCreated} signup{result.signupsCreated !== 1 ? "s" : ""} created
+              for {result.studentsAffected} student{result.studentsAffected !== 1 ? "s" : ""}.
+            </div>
+          </div>
+
+          {result.breakdown.length > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  Assignment breakdown
+                </span>
+              </div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-96 overflow-y-auto">
+                {result.breakdown.map((entry, i) => (
+                  <div key={i} className="px-4 py-3">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                      {entry.studentName}
+                    </div>
+                    <ul className="space-y-0.5">
+                      {entry.sessions.map((s, j) => (
+                        <li key={j} className="text-xs text-gray-500 dark:text-gray-400">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">
+                            {s.name}
+                          </span>
+                          {" — "}
+                          {s.rotations.map((r) => ROTATION_LABELS[r]).join(", ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  highlight?: "red" | "amber";
+}) {
+  const bg = highlight === "red"
+    ? "bg-red-50 dark:bg-red-950/30"
+    : highlight === "amber"
+    ? "bg-amber-50 dark:bg-amber-950/30"
+    : "bg-gray-50 dark:bg-gray-800";
+  const text = highlight === "red"
+    ? "text-red-700 dark:text-red-300"
+    : highlight === "amber"
+    ? "text-amber-700 dark:text-amber-300"
+    : "text-gray-900 dark:text-white";
+
+  return (
+    <div className={`rounded-lg p-3 ${bg}`}>
+      <div className={`text-2xl font-bold ${text}`}>{value}</div>
+      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</div>
     </div>
   );
 }
