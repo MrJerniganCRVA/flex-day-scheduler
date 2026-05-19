@@ -44,12 +44,24 @@ export async function PUT(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Only allow recording attendance on the day of the session
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  if (clubSession.flexDay.date.getTime() !== today.getTime()) {
+  // Allow attendance recording any time during the week of the session (Mon–Sun)
+  const flexDayDate = clubSession.flexDay.date;
+  const flexLocal = new Date(
+    flexDayDate.getUTCFullYear(),
+    flexDayDate.getUTCMonth(),
+    flexDayDate.getUTCDate()
+  );
+  const dow = flexLocal.getDay(); // 0=Sun … 6=Sat
+  const weekStart = new Date(flexLocal);
+  weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+  const now = new Date();
+  if (now < weekStart || now > weekEnd) {
     return NextResponse.json(
-      { error: "Attendance can only be recorded on the day of the session" },
+      { error: "Attendance can only be recorded during the week of the session" },
       { status: 403 }
     );
   }
