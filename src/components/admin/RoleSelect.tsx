@@ -20,11 +20,24 @@ export default function RoleSelect({
   const [role, setRole] = useState<Role>(currentRole);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // pendingRole holds a role change waiting for admin confirmation (ADMIN escalation only)
+  const [pendingRole, setPendingRole] = useState<Role | null>(null);
 
-  async function handleChange(newRole: Role) {
+  function handleChange(newRole: Role) {
     if (newRole === role) return;
+    setError(null);
+    if (newRole === "ADMIN") {
+      // Require explicit confirmation before granting admin access
+      setPendingRole("ADMIN");
+      return;
+    }
+    void commitRole(newRole);
+  }
+
+  async function commitRole(newRole: Role) {
     setLoading(true);
     setError(null);
+    setPendingRole(null);
     setRole(newRole);
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -54,7 +67,7 @@ export default function RoleSelect({
       <select
         value={role}
         onChange={(e) => handleChange(e.target.value as Role)}
-        disabled={loading || isPending}
+        disabled={loading || isPending || pendingRole !== null}
         className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
       >
         {roles.map((r) => (
@@ -63,6 +76,25 @@ export default function RoleSelect({
           </option>
         ))}
       </select>
+
+      {pendingRole === "ADMIN" && (
+        <div className="flex items-center gap-2 text-xs rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-2 py-1">
+          <span className="text-amber-700 dark:text-amber-300">Grant full admin access?</span>
+          <button
+            onClick={() => commitRole("ADMIN")}
+            className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Yes
+          </button>
+          <button
+            onClick={() => setPendingRole(null)}
+            className="text-gray-500 dark:text-gray-400 hover:underline"
+          >
+            No
+          </button>
+        </div>
+      )}
+
       {error && (
         <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
       )}

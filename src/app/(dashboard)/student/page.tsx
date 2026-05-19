@@ -60,14 +60,16 @@ export default async function StudentDashboard() {
 
   // Track which rotations the student already has signups for
   const bookedRotations = new Set<RotationSlot>();
+  const bookedSessionByRotation = new Map<RotationSlot, string>();
   const mySignups: Array<{ clubName: string; rotations: RotationSlot[] }> = [];
   for (const cs of nextFlexDay.clubSessions) {
     if (cs.signups.length > 0) {
-      mySignups.push({
-        clubName: cs.title ?? cs.club?.name ?? "Session",
-        rotations: cs.rotations,
-      });
-      for (const r of cs.rotations) bookedRotations.add(r);
+      const name = cs.title ?? cs.club?.name ?? "Session";
+      mySignups.push({ clubName: name, rotations: cs.rotations });
+      for (const r of cs.rotations) {
+        bookedRotations.add(r);
+        bookedSessionByRotation.set(r, name);
+      }
     }
   }
 
@@ -93,7 +95,7 @@ export default async function StudentDashboard() {
       isFull,
       isConflicted: !isMySignup && cs.rotations.some((r) => bookedRotations.has(r)),
       conflictLabel: conflictingRotation
-        ? `You're in ${ROTATION_LABELS[conflictingRotation]}`
+        ? `You have ${bookedSessionByRotation.get(conflictingRotation) ?? "another session"} in ${ROTATION_LABELS[conflictingRotation]}`
         : undefined,
       spansRotations: cs.rotations.length > 1,
     };

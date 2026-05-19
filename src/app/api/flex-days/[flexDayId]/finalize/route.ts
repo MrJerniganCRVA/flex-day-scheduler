@@ -98,6 +98,19 @@ export async function POST(
     );
   }
 
+  // If every syncable session failed, the calendar invites weren't sent at all.
+  // Refuse to mark as finalized so the admin can retry after fixing the issue.
+  if (syncableSessions.length > 0 && failures.length === syncableSessions.length) {
+    return NextResponse.json(
+      {
+        error:
+          "All Google Calendar syncs failed — no invites were sent. The flex day has not been finalized. Check the server logs and try again.",
+        sessionsFailed: failures.length,
+      },
+      { status: 500 }
+    );
+  }
+
   await prisma.flexDay.update({
     where: { id: flexDayId },
     data: { isFinalized: true },

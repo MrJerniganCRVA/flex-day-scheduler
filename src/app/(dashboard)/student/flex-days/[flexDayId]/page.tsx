@@ -46,9 +46,14 @@ export default async function StudentFlexDayPage({
   if (!flexDay) notFound();
 
   const bookedRotations = new Set<RotationSlot>();
+  const bookedSessionByRotation = new Map<RotationSlot, string>();
   for (const cs of flexDay.clubSessions) {
     if (cs.signups.length > 0) {
-      for (const r of cs.rotations) bookedRotations.add(r);
+      const name = cs.title ?? cs.club?.name ?? "Session";
+      for (const r of cs.rotations) {
+        bookedRotations.add(r);
+        bookedSessionByRotation.set(r, name);
+      }
     }
   }
 
@@ -74,7 +79,7 @@ export default async function StudentFlexDayPage({
       isFull,
       isConflicted: !isMySignup && cs.rotations.some((r) => bookedRotations.has(r)),
       conflictLabel: conflictingRotation
-        ? `You're in ${ROTATION_LABELS[conflictingRotation]}`
+        ? `You have ${bookedSessionByRotation.get(conflictingRotation) ?? "another session"} in ${ROTATION_LABELS[conflictingRotation]}`
         : undefined,
       spansRotations: cs.rotations.length > 1,
     };
