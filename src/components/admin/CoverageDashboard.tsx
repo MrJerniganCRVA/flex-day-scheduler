@@ -131,6 +131,14 @@ export default function CoverageDashboard({
             [rotation]: res.ok ? "saved" : "error",
           },
         }));
+        if (res.ok) {
+          setTimeout(() => {
+            setSaveStatus((prev) => ({
+              ...prev,
+              [sessionId]: { ...prev[sessionId], [rotation]: "idle" },
+            }));
+          }, 2000);
+        }
       } catch {
         setSaveStatus((prev) => ({
           ...prev,
@@ -484,13 +492,15 @@ function ClubCard({
   const statusIndicator =
     saveStatus === "saving" ? (
       <span className="text-gray-400 dark:text-gray-500 text-xs animate-pulse">
-        ●
+        Saving…
       </span>
     ) : saveStatus === "saved" ? (
-      <span className="text-green-500 dark:text-green-400 text-xs">✓</span>
+      <span className="text-green-600 dark:text-green-400 text-xs font-medium">
+        Saved ✓
+      </span>
     ) : saveStatus === "error" ? (
-      <span className="text-red-500 dark:text-red-400 text-xs font-bold">
-        !
+      <span className="text-red-500 dark:text-red-400 text-xs font-medium">
+        Error — retry
       </span>
     ) : null;
 

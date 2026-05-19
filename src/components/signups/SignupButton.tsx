@@ -29,20 +29,25 @@ export default function SignupButton({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [signedUp, setSignedUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSignup() {
     setError(null);
+    setLoading(true);
     const res = await fetch("/api/signups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clubSessionId }),
     });
+    setLoading(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "Failed to sign up. Please try again.");
       return;
     }
+    setSignedUp(true);
     startTransition(() => router.refresh());
   }
 
@@ -153,10 +158,14 @@ export default function SignupButton({
     <div className="space-y-1">
       <button
         onClick={handleSignup}
-        disabled={isPending}
-        className="w-full rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+        disabled={loading || isPending}
+        className={`w-full rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-75 ${
+          signedUp
+            ? "bg-green-600 text-white cursor-default"
+            : "bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white"
+        }`}
       >
-        {isPending ? "Signing up…" : "Sign Up"}
+        {loading ? "Signing up…" : signedUp ? "Signed up! ✓" : "Sign Up"}
       </button>
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
