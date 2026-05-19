@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Flex Day Scheduler
 
-## Getting Started
+A Next.js web app for scheduling school flex days. Students sign up for club sessions, teachers manage their clubs and record attendance, and admins coordinate coverage, finalize rosters, and sync calendar invites via Google Calendar.
 
-First, run the development server:
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router) + React 19
+- **Database**: PostgreSQL via Prisma ORM
+- **Auth**: NextAuth.js v5 (Google OAuth, domain-restricted)
+- **Calendar**: Google Calendar API (service account)
+- **Styling**: Tailwind CSS v4
+
+## Prerequisites
+
+- Node.js 20+
+- A PostgreSQL database (local or hosted — Supabase, Railway, etc.)
+- A Google Cloud project with:
+  - OAuth 2.0 credentials (for user login)
+  - A service account with Google Calendar API enabled (for calendar sync)
+
+## Setup
+
+### 1. Install dependencies
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Configure environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Fill in each value in `.env.local`:
 
-## Learn More
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `AUTH_SECRET` | Random secret — generate with `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Base URL of the app (e.g. `http://localhost:3000`) |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account email for Calendar API |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Service account private key (replace literal newlines with `\n`) |
+| `ALLOWED_EMAIL_DOMAIN` | Only users from this domain can sign in (e.g. `school.org`) |
+| `SCHOOL_TIMEZONE` | IANA timezone name (e.g. `America/New_York`) |
+| `FLEX_1_START` / `FLEX_1_END` | Bell times for rotation 1 (24h, e.g. `09:00`) |
+| `FLEX_2_START` / `FLEX_2_END` | Bell times for rotation 2 |
+| `FLEX_3_START` / `FLEX_3_END` | Bell times for rotation 3 |
+| `SEED_ADMIN_EMAIL` | Email to promote to ADMIN on first seed |
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Google Cloud setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**OAuth credentials** (for user login):
+1. Go to Google Cloud Console → APIs & Services → Credentials
+2. Create an OAuth 2.0 Client ID (Web application)
+3. Add `{NEXTAUTH_URL}/api/auth/callback/google` as an authorized redirect URI
+4. Copy the client ID and secret into `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Service account** (for Google Calendar):
+1. Go to IAM & Admin → Service Accounts → Create service account
+2. Enable the Google Calendar API for the project
+3. Create a JSON key, download it, and extract `client_email` → `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `private_key` → `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 
-## Deploy on Vercel
+### 4. Set up the database
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Run migrations and seed the first admin user:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run db:migrate   # applies all Prisma migrations
+npx prisma db seed   # creates the SEED_ADMIN_EMAIL admin account
+```
+
+On subsequent `npm start` runs, `db-init.ts` runs automatically before the server starts and applies any pending migrations.
+
+## Running Locally
+
+```bash
+npm run dev    # development server with hot reload
+npm start      # production mode (runs migrations, then starts Next.js)
+```
+
+Open [http://localhost:3000](http://localhost:3000) and sign in with a Google account from the allowed domain.
+
+## Roles
+
+Roles are assigned automatically based on the signing-in user's email subdomain:
+
+| Email pattern | Role |
+|---|---|
+| `@students.domain` | STUDENT |
+| `@domain` | TEACHER |
+
+Admins can promote any user to ADMIN (or change roles) from the admin panel. The first admin must be set via `SEED_ADMIN_EMAIL` and seeded.
+
+## How It Works
+
+**Flex Days** are scheduled events (always Wednesdays at this school) with up to three rotation slots (Flex 1, Flex 2, Flex 3).
+
+**Clubs** are created by teachers and assigned to one or more rotation slots per flex day. A club can span multiple rotations (a "linked" session) for activities that need a longer block.
+
+**Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits. Signups close at a configurable deadline before the flex day.
+
+**Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time.
+
+**Finalization** triggers a Google Calendar sync: attendees (students + assigned teachers) are added to each session's calendar event. The flex day can be unfinalized to make corrections and re-send.
+
+## Scripts
+
+| Script | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm start` | Run migrations then start production server |
+| `npm run build` | Build for production |
+| `npm run lint` | Run ESLint |
+| `npm run db:migrate` | Apply pending Prisma migrations |
+| `npm run db:push` | Push schema changes without migrations (dev only) |
+| `npm run db:seed` | Seed first admin user |
+| `npm run db:studio` | Open Prisma Studio |
