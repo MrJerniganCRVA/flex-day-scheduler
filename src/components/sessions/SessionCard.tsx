@@ -370,7 +370,7 @@ export default function SessionCard({
               {flexDayLabel && (
                 <div className="text-xs text-gray-400 dark:text-gray-500">{flexDayLabel}</div>
               )}
-              <div className="mt-1 flex gap-1">
+              <div className="mt-1 flex flex-wrap gap-1">
                 {initialRotations.map((r) => (
                   <span
                     key={r}
@@ -379,7 +379,17 @@ export default function SessionCard({
                     {ROTATION_LABELS[r]}
                   </span>
                 ))}
+                {initialRotations.length > 1 && (
+                  <span className="inline-block rounded-full bg-violet-100 dark:bg-violet-950/50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+                    Linked
+                  </span>
+                )}
               </div>
+              {absent && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  Marked absent — students will not attend this session
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500 dark:text-gray-400">
