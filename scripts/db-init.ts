@@ -4,10 +4,10 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 async function init() {
-  // 1. Push schema to database (creates/alters tables directly — no migration files needed)
-  console.log("Pushing schema to database...");
-  execSync("prisma db push --accept-data-loss", { stdio: "inherit" });
-  console.log("Schema push complete.");
+  // 1. Apply any pending migrations (safe: never drops data, errors on schema drift)
+  console.log("Applying database migrations...");
+  execSync("prisma migrate deploy", { stdio: "inherit" });
+  console.log("Migrations applied.");
 
   // 2. Seed admin user (idempotent — safe on every deploy)
   const adminEmail = process.env.SEED_ADMIN_EMAIL;
