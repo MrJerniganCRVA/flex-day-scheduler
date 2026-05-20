@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
+import VolunteerButton from "@/components/sessions/VolunteerButton";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -74,6 +75,55 @@ export default async function TeacherDashboard() {
   const isToday = nextFlexDay
     ? nextFlexDay.date.getTime() === today.getTime()
     : false;
+
+  // Fetch ALL sessions for the next flex day (to find open coverage spots)
+  const allSessionsForNextDay = nextFlexDay
+    ? await prisma.clubSession.findMany({
+        where: { flexDayId: nextFlexDay.id },
+        select: {
+          id: true,
+          rotations: true,
+          title: true,
+          club: { select: { name: true } },
+          roomOverride: { select: { name: true } },
+          rotationCoverage: {
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
+            },
+          },
+        },
+      })
+    : [];
+
+  // Sessions with at least one rotation having an open primary or secondary slot,
+  // where the teacher isn't already volunteered for that rotation
+  type OpenSlot = { rotation: RotationSlot; needsPrimary: boolean };
+  const openSessionsForCoverage: Array<{
+    id: string;
+    name: string;
+    openSlots: OpenSlot[];
+  }> = allSessionsForNextDay.flatMap((cs) => {
+    // Exclude sessions this teacher already owns/covers (those show in main grid)
+    const ownedOrCovered = nextFlexDay!.clubSessions.some((s) => s.id === cs.id);
+    if (ownedOrCovered) return [];
+
+    const openSlots: OpenSlot[] = [];
+    for (const r of cs.rotations) {
+      const cov = cs.rotationCoverage.find((rc) => rc.rotation === r);
+      const alreadyVolunteered =
+        cov?.primaryTeacherId === userId || cov?.secondaryTeacherId === userId;
+      if (alreadyVolunteered) continue;
+      if (!cov || cov.primaryTeacherId === null) {
+        openSlots.push({ rotation: r, needsPrimary: true });
+      } else if (cov.secondaryTeacherId === null) {
+        openSlots.push({ rotation: r, needsPrimary: false });
+      }
+    }
+    if (openSlots.length === 0) return [];
+    return [{ id: cs.id, name: cs.club?.name ?? cs.title ?? "Activity", openSlots }];
+  });
 
   return (
     <div className="space-y-8">
@@ -251,6 +301,40 @@ export default async function TeacherDashboard() {
           </div>
         )}
       </section>
+
+      {/* ── Sessions seeking coverage ─────────────────────────────── */}
+      {openSessionsForCoverage.length > 0 && (
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
+            Sessions seeking coverage
+          </p>
+          <div className="rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/30 p-4 space-y-3">
+            <p className="text-xs text-teal-700 dark:text-teal-400">
+              These sessions have open coverage slots for the next flex day. Click to volunteer.
+            </p>
+            {openSessionsForCoverage.map((cs) => (
+              <div
+                key={cs.id}
+                className="rounded-lg bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 px-4 py-3"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                  {cs.name}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {cs.openSlots.map((slot) => (
+                    <VolunteerButton
+                      key={`${cs.id}-${slot.rotation}`}
+                      sessionId={cs.id}
+                      rotation={slot.rotation}
+                      label={`${ROTATION_LABELS[slot.rotation]} (${slot.needsPrimary ? "primary" : "secondary"})`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

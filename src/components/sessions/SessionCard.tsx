@@ -82,6 +82,8 @@ export default function SessionCard({
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linkConflicts, setLinkConflicts] = useState<ConflictDetail[]>([]);
+  const [splitting, setSplitting] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editing || rooms.length > 0) return;
@@ -151,6 +153,22 @@ export default function SessionCard({
       setAbsent(newAbsent);
       router.refresh();
     }
+  }
+
+  async function handleSplit() {
+    setSplitting(true);
+    setSplitError(null);
+    const res = await fetch(`/api/clubs/${clubId}/sessions/${sessionId}/split`, {
+      method: "POST",
+    });
+    setSplitting(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setSplitError(data.error ?? "Failed to split sessions");
+      return;
+    }
+    setEditing(false);
+    router.refresh();
   }
 
   async function handleLink() {
@@ -299,6 +317,30 @@ export default function SessionCard({
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
+
+          {/* Split section — multi-rotation sessions only */}
+          {initialRotations.length > 1 && (
+            <div className="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30 p-4">
+              <p className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-1">
+                Split linked sessions
+              </p>
+              <p className="text-xs text-orange-700 dark:text-orange-400 mb-3">
+                Separates into {initialRotations.length} individual sessions. All enrolled students
+                remain signed up in each split session.
+              </p>
+              <button
+                type="button"
+                onClick={handleSplit}
+                disabled={splitting}
+                className="rounded-lg border border-orange-400 dark:border-orange-600 px-3 py-1.5 text-xs font-medium text-orange-800 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/40 disabled:opacity-50 transition-colors"
+              >
+                {splitting ? "Splitting…" : "Split into individual sessions"}
+              </button>
+              {splitError && (
+                <p className="mt-2 text-xs text-red-600 dark:text-red-400">{splitError}</p>
+              )}
+            </div>
+          )}
 
           {/* Link section — single-rotation with siblings only */}
           {showLinkSection && (

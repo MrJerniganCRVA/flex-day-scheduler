@@ -26,6 +26,8 @@ interface Props {
     defaultRotations?: RotationSlot[];
     defaultRoomId?: string | null;
     allowRandomAssignment?: boolean;
+    defaultCoTeacherId?: string | null;
+    defaultLinked?: boolean;
   };
   /** Admin only: list of assignable teachers */
   teachers?: Teacher[];
@@ -58,8 +60,15 @@ export default function ClubForm({
   );
   const [defaultRoomId, setDefaultRoomId] = useState(defaultValues?.defaultRoomId ?? "");
   const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
+  const [defaultCoTeacherId, setDefaultCoTeacherId] = useState(
+    defaultValues?.defaultCoTeacherId ?? ""
+  );
+  const [defaultLinked, setDefaultLinked] = useState(
+    defaultValues?.defaultLinked ?? true
+  );
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +89,14 @@ export default function ClubForm({
       }
     }
     fetchRooms();
+  }, []);
+
+  // Fetch available teachers for co-teacher selection
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: Teacher[]) => setAvailableTeachers(data))
+      .catch(() => {});
   }, []);
 
   // Auto-populate capacity when room changes
@@ -121,6 +138,8 @@ export default function ClubForm({
         defaultRotations,
         defaultRoomId: defaultRoomId || undefined,
         allowRandomAssignment,
+        defaultCoTeacherId: defaultCoTeacherId || null,
+        defaultLinked,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
@@ -270,6 +289,52 @@ export default function ClubForm({
             Please select at least one rotation
           </p>
         )}
+
+        {defaultRotations.length >= 2 && (
+          <div className="mt-3 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={defaultLinked}
+                onChange={(e) => setDefaultLinked(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+              />
+              <div>
+                <div className="text-sm font-medium text-violet-800 dark:text-violet-200">
+                  Link rotations into one continuous session
+                </div>
+                <div className="text-xs text-violet-700 dark:text-violet-400 mt-0.5">
+                  When linked, students commit to all selected rotations together as one block.
+                  Uncheck to create separate independent sessions per rotation.
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Co-teacher{" "}
+          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+        </label>
+        <select
+          value={defaultCoTeacherId}
+          onChange={(e) => setDefaultCoTeacherId(e.target.value)}
+          className={inputClass}
+        >
+          <option value="">-- No co-teacher --</option>
+          {availableTeachers
+            .filter((t) => !ownerId || t.id !== ownerId)
+            .map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+        </select>
+        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+          The co-teacher will default as the secondary teacher in coverage assignments.
+        </p>
       </div>
 
       {teachers && teachers.length > 0 && (

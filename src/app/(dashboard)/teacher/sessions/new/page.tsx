@@ -26,7 +26,7 @@ export default async function NewSessionPage({
   return (
     <div className="max-w-xl">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        New Session
+        New Activity
       </h1>
       <OneOffForm
         flexDays={flexDays}
