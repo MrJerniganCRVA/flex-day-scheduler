@@ -13,16 +13,49 @@ export default async function TeacherDashboard() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  // Next upcoming flex day (includes today), filtered to only this teacher's sessions
+  const userId = session.user.id!;
+
+  // Next upcoming flex day (includes today), filtered to sessions this teacher owns or covers
   const nextFlexDay = await prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
     include: {
       clubSessions: {
-        where: { club: { ownerId: session.user.id } },
+        where: {
+          OR: [
+            { club: { ownerId: userId } },
+            { oneOffOwnerId: userId },
+            {
+              rotationCoverage: {
+                some: {
+                  OR: [
+                    { primaryTeacherId: userId },
+                    { secondaryTeacherId: userId },
+                  ],
+                },
+              },
+            },
+          ],
+        },
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true },
+            select: {
+              id: true,
+              name: true,
+              maxCapacity: true,
+              ownerId: true,
+              defaultRoom: { select: { name: true } },
+            },
+          },
+          roomOverride: { select: { name: true } },
+          rotationCoverage: {
+            where: {
+              OR: [
+                { primaryTeacherId: userId },
+                { secondaryTeacherId: userId },
+              ],
+            },
+            select: { rotation: true },
           },
           signups: {
             select: {
@@ -81,9 +114,11 @@ export default async function TeacherDashboard() {
 
             <div className="grid gap-4 sm:grid-cols-3 mt-3">
               {ALL_ROTATIONS.map((slot: RotationSlot) => {
-                const sessions = nextFlexDay.clubSessions.filter((cs) =>
-                  cs.rotations.includes(slot)
-                );
+                const sessions = nextFlexDay.clubSessions.filter((cs) => {
+                  const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
+                  if (owned) return cs.rotations.includes(slot);
+                  return cs.rotationCoverage.some((rc) => rc.rotation === slot);
+                });
 
                 return (
                   <div
@@ -107,16 +142,34 @@ export default async function TeacherDashboard() {
                         </p>
                       ) : (
                         sessions.map((cs) => {
+                          const roomName = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
+                          const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
                           return (
                             <div key={cs.id} className="px-4 py-4">
                               <div className="flex items-start justify-between gap-2 mb-1">
-                                <div className="font-medium text-gray-900 dark:text-white text-sm">
-                                  {cs.club?.name ?? cs.title ?? "Session"}
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                    {cs.club?.name ?? cs.title ?? "Session"}
+                                  </div>
+                                  {!owned && (
+                                    <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                                      Covering
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                   {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
                                 </span>
                               </div>
+
+                              {roomName && (
+                                <div className="mb-2 text-xs">
+                                  {isToday
+                                    ? <span className="font-medium text-indigo-600 dark:text-indigo-400">📍 {roomName}</span>
+                                    : <span className="text-gray-500 dark:text-gray-400">{roomName}</span>
+                                  }
+                                </div>
+                              )}
 
                               {/* capacity bar */}
                               <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">
@@ -174,12 +227,12 @@ export default async function TeacherDashboard() {
             </div>
 
             {(() => {
-              const coveredRotations = new Set(
-                nextFlexDay.clubSessions.flatMap((cs) => cs.rotations)
+              const ownedSessions = nextFlexDay.clubSessions.filter(
+                (cs) => cs.club?.ownerId === userId || cs.oneOffOwnerId === userId
               );
-              const fullyBooked = ALL_ROTATIONS.every((r) =>
-                coveredRotations.has(r)
-              );
+              if (ownedSessions.length === 0) return null;
+              const coveredRotations = new Set(ownedSessions.flatMap((cs) => cs.rotations));
+              const fullyBooked = ALL_ROTATIONS.every((r) => coveredRotations.has(r));
               return fullyBooked ? null : (
                 <div className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-800">
                   <Link
