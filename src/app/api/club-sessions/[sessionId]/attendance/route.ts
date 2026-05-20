@@ -29,6 +29,12 @@ export async function PUT(
       flexDay: { select: { date: true } },
       club: { select: { ownerId: true } },
       oneOffOwnerId: true,
+      rotationCoverage: {
+        select: {
+          primaryTeacherId: true,
+          secondaryTeacherId: true,
+        },
+      },
     },
   });
 
@@ -40,7 +46,12 @@ export async function PUT(
   const isOwner =
     clubSession.club?.ownerId === session.user.id ||
     clubSession.oneOffOwnerId === session.user.id;
-  if (!isAdmin && !isOwner) {
+  const isCovering = clubSession.rotationCoverage.some(
+    (rc) =>
+      rc.primaryTeacherId === session.user.id ||
+      rc.secondaryTeacherId === session.user.id
+  );
+  if (!isAdmin && !isOwner && !isCovering) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
