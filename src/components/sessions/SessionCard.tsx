@@ -429,7 +429,7 @@ export default function SessionCard({
               </div>
               {absent && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  Marked absent — students will not attend this session
+                  Teacher marked absent — the session will still run. An admin will arrange coverage.
                 </p>
               )}
             </div>

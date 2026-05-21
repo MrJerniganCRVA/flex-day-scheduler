@@ -73,6 +73,7 @@ export default async function AdminCoveragePage() {
     ownerName: cs.club?.owner.name ?? cs.oneOffOwner?.name ?? "Unknown",
     rotations: cs.rotations,
     studentCount: cs._count.signups,
+    teacherAbsent: cs.teacherAbsent,
     defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
     coverage: Object.fromEntries(
       cs.rotationCoverage.map((rc) => [
