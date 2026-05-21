@@ -52,28 +52,39 @@ export async function POST(request: NextRequest) {
 
     // Auto-schedule all existing clubs with their default rotations
     const clubs = await prisma.club.findMany({
-      select: { id: true, name: true, googleCalendarId: true, defaultRotations: true },
+      select: { id: true, name: true, googleCalendarId: true, defaultRotations: true, defaultLinked: true },
     });
 
     // Create sessions for all clubs that have default rotations
     const eligibleClubs = clubs.filter(
       (club) => club.defaultRotations && club.defaultRotations.length > 0
     );
-    const sessionPromises = eligibleClubs.map((club) =>
-      prisma.clubSession.create({
-        data: {
-          flexDayId: flexDay.id,
-          clubId: club.id,
-          rotations: club.defaultRotations,
-        },
-      })
+
+    // Build a flat list of (club, rotations) pairs — one-session-per-club when linked,
+    // one-session-per-rotation when not linked
+    const sessionEntries = eligibleClubs.flatMap((club) => {
+      const linked = club.defaultLinked || club.defaultRotations.length <= 1;
+      const rotationGroups = linked
+        ? [club.defaultRotations]
+        : club.defaultRotations.map((r) => [r]);
+      return rotationGroups.map((rotations) => ({ club, rotations }));
+    });
+
+    const createdSessions = await Promise.all(
+      sessionEntries.map(({ club, rotations }) =>
+        prisma.clubSession.create({
+          data: {
+            flexDayId: flexDay.id,
+            clubId: club.id,
+            rotations,
+          },
+        })
+      )
     );
 
-    const createdSessions = await Promise.all(sessionPromises);
-
     // Create Google Calendar events for each auto-scheduled session (non-blocking)
-    for (let i = 0; i < eligibleClubs.length; i++) {
-      const club = eligibleClubs[i];
+    for (let i = 0; i < sessionEntries.length; i++) {
+      const { club, rotations } = sessionEntries[i];
       const createdSession = createdSessions[i];
       if (club.googleCalendarId) {
         createEventForSession({
@@ -81,7 +92,7 @@ export async function POST(request: NextRequest) {
           clubName: club.name,
           location: null,
           flexDayDate: flexDay.date,
-          rotations: club.defaultRotations,
+          rotations,
         })
           .then((eventId) =>
             prisma.clubSession.update({

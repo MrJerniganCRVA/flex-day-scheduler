@@ -120,29 +120,44 @@ export async function POST(request: NextRequest) {
       select: { id: true, date: true },
     });
 
-    const sessionPromises = futureFlexDays.map((fd) =>
-      prisma.clubSession.create({
-        data: {
-          flexDayId: fd.id,
-          clubId: club.id,
-          rotations: clubData.defaultRotations,
-        },
-      })
-    );
+    const linked = clubData.defaultLinked !== false;
+    const rotationsPerSession =
+      linked || clubData.defaultRotations.length <= 1
+        ? [clubData.defaultRotations]
+        : clubData.defaultRotations.map((r) => [r]);
 
-    const createdSessions = await Promise.all(sessionPromises);
+    const sessionEntries: { flexDayId: string; date: Date; rotations: typeof clubData.defaultRotations }[] =
+      futureFlexDays.flatMap((fd) =>
+        rotationsPerSession.map((rots) => ({
+          flexDayId: fd.id,
+          date: fd.date,
+          rotations: rots,
+        }))
+      );
+
+    const createdSessions = await Promise.all(
+      sessionEntries.map((entry) =>
+        prisma.clubSession.create({
+          data: {
+            flexDayId: entry.flexDayId,
+            clubId: club.id,
+            rotations: entry.rotations,
+          },
+        })
+      )
+    );
 
     // Create Google Calendar events for each auto-scheduled session (non-blocking)
     if (club.googleCalendarId) {
-      for (let i = 0; i < futureFlexDays.length; i++) {
-        const fd = futureFlexDays[i];
+      for (let i = 0; i < sessionEntries.length; i++) {
+        const entry = sessionEntries[i];
         const createdSession = createdSessions[i];
         createEventForSession({
           calendarId: club.googleCalendarId,
           clubName: club.name,
           location: null,
-          flexDayDate: fd.date,
-          rotations: clubData.defaultRotations,
+          flexDayDate: entry.date,
+          rotations: entry.rotations,
         })
           .then((eventId) =>
             prisma.clubSession.update({

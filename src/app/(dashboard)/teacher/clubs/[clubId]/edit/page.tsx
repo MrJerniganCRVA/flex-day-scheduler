@@ -24,6 +24,8 @@ export default async function EditClubPage({
       defaultRotations: true,
       ownerId: true,
       allowRandomAssignment: true,
+      defaultCoTeacherId: true,
+      defaultLinked: true,
     },
   });
 
@@ -44,6 +46,8 @@ export default async function EditClubPage({
           defaultRoomId: club.defaultRoomId,
           defaultRotations: club.defaultRotations,
           allowRandomAssignment: club.allowRandomAssignment,
+          defaultCoTeacherId: club.defaultCoTeacherId,
+          defaultLinked: club.defaultLinked,
         }}
       />
     </div>

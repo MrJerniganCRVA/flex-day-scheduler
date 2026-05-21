@@ -21,12 +21,13 @@ const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
 
 export type CoverageClub = {
   sessionId: string;
-  clubId: string;
+  clubId: string | null;
   name: string;
   ownerId: string;
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
+  defaultCoTeacherId?: string | null;
   coverage: Partial<
     Record<
       RotationSlot,
@@ -76,7 +77,7 @@ export default function CoverageDashboard({
             r,
             {
               t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId,
-              t2: c.coverage[r]?.secondaryTeacherId ?? null,
+              t2: c.coverage[r]?.secondaryTeacherId ?? c.defaultCoTeacherId ?? null,
             },
           ])
         ),

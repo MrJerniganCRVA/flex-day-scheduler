@@ -8,7 +8,7 @@ export async function POST(
   { params }: { params: Promise<{ clubId: string; sessionId: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user || session.user.role === "STUDENT") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -35,6 +35,10 @@ export async function POST(
 
   if (!original || original.clubId !== clubId) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  if (session.user.role !== "ADMIN" && original.club?.ownerId !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (original.rotations.length < 2) {

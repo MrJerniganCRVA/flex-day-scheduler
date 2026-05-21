@@ -21,6 +21,8 @@ export const createClubSchema = z.object({
     .min(1, "At least one rotation is required"),
   ownerId: z.string().cuid().optional(), // admin only — ignored for teachers
   allowRandomAssignment: z.boolean().optional(),
+  defaultCoTeacherId: z.string().cuid().optional(),
+  defaultLinked: z.boolean().optional(),
 });
 
 export const updateClubSchema = z.object({
@@ -34,6 +36,8 @@ export const updateClubSchema = z.object({
     .optional(),
   ownerId: z.string().cuid().optional(), // admin can reassign club ownership
   allowRandomAssignment: z.boolean().optional(),
+  defaultCoTeacherId: z.string().cuid().nullable().optional(),
+  defaultLinked: z.boolean().optional(),
 });
 
 export const createClubSessionSchema = z.object({

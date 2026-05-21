@@ -93,7 +93,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Failed to create session.");
+        setError(data.error ?? "Failed to create activity.");
         return;
       }
 
@@ -121,7 +121,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
     >
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Session Name <span className="text-red-500">*</span>
+          Activity Name <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -245,7 +245,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
           disabled={loading || rotations.length === 0 || !roomOverrideId || !title.trim()}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? "Creating…" : "Create Session"}
+          {loading ? "Creating…" : "Create Activity"}
         </button>
       </div>
     </form>

@@ -24,8 +24,10 @@ export default async function AdminCoveragePage() {
               name: true,
               ownerId: true,
               owner: { select: { name: true } },
+              defaultCoTeacherId: true,
             },
           },
+          oneOffOwner: { select: { id: true, name: true } },
           _count: { select: { signups: true } },
           rotationCoverage: {
             select: {
@@ -63,16 +65,15 @@ export default async function AdminCoveragePage() {
     );
   }
 
-  const clubs: CoverageClub[] = nextFlexDay.clubSessions
-    .filter((cs) => cs.club !== null)
-    .map((cs) => ({
+  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => ({
     sessionId: cs.id,
-    clubId: cs.club!.id,
-    name: cs.club!.name,
-    ownerId: cs.club!.ownerId,
-    ownerName: cs.club!.owner.name ?? cs.club!.ownerId,
+    clubId: cs.club?.id ?? null,
+    name: cs.club?.name ?? cs.title ?? "Untitled Activity",
+    ownerId: cs.club?.ownerId ?? cs.oneOffOwner?.id ?? "",
+    ownerName: cs.club?.owner.name ?? cs.oneOffOwner?.name ?? "Unknown",
     rotations: cs.rotations,
     studentCount: cs._count.signups,
+    defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
     coverage: Object.fromEntries(
       cs.rotationCoverage.map((rc) => [
         rc.rotation,
