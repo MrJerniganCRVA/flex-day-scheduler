@@ -6,6 +6,7 @@ import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import VolunteerButton from "@/components/sessions/VolunteerButton";
+import StopCoveringButton from "@/components/sessions/StopCoveringButton";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -199,9 +200,12 @@ export default async function TeacherDashboard() {
                                     {cs.club?.name ?? cs.title ?? "Session"}
                                   </div>
                                   {!owned && (
-                                    <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
-                                      Covering
-                                    </span>
+                                    <>
+                                      <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                                        Covering
+                                      </span>
+                                      <StopCoveringButton sessionId={cs.id} rotation={slot} />
+                                    </>
                                   )}
                                   {owned && cs.teacherAbsent && (
                                     <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -285,19 +289,23 @@ export default async function TeacherDashboard() {
             </div>
 
             {(() => {
-              const ownedSessions = nextFlexDay.clubSessions.filter(
-                (cs) => cs.club?.ownerId === userId || cs.oneOffOwnerId === userId
-              );
-              if (ownedSessions.length === 0) return null;
-              const coveredRotations = new Set(ownedSessions.flatMap((cs) => cs.rotations));
-              const fullyBooked = ALL_ROTATIONS.every((r) => coveredRotations.has(r));
+              const committedRotations = new Set<RotationSlot>();
+              for (const cs of nextFlexDay.clubSessions) {
+                const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
+                if (owned) {
+                  cs.rotations.forEach((r) => committedRotations.add(r));
+                } else {
+                  cs.rotationCoverage.forEach((rc) => committedRotations.add(rc.rotation));
+                }
+              }
+              const fullyBooked = ALL_ROTATIONS.every((r) => committedRotations.has(r));
               return fullyBooked ? null : (
                 <div className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-800">
                   <Link
-                    href={`/teacher/sessions/new`}
+                    href={`/teacher/sessions/new?flexDayId=${nextFlexDay.id}`}
                     className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                   >
-                    + Schedule a session for this day →
+                    + Schedule an Activity →
                   </Link>
                 </div>
               );
@@ -311,38 +319,58 @@ export default async function TeacherDashboard() {
       </section>
 
       {/* ── Sessions seeking coverage ─────────────────────────────── */}
-      {openSessionsForCoverage.length > 0 && (
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
-            Sessions seeking coverage
-          </p>
-          <div className="rounded-xl border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/30 p-4 space-y-3">
-            <p className="text-xs text-teal-700 dark:text-teal-400">
-              These sessions have open coverage slots for the next flex day. Click to volunteer.
+      {openSessionsForCoverage.length > 0 && (() => {
+        const coverageByRotation = Object.fromEntries(
+          ALL_ROTATIONS.map((r) => [
+            r,
+            openSessionsForCoverage.flatMap((cs) =>
+              cs.openSlots
+                .filter((slot) => slot.rotation === r)
+                .map((slot) => ({ id: cs.id, name: cs.name, needsPrimary: slot.needsPrimary }))
+            ),
+          ])
+        ) as Record<RotationSlot, Array<{ id: string; name: string; needsPrimary: boolean }>>;
+
+        return (
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
+              Sessions seeking coverage
             </p>
-            {openSessionsForCoverage.map((cs) => (
-              <div
-                key={cs.id}
-                className="rounded-lg bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 px-4 py-3"
-              >
-                <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                  {cs.name}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {cs.openSlots.map((slot) => (
-                    <VolunteerButton
-                      key={`${cs.id}-${slot.rotation}`}
-                      sessionId={cs.id}
-                      rotation={slot.rotation}
-                      label={`${ROTATION_LABELS[slot.rotation]} (${slot.needsPrimary ? "primary" : "secondary"})`}
-                    />
-                  ))}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {ALL_ROTATIONS.map((slot) => (
+                <div
+                  key={slot}
+                  className="rounded-xl bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 overflow-hidden"
+                >
+                  <div className="px-4 py-2.5 font-semibold text-sm bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300">
+                    {ROTATION_LABELS[slot]}
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                    {coverageByRotation[slot].length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
+                        No coverage needed
+                      </p>
+                    ) : (
+                      coverageByRotation[slot].map((cs) => (
+                        <div key={cs.id} className="px-4 py-3">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                            {cs.name}
+                          </p>
+                          <VolunteerButton
+                            sessionId={cs.id}
+                            rotation={slot}
+                            label={cs.needsPrimary ? "primary" : "secondary"}
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        );
+      })()}
     </div>
   );
 }
