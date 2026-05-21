@@ -84,7 +84,8 @@ export default async function TeacherDashboard() {
           id: true,
           rotations: true,
           title: true,
-          club: { select: { name: true } },
+          teacherAbsent: true,   // scalar: must be listed explicitly in `select`
+          club: { select: { name: true, ownerId: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
             select: {
@@ -115,7 +116,9 @@ export default async function TeacherDashboard() {
       const alreadyVolunteered =
         cov?.primaryTeacherId === userId || cov?.secondaryTeacherId === userId;
       if (alreadyVolunteered) continue;
-      if (!cov || cov.primaryTeacherId === null) {
+      const ownerIsAbsentPrimary =
+        cs.teacherAbsent && cov?.primaryTeacherId === cs.club?.ownerId;
+      if (!cov || cov.primaryTeacherId === null || ownerIsAbsentPrimary) {
         openSlots.push({ rotation: r, needsPrimary: true });
       } else if (cov.secondaryTeacherId === null) {
         openSlots.push({ rotation: r, needsPrimary: false });
@@ -206,6 +209,11 @@ export default async function TeacherDashboard() {
                                       Covering
                                     </span>
                                   )}
+                                  {owned && cs.teacherAbsent && (
+                                    <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                      Absent
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                   {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
@@ -237,6 +245,12 @@ export default async function TeacherDashboard() {
                                   }}
                                 />
                               </div>
+
+                              {owned && cs.teacherAbsent && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                                  You&apos;re marked absent — coverage is being arranged.
+                                </p>
+                              )}
 
                               {cs.signups.length > 0 ? (
                                 isToday ? (

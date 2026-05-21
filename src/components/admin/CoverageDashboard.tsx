@@ -27,6 +27,7 @@ export type CoverageClub = {
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
+  teacherAbsent?: boolean;
   defaultCoTeacherId?: string | null;
   coverage: Partial<
     Record<
@@ -76,7 +77,7 @@ export default function CoverageDashboard({
           c.rotations.map((r) => [
             r,
             {
-              t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId,
+              t1: c.coverage[r]?.primaryTeacherId ?? (c.teacherAbsent ? null : c.ownerId),
               t2: c.coverage[r]?.secondaryTeacherId ?? c.defaultCoTeacherId ?? null,
             },
           ])
