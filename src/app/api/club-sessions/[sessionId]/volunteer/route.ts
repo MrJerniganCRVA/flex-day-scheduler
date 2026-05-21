@@ -4,9 +4,58 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import type { RotationSlot } from "@prisma/client";
 
-const bodySchema = z.object({
-  rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]),
-});
+const rotationSchema = z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]);
+
+const bodySchema = z.object({ rotation: rotationSchema });
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user || session.user.role === "STUDENT") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { sessionId } = await params;
+  const userId = session.user.id!;
+
+  const rotationParam = req.nextUrl.searchParams.get("rotation");
+  const parsed = rotationSchema.safeParse(rotationParam);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid rotation" }, { status: 400 });
+  }
+  const rotation = parsed.data;
+
+  const existing = await prisma.sessionRotationCoverage.findUnique({
+    where: { sessionId_rotation: { sessionId, rotation } },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Coverage record not found" }, { status: 404 });
+  }
+
+  const isT1 = existing.primaryTeacherId === userId;
+  const isT2 = existing.secondaryTeacherId === userId;
+  if (!isT1 && !isT2) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const newT1 = isT1 ? null : existing.primaryTeacherId;
+  const newT2 = isT2 ? null : existing.secondaryTeacherId;
+
+  if (newT1 === null && newT2 === null) {
+    await prisma.sessionRotationCoverage.delete({
+      where: { sessionId_rotation: { sessionId, rotation } },
+    });
+  } else {
+    await prisma.sessionRotationCoverage.update({
+      where: { sessionId_rotation: { sessionId, rotation } },
+      data: { primaryTeacherId: newT1, secondaryTeacherId: newT2 },
+    });
+  }
+
+  return new NextResponse(null, { status: 204 });
+}
 
 export async function POST(
   req: NextRequest,
