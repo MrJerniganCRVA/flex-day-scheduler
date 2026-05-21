@@ -65,6 +65,16 @@ export default async function AdminCoveragePage() {
     );
   }
 
+  const absentTeacherIds = [
+    ...new Set(
+      nextFlexDay.clubSessions
+        .filter((cs) => cs.teacherAbsent)
+        .flatMap((cs) =>
+          [cs.club?.ownerId, cs.oneOffOwner?.id].filter(Boolean) as string[]
+        )
+    ),
+  ];
+
   const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => ({
     sessionId: cs.id,
     clubId: cs.club?.id ?? null,
@@ -106,6 +116,7 @@ export default async function AdminCoveragePage() {
       clubs={clubs}
       teachers={teachers}
       flexDayLabel={flexDayLabel}
+      absentTeacherIds={absentTeacherIds}
     />
   );
 }

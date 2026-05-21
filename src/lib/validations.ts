@@ -98,6 +98,7 @@ export const createOneOffSchema = z.object({
 });
 
 export const updateClubSessionPerDaySchema = z.object({
+  title: z.string().min(1).max(100).optional(),
   rotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required")

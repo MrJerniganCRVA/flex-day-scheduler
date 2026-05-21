@@ -7,10 +7,11 @@ export default async function TeacherClubsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const userId = session.user.id!;
+  const isAdmin = session.user.role === "ADMIN";
+
   const where =
-    session.user.role === "ADMIN"
-      ? undefined
-      : { ownerId: session.user.id };
+    isAdmin ? undefined : { ownerId: userId };
 
   const clubs = await prisma.club.findMany({
     where,
@@ -19,6 +20,23 @@ export default async function TeacherClubsPage() {
       defaultRoom: { select: { name: true } },
     },
     orderBy: { name: "asc" },
+  });
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const activities = await prisma.clubSession.findMany({
+    where: {
+      clubId: null,
+      oneOffOwnerId: isAdmin ? { not: null } : userId,
+      flexDay: { date: { gte: today } },
+    },
+    include: {
+      flexDay: { select: { date: true, label: true } },
+      roomOverride: { select: { name: true } },
+      _count: { select: { signups: true } },
+    },
+    orderBy: { flexDay: { date: "asc" } },
   });
 
   return (
@@ -103,6 +121,95 @@ export default async function TeacherClubsPage() {
           </table>
         </div>
       )}
+
+      {/* Activities section */}
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activities</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              One-off activities on upcoming flex days
+            </p>
+          </div>
+          <Link
+            href="/teacher/sessions/new"
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+          >
+            + New Activity
+          </Link>
+        </div>
+
+        {activities.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center">
+            <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">No upcoming activities</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+              Create a one-off activity for a specific flex day.
+            </p>
+            <Link
+              href="/teacher/sessions/new"
+              className="inline-flex rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+            >
+              Create an activity
+            </Link>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left">Activity</th>
+                  <th className="px-4 py-3 text-left">Flex Day</th>
+                  <th className="px-4 py-3 text-left">Rotations</th>
+                  <th className="px-4 py-3 text-left">Enrolled</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                {activities.map((activity) => (
+                  <tr key={activity.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                      {activity.title ?? "Untitled Activity"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      {new Date(activity.flexDay.date).toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        timeZone: "UTC",
+                      })}
+                      {activity.flexDay.label ? ` — ${activity.flexDay.label}` : ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 flex-wrap">
+                        {activity.rotations.map((r) => (
+                          <span
+                            key={r}
+                            className="inline-block rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium"
+                          >
+                            {r === "FLEX_1" ? "Flex 1" : r === "FLEX_2" ? "Flex 2" : "Flex 3"}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                      {activity._count.signups}
+                      {activity.capacityOverride ? `/${activity.capacityOverride}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/teacher/sessions/${activity.id}/edit`}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
+                      >
+                        Edit
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

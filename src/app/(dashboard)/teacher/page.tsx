@@ -134,12 +134,6 @@ export default async function TeacherDashboard() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Teacher Dashboard
         </h1>
-        <Link
-          href="/teacher/clubs/new"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-        >
-          + New Club
-        </Link>
       </div>
 
       {/* ── Next / Today's Flex Day ──────────────────────────────────── */}

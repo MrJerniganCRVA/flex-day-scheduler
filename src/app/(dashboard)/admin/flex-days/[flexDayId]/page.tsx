@@ -28,7 +28,7 @@ export default async function AdminFlexDayDetailPage({
           club: {
             select: { id: true, name: true, maxCapacity: true },
           },
-          oneOffOwner: { select: { name: true } },
+          oneOffOwner: { select: { id: true, name: true } },
           signups: {
             select: {
               id: true,
@@ -138,14 +138,21 @@ export default async function AdminFlexDayDetailPage({
                               )}
                             </div>
                             <div className="flex items-center gap-3">
-                              {cs.club && (
+                              {cs.club ? (
                                 <a
                                   href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
                                   className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
                                 >
                                   Edit
                                 </a>
-                              )}
+                              ) : cs.oneOffOwner ? (
+                                <a
+                                  href={`/teacher/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
+                                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                                >
+                                  Edit
+                                </a>
+                              ) : null}
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"}
                                 {recorded > 0 && (
