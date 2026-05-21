@@ -35,7 +35,17 @@ export async function PATCH(
 
   const { rotation, primary, secondary } = parsed.data;
 
-  // Verify referenced teachers exist and have an appropriate role
+  // Fetch session to get flexDayId for conflict checks
+  const clubSession = await prisma.clubSession.findUnique({
+    where: { id: sessionId },
+    select: { flexDayId: true },
+  });
+  if (!clubSession) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Verify referenced teachers exist and have an appropriate role;
+  // also block assignments that would place a teacher in two sessions in the same rotation
   for (const [field, teacherId] of [
     ["primary", primary],
     ["secondary", secondary],
@@ -55,6 +65,35 @@ export async function PATCH(
         return NextResponse.json(
           { error: `${field} teacher must have role TEACHER or ADMIN` },
           { status: 400 }
+        );
+      }
+
+      const conflict = await prisma.clubSession.findFirst({
+        where: {
+          id: { not: sessionId },
+          flexDayId: clubSession.flexDayId,
+          rotations: { has: rotation },
+          OR: [
+            { club: { ownerId: teacherId } },
+            { oneOffOwnerId: teacherId },
+            {
+              rotationCoverage: {
+                some: {
+                  rotation,
+                  OR: [{ primaryTeacherId: teacherId }, { secondaryTeacherId: teacherId }],
+                },
+              },
+            },
+          ],
+        },
+        select: { club: { select: { name: true } }, title: true },
+      });
+
+      if (conflict) {
+        const conflictName = conflict.club?.name ?? conflict.title ?? "another session";
+        return NextResponse.json(
+          { error: `This teacher is already assigned to "${conflictName}" in ${rotation.replace("_", " ")}` },
+          { status: 409 }
         );
       }
     }
