@@ -99,6 +99,7 @@ export async function PATCH(
   }
 
   const updateData: Record<string, unknown> = {};
+  if (parsed.data.title !== undefined) updateData.title = parsed.data.title;
   if (parsed.data.rotations !== undefined) updateData.rotations = parsed.data.rotations;
   if ("roomOverrideId" in parsed.data) updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
   if ("capacityOverride" in parsed.data) updateData.capacityOverride = parsed.data.capacityOverride ?? null;

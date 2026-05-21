@@ -64,10 +64,12 @@ export default function CoverageDashboard({
   clubs,
   teachers,
   flexDayLabel,
+  absentTeacherIds = [],
 }: {
   clubs: CoverageClub[];
   teachers: CoverageTeacher[];
   flexDayLabel: string;
+  absentTeacherIds?: string[];
 }) {
   const [assignments, setAssignments] = useState<Assignments>(() =>
     Object.fromEntries(
@@ -77,8 +79,12 @@ export default function CoverageDashboard({
           c.rotations.map((r) => [
             r,
             {
-              t1: c.coverage[r]?.primaryTeacherId ?? (c.teacherAbsent ? null : c.ownerId),
-              t2: c.coverage[r]?.secondaryTeacherId ?? c.defaultCoTeacherId ?? null,
+              t1: c.coverage[r] !== undefined
+                ? c.coverage[r].primaryTeacherId
+                : (c.teacherAbsent ? null : c.ownerId),
+              t2: c.coverage[r] !== undefined
+                ? c.coverage[r].secondaryTeacherId
+                : (c.defaultCoTeacherId ?? null),
             },
           ])
         ),
@@ -151,13 +157,13 @@ export default function CoverageDashboard({
     []
   );
 
-  // Teachers available for a given slot, filtered by rotation conflicts
+  // Teachers available for a given slot, filtered by rotation conflicts and absences
   function getAvailableTeachers(
     sessionId: string,
     rotation: RotationSlot,
     slot: "t1" | "t2"
   ): CoverageTeacher[] {
-    const taken = new Set<string>();
+    const taken = new Set<string>(absentTeacherIds);
     const sessionsInRotation = clubs.filter((c) =>
       c.rotations.includes(rotation)
     );
@@ -406,6 +412,11 @@ export default function CoverageDashboard({
                         title={teacher.name}
                       >
                         {teacher.name}
+                        {absentTeacherIds.includes(teacher.id) && (
+                          <span className="ml-1 text-xs text-red-500 dark:text-red-400 font-medium">
+                            · absent
+                          </span>
+                        )}
                       </span>
                       <div className="flex gap-1 shrink-0">
                         {ALL_ROTATIONS.map((r) => {
