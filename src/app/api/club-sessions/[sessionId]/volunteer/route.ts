@@ -30,7 +30,7 @@ export async function POST(
 
   const clubSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
-    select: { id: true, rotations: true },
+    select: { id: true, rotations: true, flexDayId: true },
   });
 
   if (!clubSession || !clubSession.rotations.includes(rotation)) {
@@ -43,6 +43,36 @@ export async function POST(
 
   if (existing?.primaryTeacherId === userId || existing?.secondaryTeacherId === userId) {
     return NextResponse.json({ error: "Already volunteered for this slot" }, { status: 409 });
+  }
+
+  // Check whether this teacher already has another commitment in the same rotation
+  const conflict = await prisma.clubSession.findFirst({
+    where: {
+      id: { not: sessionId },
+      flexDayId: clubSession.flexDayId,
+      rotations: { has: rotation },
+      OR: [
+        { club: { ownerId: userId } },
+        { oneOffOwnerId: userId },
+        {
+          rotationCoverage: {
+            some: {
+              rotation,
+              OR: [{ primaryTeacherId: userId }, { secondaryTeacherId: userId }],
+            },
+          },
+        },
+      ],
+    },
+    select: { club: { select: { name: true } }, title: true },
+  });
+
+  if (conflict) {
+    const conflictName = conflict.club?.name ?? conflict.title ?? "another session";
+    return NextResponse.json(
+      { error: `You are already assigned to "${conflictName}" in this rotation` },
+      { status: 409 }
+    );
   }
 
   if (!existing || existing.primaryTeacherId === null) {
