@@ -51,13 +51,12 @@ export default async function TeacherDashboard() {
           },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
-            where: {
-              OR: [
-                { primaryTeacherId: userId },
-                { secondaryTeacherId: userId },
-              ],
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
+              primaryTeacher: { select: { name: true } },
             },
-            select: { rotation: true },
           },
           signups: {
             select: {
@@ -165,7 +164,11 @@ export default async function TeacherDashboard() {
                 const sessions = nextFlexDay.clubSessions.filter((cs) => {
                   const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
                   if (owned) return cs.rotations.includes(slot);
-                  return cs.rotationCoverage.some((rc) => rc.rotation === slot);
+                  return cs.rotationCoverage.some(
+                    (rc) =>
+                      rc.rotation === slot &&
+                      (rc.primaryTeacherId === userId || rc.secondaryTeacherId === userId)
+                  );
                 });
 
                 return (
@@ -192,6 +195,11 @@ export default async function TeacherDashboard() {
                         sessions.map((cs) => {
                           const roomName = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
                           const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
+                          const coverageForSlot = cs.rotationCoverage.find((rc) => rc.rotation === slot);
+                          const coveredByOther =
+                            owned &&
+                            coverageForSlot?.primaryTeacherId != null &&
+                            coverageForSlot.primaryTeacherId !== userId;
                           return (
                             <div key={cs.id} className="px-4 py-4">
                               <div className="flex items-start justify-between gap-2 mb-1">
@@ -207,7 +215,12 @@ export default async function TeacherDashboard() {
                                       <StopCoveringButton sessionId={cs.id} rotation={slot} />
                                     </>
                                   )}
-                                  {owned && cs.teacherAbsent && (
+                                  {owned && coveredByOther && (
+                                    <span className="shrink-0 rounded-full bg-green-100 dark:bg-green-950/50 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-300">
+                                      Covered
+                                    </span>
+                                  )}
+                                  {owned && !coveredByOther && cs.teacherAbsent && (
                                     <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                                       Absent
                                     </span>
@@ -244,7 +257,12 @@ export default async function TeacherDashboard() {
                                 />
                               </div>
 
-                              {owned && cs.teacherAbsent && (
+                              {owned && coveredByOther && (
+                                <p className="text-xs text-green-600 dark:text-green-400 mb-2">
+                                  Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
+                                </p>
+                              )}
+                              {owned && !coveredByOther && cs.teacherAbsent && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
                                   You&apos;re marked absent — coverage is being arranged.
                                 </p>
@@ -293,9 +311,19 @@ export default async function TeacherDashboard() {
               for (const cs of nextFlexDay.clubSessions) {
                 const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
                 if (owned) {
-                  cs.rotations.forEach((r) => committedRotations.add(r));
+                  for (const r of cs.rotations) {
+                    const cov = cs.rotationCoverage.find((rc) => rc.rotation === r);
+                    const isCoveredByOther =
+                      cov?.primaryTeacherId != null && cov.primaryTeacherId !== userId;
+                    if (!isCoveredByOther) committedRotations.add(r);
+                  }
                 } else {
-                  cs.rotationCoverage.forEach((rc) => committedRotations.add(rc.rotation));
+                  cs.rotationCoverage
+                    .filter(
+                      (rc) =>
+                        rc.primaryTeacherId === userId || rc.secondaryTeacherId === userId
+                    )
+                    .forEach((rc) => committedRotations.add(rc.rotation));
                 }
               }
               const fullyBooked = ALL_ROTATIONS.every((r) => committedRotations.has(r));

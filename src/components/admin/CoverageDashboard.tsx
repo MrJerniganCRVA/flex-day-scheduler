@@ -108,6 +108,8 @@ export default function CoverageDashboard({
       slot: "t1" | "t2",
       value: string | null
     ) => {
+      const prevValue = assignments[sessionId]?.[rotation]?.[slot] ?? null;
+
       setAssignments((prev) => ({
         ...prev,
         [sessionId]: {
@@ -122,6 +124,19 @@ export default function CoverageDashboard({
         ...prev,
         [sessionId]: { ...prev[sessionId], [rotation]: "saving" },
       }));
+
+      const revert = () =>
+        setAssignments((prev) => ({
+          ...prev,
+          [sessionId]: {
+            ...prev[sessionId],
+            [rotation]: {
+              ...(prev[sessionId]?.[rotation] ?? { t1: null, t2: null }),
+              [slot]: prevValue,
+            },
+          },
+        }));
+
       try {
         const body =
           slot === "t1"
@@ -132,29 +147,33 @@ export default function CoverageDashboard({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        setSaveStatus((prev) => ({
-          ...prev,
-          [sessionId]: {
-            ...prev[sessionId],
-            [rotation]: res.ok ? "saved" : "error",
-          },
-        }));
         if (res.ok) {
+          setSaveStatus((prev) => ({
+            ...prev,
+            [sessionId]: { ...prev[sessionId], [rotation]: "saved" },
+          }));
           setTimeout(() => {
             setSaveStatus((prev) => ({
               ...prev,
               [sessionId]: { ...prev[sessionId], [rotation]: "idle" },
             }));
           }, 2000);
+        } else {
+          revert();
+          setSaveStatus((prev) => ({
+            ...prev,
+            [sessionId]: { ...prev[sessionId], [rotation]: "error" },
+          }));
         }
       } catch {
+        revert();
         setSaveStatus((prev) => ({
           ...prev,
           [sessionId]: { ...prev[sessionId], [rotation]: "error" },
         }));
       }
     },
-    []
+    [assignments]
   );
 
   // Teachers available for a given slot, filtered by rotation conflicts and absences
