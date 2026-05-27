@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import DeleteActivityButton from "@/components/sessions/DeleteActivityButton";
 
 export default async function TeacherClubsPage() {
   const session = await auth();
@@ -161,7 +162,7 @@ export default async function TeacherClubsPage() {
                   <th className="px-4 py-3 text-left">Flex Day</th>
                   <th className="px-4 py-3 text-left">Rotations</th>
                   <th className="px-4 py-3 text-left">Enrolled</th>
-                  <th className="px-4 py-3"></th>
+                  <th className="px-4 py-3" colSpan={2}></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
@@ -202,6 +203,9 @@ export default async function TeacherClubsPage() {
                       >
                         Edit
                       </Link>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <DeleteActivityButton sessionId={activity.id} />
                     </td>
                   </tr>
                 ))}

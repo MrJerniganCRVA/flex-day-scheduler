@@ -143,8 +143,9 @@ model ClubSession {
   googleEventId    String?
   title            String?
   capacityOverride Int?
-  teacherAbsent    Boolean        @default(false)
-  oneOffOwnerId    String?
+  teacherAbsent     Boolean        @default(false)
+  teacherReassigned Boolean        @default(false)
+  oneOffOwnerId     String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
