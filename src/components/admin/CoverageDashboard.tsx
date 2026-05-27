@@ -28,6 +28,7 @@ export type CoverageClub = {
   rotations: RotationSlot[];
   studentCount: number;
   teacherAbsent?: boolean;
+  teacherReassigned?: boolean;
   defaultCoTeacherId?: string | null;
   coverage: Partial<
     Record<
@@ -81,7 +82,7 @@ export default function CoverageDashboard({
             {
               t1: c.coverage[r] !== undefined
                 ? c.coverage[r].primaryTeacherId
-                : (c.teacherAbsent ? null : c.ownerId),
+                : (c.teacherAbsent || c.teacherReassigned ? null : c.ownerId),
               t2: c.coverage[r] !== undefined
                 ? c.coverage[r].secondaryTeacherId
                 : (c.defaultCoTeacherId ?? null),
@@ -413,7 +414,7 @@ export default function CoverageDashboard({
                     ? "Fully assigned"
                     : `${freeCount} open`;
               const group = teacherRows.filter(
-                (t) => t.freeCount === freeCount
+                (t) => !absentTeacherIds.includes(t.id) && t.freeCount === freeCount
               );
               if (group.length === 0) return null;
               return (
@@ -431,11 +432,6 @@ export default function CoverageDashboard({
                         title={teacher.name}
                       >
                         {teacher.name}
-                        {absentTeacherIds.includes(teacher.id) && (
-                          <span className="ml-1 text-xs text-red-500 dark:text-red-400 font-medium">
-                            · absent
-                          </span>
-                        )}
                       </span>
                       <div className="flex gap-1 shrink-0">
                         {ALL_ROTATIONS.map((r) => {
@@ -459,6 +455,30 @@ export default function CoverageDashboard({
                 </div>
               );
             })}
+
+            {/* Absent teachers — separate section at the bottom */}
+            {teacherRows.some((t) => absentTeacherIds.includes(t.id)) && (
+              <div>
+                <div className="px-3 py-1.5 text-xs font-semibold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border-y border-gray-200 dark:border-gray-700 uppercase tracking-wide">
+                  Absent
+                </div>
+                {teacherRows
+                  .filter((t) => absentTeacherIds.includes(t.id))
+                  .map((teacher) => (
+                    <div
+                      key={teacher.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0"
+                    >
+                      <span
+                        className="text-sm text-gray-400 dark:text-gray-500 truncate line-through"
+                        title={teacher.name}
+                      >
+                        {teacher.name}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

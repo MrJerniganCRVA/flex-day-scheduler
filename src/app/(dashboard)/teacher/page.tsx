@@ -84,7 +84,8 @@ export default async function TeacherDashboard() {
           id: true,
           rotations: true,
           title: true,
-          teacherAbsent: true,   // scalar: must be listed explicitly in `select`
+          teacherAbsent: true,
+          teacherReassigned: true,
           club: { select: { name: true, ownerId: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
@@ -117,7 +118,7 @@ export default async function TeacherDashboard() {
         cov?.primaryTeacherId === userId || cov?.secondaryTeacherId === userId;
       if (alreadyVolunteered) continue;
       const ownerIsAbsentPrimary =
-        cs.teacherAbsent && cov?.primaryTeacherId === cs.club?.ownerId;
+        (cs.teacherAbsent || cs.teacherReassigned) && cov?.primaryTeacherId === cs.club?.ownerId;
       if (!cov || cov.primaryTeacherId === null || ownerIsAbsentPrimary) {
         openSlots.push({ rotation: r, needsPrimary: true });
       } else if (cov.secondaryTeacherId === null) {
@@ -225,6 +226,11 @@ export default async function TeacherDashboard() {
                                       Absent
                                     </span>
                                   )}
+                                  {owned && !coveredByOther && cs.teacherReassigned && (
+                                    <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                                      Covering elsewhere
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                   {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
@@ -265,6 +271,11 @@ export default async function TeacherDashboard() {
                               {owned && !coveredByOther && cs.teacherAbsent && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
                                   You&apos;re marked absent — coverage is being arranged.
+                                </p>
+                              )}
+                              {owned && !coveredByOther && cs.teacherReassigned && (
+                                <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">
+                                  You&apos;re covering another club — coverage for your session is being arranged.
                                 </p>
                               )}
 

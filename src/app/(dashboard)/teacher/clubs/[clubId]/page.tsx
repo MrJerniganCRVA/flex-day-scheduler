@@ -210,6 +210,7 @@ export default async function ClubDetailPage({
                 maxCapacity={club.maxCapacity}
                 capacityOverride={cs.capacityOverride}
                 teacherAbsent={cs.teacherAbsent}
+                teacherReassigned={cs.teacherReassigned}
                 roomOverrideId={cs.roomOverrideId}
                 defaultRoomName={club.defaultRoom?.name ?? null}
                 signups={cs.signups}

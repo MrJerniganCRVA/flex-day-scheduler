@@ -38,6 +38,7 @@ interface Props {
   maxCapacity: number;
   capacityOverride?: number | null;
   teacherAbsent?: boolean;
+  teacherReassigned?: boolean;
   roomOverrideId?: string | null;
   defaultRoomName?: string | null;
   signups: Signup[];
@@ -57,6 +58,7 @@ export default function SessionCard({
   maxCapacity,
   capacityOverride: initialCapacityOverride,
   teacherAbsent: initialTeacherAbsent = false,
+  teacherReassigned: initialTeacherReassigned = false,
   roomOverrideId: initialRoomOverrideId,
   defaultRoomName,
   signups,
@@ -72,7 +74,10 @@ export default function SessionCard({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [absent, setAbsent] = useState(initialTeacherAbsent);
+  type TeacherStatus = "PRESENT" | "ABSENT" | "REASSIGNED";
+  const [teacherStatus, setTeacherStatus] = useState<TeacherStatus>(
+    initialTeacherAbsent ? "ABSENT" : initialTeacherReassigned ? "REASSIGNED" : "PRESENT"
+  );
   const [markingAbsent, setMarkingAbsent] = useState(false);
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -140,17 +145,19 @@ export default function SessionCard({
     router.refresh();
   }
 
-  async function handleToggleAbsent() {
+  async function handleStatusChange(newStatus: TeacherStatus) {
     setMarkingAbsent(true);
-    const newAbsent = !absent;
     const res = await fetch(`/api/club-sessions/${sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teacherAbsent: newAbsent }),
+      body: JSON.stringify({
+        teacherAbsent: newStatus === "ABSENT",
+        teacherReassigned: newStatus === "REASSIGNED",
+      }),
     });
     setMarkingAbsent(false);
     if (res.ok) {
-      setAbsent(newAbsent);
+      setTeacherStatus(newStatus);
       router.refresh();
     }
   }
@@ -205,9 +212,11 @@ export default function SessionCard({
   return (
     <div
       className={`rounded-xl bg-white dark:bg-gray-900 border p-5 ${
-        absent
+        teacherStatus === "ABSENT"
           ? "border-amber-300 dark:border-amber-700"
-          : "border-gray-200 dark:border-gray-700"
+          : teacherStatus === "REASSIGNED"
+            ? "border-teal-300 dark:border-teal-700"
+            : "border-gray-200 dark:border-gray-700"
       }`}
     >
       {editing ? (
@@ -403,9 +412,14 @@ export default function SessionCard({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-900 dark:text-white">{dateLabel}</span>
-                {absent && (
+                {teacherStatus === "ABSENT" && (
                   <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
                     Absent
+                  </span>
+                )}
+                {teacherStatus === "REASSIGNED" && (
+                  <span className="rounded-full bg-teal-100 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-700 px-2 py-0.5 text-xs font-medium">
+                    Covering elsewhere
                   </span>
                 )}
               </div>
@@ -427,9 +441,14 @@ export default function SessionCard({
                   </span>
                 )}
               </div>
-              {absent && (
+              {teacherStatus === "ABSENT" && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  Teacher marked absent — the session will still run. An admin will arrange coverage.
+                  You&apos;re marked absent — the session will still run. An admin will arrange coverage.
+                </p>
+              )}
+              {teacherStatus === "REASSIGNED" && (
+                <p className="mt-1 text-xs text-teal-600 dark:text-teal-400">
+                  You&apos;re covering another club — an admin will arrange coverage for your session.
                 </p>
               )}
             </div>
@@ -437,22 +456,22 @@ export default function SessionCard({
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {enrollmentCount}/{displayCapacity} enrolled
               </span>
-              <button
-                type="button"
-                onClick={handleToggleAbsent}
+              <select
+                value={teacherStatus}
+                onChange={(e) => handleStatusChange(e.target.value as TeacherStatus)}
                 disabled={markingAbsent}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50 transition-colors ${
-                  absent
-                    ? "bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-700"
-                    : "border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60"
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 transition-colors ${
+                  teacherStatus === "ABSENT"
+                    ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"
+                    : teacherStatus === "REASSIGNED"
+                      ? "bg-teal-50 dark:bg-teal-950/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300"
+                      : "bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
                 }`}
               >
-                {markingAbsent
-                  ? "…"
-                  : absent
-                    ? "Mark Present"
-                    : "Mark Absent"}
-              </button>
+                <option value="PRESENT">Present</option>
+                <option value="ABSENT">Absent from school</option>
+                <option value="REASSIGNED">Covering another club</option>
+              </select>
               <button
                 type="button"
                 onClick={() => setEditing(true)}

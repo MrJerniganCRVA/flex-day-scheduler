@@ -101,8 +101,18 @@ export async function POST(
       flexDayId: clubSession.flexDayId,
       rotations: { has: rotation },
       OR: [
-        { club: { ownerId: userId } },
-        { oneOffOwnerId: userId },
+        {
+          club: { ownerId: userId },
+          teacherAbsent: false,
+          teacherReassigned: false,
+          rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
+        },
+        {
+          oneOffOwnerId: userId,
+          teacherAbsent: false,
+          teacherReassigned: false,
+          rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
+        },
         {
           rotationCoverage: {
             some: {

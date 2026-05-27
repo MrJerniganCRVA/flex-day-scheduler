@@ -84,6 +84,7 @@ export default async function AdminCoveragePage() {
     rotations: cs.rotations,
     studentCount: cs._count.signups,
     teacherAbsent: cs.teacherAbsent,
+    teacherReassigned: cs.teacherReassigned,
     defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
     coverage: Object.fromEntries(
       cs.rotationCoverage.map((rc) => [
