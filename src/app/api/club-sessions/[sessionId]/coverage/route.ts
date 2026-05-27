@@ -74,8 +74,16 @@ export async function PATCH(
           flexDayId: clubSession.flexDayId,
           rotations: { has: rotation },
           OR: [
-            { club: { ownerId: teacherId } },
-            { oneOffOwnerId: teacherId },
+            // Owner is physically present only when no explicit T1 coverage override exists
+            {
+              club: { ownerId: teacherId },
+              rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
+            },
+            {
+              oneOffOwnerId: teacherId,
+              rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
+            },
+            // Explicitly assigned as T1 or T2 via coverage record
             {
               rotationCoverage: {
                 some: {
