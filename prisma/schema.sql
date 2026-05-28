@@ -17,6 +17,7 @@ BEGIN;
 
 CREATE TYPE "Role" AS ENUM ('STUDENT', 'TEACHER', 'ADMIN');
 CREATE TYPE "RotationSlot" AS ENUM ('FLEX_1', 'FLEX_2', 'FLEX_3');
+CREATE TYPE "AbsenceType" AS ENUM ('ABSENT', 'REASSIGNED');
 
 -- ─── Tables (in FK-dependency order) ────────────────────────────────────────
 
@@ -117,6 +118,18 @@ CREATE TABLE "ClubSession" (
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- SessionRotationAbsence (depends on ClubSession)
+CREATE TABLE "SessionRotationAbsence" (
+  "id"        TEXT           NOT NULL,
+  "sessionId" TEXT           NOT NULL,
+  "rotation"  "RotationSlot" NOT NULL,
+  "type"      "AbsenceType"  NOT NULL,
+  CONSTRAINT "SessionRotationAbsence_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "SessionRotationAbsence_sessionId_fkey"
+    FOREIGN KEY ("sessionId") REFERENCES "ClubSession"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- Signup (depends on User, ClubSession)
 CREATE TABLE "Signup" (
   "id"            TEXT         NOT NULL,
@@ -150,6 +163,8 @@ CREATE UNIQUE INDEX "Club_googleCalendarId_key"
   ON "Club"("googleCalendarId");
 CREATE UNIQUE INDEX "Signup_studentId_clubSessionId_key"
   ON "Signup"("studentId", "clubSessionId");
+CREATE UNIQUE INDEX "SessionRotationAbsence_sessionId_rotation_key"
+  ON "SessionRotationAbsence"("sessionId", "rotation");
 
 -- ─── Regular indexes ─────────────────────────────────────────────────────────
 
@@ -158,7 +173,8 @@ CREATE INDEX "FlexDay_date_idx"          ON "FlexDay"("date");
 CREATE INDEX "Club_ownerId_idx"          ON "Club"("ownerId");
 CREATE INDEX "ClubSession_flexDayId_idx" ON "ClubSession"("flexDayId");
 CREATE INDEX "ClubSession_clubId_idx"    ON "ClubSession"("clubId");
-CREATE INDEX "Signup_studentId_idx"      ON "Signup"("studentId");
-CREATE INDEX "Signup_clubSessionId_idx"  ON "Signup"("clubSessionId");
+CREATE INDEX "Signup_studentId_idx"                        ON "Signup"("studentId");
+CREATE INDEX "Signup_clubSessionId_idx"                    ON "Signup"("clubSessionId");
+CREATE INDEX "SessionRotationAbsence_sessionId_idx"        ON "SessionRotationAbsence"("sessionId");
 
 COMMIT;

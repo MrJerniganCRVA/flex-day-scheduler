@@ -36,6 +36,9 @@ export default async function AdminCoveragePage() {
               secondaryTeacherId: true,
             },
           },
+          sessionRotationAbsences: {
+            select: { rotation: true, type: true },
+          },
         },
       },
     },
@@ -65,10 +68,18 @@ export default async function AdminCoveragePage() {
     );
   }
 
+  // A teacher is "fully absent" (sidebar section + excluded from dropdowns) only when
+  // ALL of their session's rotations have an ABSENT record (REASSIGNED doesn't count here)
   const absentTeacherIds = [
     ...new Set(
       nextFlexDay.clubSessions
-        .filter((cs) => cs.teacherAbsent)
+        .filter(
+          (cs) =>
+            cs.rotations.length > 0 &&
+            cs.rotations.every((r) =>
+              cs.sessionRotationAbsences.some((a) => a.rotation === r && a.type === "ABSENT")
+            )
+        )
         .flatMap((cs) =>
           [cs.club?.ownerId, cs.oneOffOwner?.id].filter(Boolean) as string[]
         )
@@ -83,8 +94,7 @@ export default async function AdminCoveragePage() {
     ownerName: cs.club?.owner.name ?? cs.oneOffOwner?.name ?? "Unknown",
     rotations: cs.rotations,
     studentCount: cs._count.signups,
-    teacherAbsent: cs.teacherAbsent,
-    teacherReassigned: cs.teacherReassigned,
+    sessionRotationAbsences: cs.sessionRotationAbsences,
     defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
     coverage: Object.fromEntries(
       cs.rotationCoverage.map((rc) => [

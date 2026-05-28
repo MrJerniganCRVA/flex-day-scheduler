@@ -27,8 +27,7 @@ export type CoverageClub = {
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
-  teacherAbsent?: boolean;
-  teacherReassigned?: boolean;
+  sessionRotationAbsences?: { rotation: RotationSlot; type: string }[];
   defaultCoTeacherId?: string | null;
   coverage: Partial<
     Record<
@@ -77,17 +76,26 @@ export default function CoverageDashboard({
       clubs.map((c) => [
         c.sessionId,
         Object.fromEntries(
-          c.rotations.map((r) => [
-            r,
-            {
-              t1: c.coverage[r] !== undefined
-                ? c.coverage[r].primaryTeacherId
-                : (c.teacherAbsent || c.teacherReassigned ? null : c.ownerId),
-              t2: c.coverage[r] !== undefined
-                ? c.coverage[r].secondaryTeacherId
-                : (c.defaultCoTeacherId ?? null),
-            },
-          ])
+          c.rotations.map((r) => {
+            const absenceForRotation = c.sessionRotationAbsences?.find(
+              (a) => a.rotation === r
+            );
+            return [
+              r,
+              {
+                t1:
+                  c.coverage[r] !== undefined
+                    ? c.coverage[r].primaryTeacherId
+                    : absenceForRotation
+                      ? null
+                      : c.ownerId,
+                t2:
+                  c.coverage[r] !== undefined
+                    ? c.coverage[r].secondaryTeacherId
+                    : (c.defaultCoTeacherId ?? null),
+              },
+            ];
+          })
         ),
       ])
     )

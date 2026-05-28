@@ -41,6 +41,7 @@ export default async function ClubDetailPage({
               student: { select: { id: true, name: true, email: true } },
             },
           },
+          sessionRotationAbsences: { select: { rotation: true, type: true } },
         },
       },
     },
@@ -209,8 +210,7 @@ export default async function ClubDetailPage({
                 enrollmentCount={cs._count.signups}
                 maxCapacity={club.maxCapacity}
                 capacityOverride={cs.capacityOverride}
-                teacherAbsent={cs.teacherAbsent}
-                teacherReassigned={cs.teacherReassigned}
+                sessionRotationAbsences={cs.sessionRotationAbsences}
                 roomOverrideId={cs.roomOverrideId}
                 defaultRoomName={club.defaultRoom?.name ?? null}
                 signups={cs.signups}

@@ -94,6 +94,24 @@ export async function POST(
     return NextResponse.json({ error: "Already volunteered for this slot" }, { status: 409 });
   }
 
+  // Bug 2: block absent/reassigned teachers from volunteering in this rotation
+  const ownAbsence = await prisma.sessionRotationAbsence.findFirst({
+    where: {
+      rotation,
+      session: {
+        flexDayId: clubSession.flexDayId,
+        rotations: { has: rotation },
+        OR: [{ club: { ownerId: userId } }, { oneOffOwnerId: userId }],
+      },
+    },
+  });
+  if (ownAbsence) {
+    return NextResponse.json(
+      { error: "You are marked absent or covering another club for this rotation" },
+      { status: 409 }
+    );
+  }
+
   // Check whether this teacher already has another commitment in the same rotation
   const conflict = await prisma.clubSession.findFirst({
     where: {
@@ -103,14 +121,12 @@ export async function POST(
       OR: [
         {
           club: { ownerId: userId },
-          teacherAbsent: false,
-          teacherReassigned: false,
+          sessionRotationAbsences: { none: { rotation } },
           rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
         },
         {
           oneOffOwnerId: userId,
-          teacherAbsent: false,
-          teacherReassigned: false,
+          sessionRotationAbsences: { none: { rotation } },
           rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
         },
         {
