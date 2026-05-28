@@ -18,6 +18,11 @@ enum RotationSlot {
   FLEX_3
 }
 
+enum AbsenceType {
+  ABSENT
+  REASSIGNED
+}
+
 // ─── NextAuth required models ─────────────────────────────────────────────────
 
 model Account {
@@ -143,8 +148,6 @@ model ClubSession {
   googleEventId    String?
   title            String?
   capacityOverride Int?
-  teacherAbsent     Boolean        @default(false)
-  teacherReassigned Boolean        @default(false)
   oneOffOwnerId     String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -153,8 +156,9 @@ model ClubSession {
   club             Club?                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   roomOverride     Room?                     @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
   oneOffOwner      User?                     @relation("OneOffOwner", fields: [oneOffOwnerId], references: [id], onDelete: SetNull)
-  signups          Signup[]
-  rotationCoverage SessionRotationCoverage[]
+  signups                 Signup[]
+  rotationCoverage        SessionRotationCoverage[]
+  sessionRotationAbsences SessionRotationAbsence[]
 
   @@index([flexDayId])
   @@index([clubId])
@@ -176,6 +180,18 @@ model SessionRotationCoverage {
   @@unique([sessionId, rotation])
   @@index([primaryTeacherId])
   @@index([secondaryTeacherId])
+}
+
+model SessionRotationAbsence {
+  id        String       @id @default(cuid())
+  sessionId String
+  rotation  RotationSlot
+  type      AbsenceType
+
+  session ClubSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, rotation])
+  @@index([sessionId])
 }
 
 model Signup {

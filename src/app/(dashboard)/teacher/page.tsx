@@ -67,6 +67,7 @@ export default async function TeacherDashboard() {
             orderBy: { student: { name: "asc" } },
           },
           _count: { select: { signups: true } },
+          sessionRotationAbsences: { select: { rotation: true, type: true } },
         },
       },
     },
@@ -84,8 +85,7 @@ export default async function TeacherDashboard() {
           id: true,
           rotations: true,
           title: true,
-          teacherAbsent: true,
-          teacherReassigned: true,
+          sessionRotationAbsences: { select: { rotation: true, type: true } },
           club: { select: { name: true, ownerId: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
@@ -117,8 +117,9 @@ export default async function TeacherDashboard() {
       const alreadyVolunteered =
         cov?.primaryTeacherId === userId || cov?.secondaryTeacherId === userId;
       if (alreadyVolunteered) continue;
+      const ownerAbsence = cs.sessionRotationAbsences.find((a) => a.rotation === r);
       const ownerIsAbsentPrimary =
-        (cs.teacherAbsent || cs.teacherReassigned) && cov?.primaryTeacherId === cs.club?.ownerId;
+        !!ownerAbsence && cov?.primaryTeacherId === cs.club?.ownerId;
       if (!cov || cov.primaryTeacherId === null || ownerIsAbsentPrimary) {
         openSlots.push({ rotation: r, needsPrimary: true });
       } else if (cov.secondaryTeacherId === null) {
@@ -221,12 +222,12 @@ export default async function TeacherDashboard() {
                                       Covered
                                     </span>
                                   )}
-                                  {owned && !coveredByOther && cs.teacherAbsent && (
+                                  {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "ABSENT") && (
                                     <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                                       Absent
                                     </span>
                                   )}
-                                  {owned && !coveredByOther && cs.teacherReassigned && (
+                                  {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "REASSIGNED") && (
                                     <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
                                       Covering elsewhere
                                     </span>
@@ -268,12 +269,12 @@ export default async function TeacherDashboard() {
                                   Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
                                 </p>
                               )}
-                              {owned && !coveredByOther && cs.teacherAbsent && (
+                              {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "ABSENT") && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
                                   You&apos;re marked absent — coverage is being arranged.
                                 </p>
                               )}
-                              {owned && !coveredByOther && cs.teacherReassigned && (
+                              {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "REASSIGNED") && (
                                 <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">
                                   You&apos;re covering another club — coverage for your session is being arranged.
                                 </p>

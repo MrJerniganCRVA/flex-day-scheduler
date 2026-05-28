@@ -28,6 +28,11 @@ interface Room {
   capacity: number;
 }
 
+interface RotationAbsence {
+  rotation: RotationSlot;
+  type: "ABSENT" | "REASSIGNED";
+}
+
 interface Props {
   clubId: string;
   sessionId: string;
@@ -37,8 +42,7 @@ interface Props {
   enrollmentCount: number;
   maxCapacity: number;
   capacityOverride?: number | null;
-  teacherAbsent?: boolean;
-  teacherReassigned?: boolean;
+  sessionRotationAbsences?: RotationAbsence[];
   roomOverrideId?: string | null;
   defaultRoomName?: string | null;
   signups: Signup[];
@@ -57,8 +61,7 @@ export default function SessionCard({
   enrollmentCount,
   maxCapacity,
   capacityOverride: initialCapacityOverride,
-  teacherAbsent: initialTeacherAbsent = false,
-  teacherReassigned: initialTeacherReassigned = false,
+  sessionRotationAbsences: initialAbsences = [],
   roomOverrideId: initialRoomOverrideId,
   defaultRoomName,
   signups,
@@ -75,10 +78,19 @@ export default function SessionCard({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   type TeacherStatus = "PRESENT" | "ABSENT" | "REASSIGNED";
-  const [teacherStatus, setTeacherStatus] = useState<TeacherStatus>(
-    initialTeacherAbsent ? "ABSENT" : initialTeacherReassigned ? "REASSIGNED" : "PRESENT"
-  );
+  const [absences, setAbsences] = useState<RotationAbsence[]>(initialAbsences);
   const [markingAbsent, setMarkingAbsent] = useState(false);
+
+  function getStatus(rotation: RotationSlot): TeacherStatus {
+    return (absences.find((a) => a.rotation === rotation)?.type as TeacherStatus) ?? "PRESENT";
+  }
+
+  // Overall card status: ABSENT takes priority over REASSIGNED
+  const cardStatus: TeacherStatus = absences.some((a) => a.type === "ABSENT")
+    ? "ABSENT"
+    : absences.some((a) => a.type === "REASSIGNED")
+      ? "REASSIGNED"
+      : "PRESENT";
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
@@ -145,19 +157,22 @@ export default function SessionCard({
     router.refresh();
   }
 
-  async function handleStatusChange(newStatus: TeacherStatus) {
+  async function handleStatusChange(rotation: RotationSlot, newStatus: TeacherStatus) {
+    const newAbsences: RotationAbsence[] = [
+      ...absences.filter((a) => a.rotation !== rotation),
+      ...(newStatus !== "PRESENT"
+        ? [{ rotation, type: newStatus as "ABSENT" | "REASSIGNED" }]
+        : []),
+    ];
     setMarkingAbsent(true);
     const res = await fetch(`/api/club-sessions/${sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        teacherAbsent: newStatus === "ABSENT",
-        teacherReassigned: newStatus === "REASSIGNED",
-      }),
+      body: JSON.stringify({ absences: newAbsences }),
     });
     setMarkingAbsent(false);
     if (res.ok) {
-      setTeacherStatus(newStatus);
+      setAbsences(newAbsences);
       router.refresh();
     }
   }
@@ -212,9 +227,9 @@ export default function SessionCard({
   return (
     <div
       className={`rounded-xl bg-white dark:bg-gray-900 border p-5 ${
-        teacherStatus === "ABSENT"
+        cardStatus === "ABSENT"
           ? "border-amber-300 dark:border-amber-700"
-          : teacherStatus === "REASSIGNED"
+          : cardStatus === "REASSIGNED"
             ? "border-teal-300 dark:border-teal-700"
             : "border-gray-200 dark:border-gray-700"
       }`}
@@ -412,12 +427,12 @@ export default function SessionCard({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-900 dark:text-white">{dateLabel}</span>
-                {teacherStatus === "ABSENT" && (
+                {cardStatus === "ABSENT" && (
                   <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
                     Absent
                   </span>
                 )}
-                {teacherStatus === "REASSIGNED" && (
+                {cardStatus === "REASSIGNED" && (
                   <span className="rounded-full bg-teal-100 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-700 px-2 py-0.5 text-xs font-medium">
                     Covering elsewhere
                   </span>
@@ -441,12 +456,12 @@ export default function SessionCard({
                   </span>
                 )}
               </div>
-              {teacherStatus === "ABSENT" && (
+              {cardStatus === "ABSENT" && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                   You&apos;re marked absent — the session will still run. An admin will arrange coverage.
                 </p>
               )}
-              {teacherStatus === "REASSIGNED" && (
+              {cardStatus === "REASSIGNED" && (
                 <p className="mt-1 text-xs text-teal-600 dark:text-teal-400">
                   You&apos;re covering another club — an admin will arrange coverage for your session.
                 </p>
@@ -456,22 +471,36 @@ export default function SessionCard({
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {enrollmentCount}/{displayCapacity} enrolled
               </span>
-              <select
-                value={teacherStatus}
-                onChange={(e) => handleStatusChange(e.target.value as TeacherStatus)}
-                disabled={markingAbsent}
-                className={`rounded-lg border px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 transition-colors ${
-                  teacherStatus === "ABSENT"
-                    ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"
-                    : teacherStatus === "REASSIGNED"
-                      ? "bg-teal-50 dark:bg-teal-950/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300"
-                      : "bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-                }`}
-              >
-                <option value="PRESENT">Present</option>
-                <option value="ABSENT">Absent from school</option>
-                <option value="REASSIGNED">Covering another club</option>
-              </select>
+              <div className="flex flex-col gap-1">
+                {initialRotations.map((r) => {
+                  const status = getStatus(r);
+                  return (
+                    <div key={r} className="flex items-center gap-1.5">
+                      {initialRotations.length > 1 && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500 w-10 shrink-0">
+                          {ROTATION_LABELS[r]}
+                        </span>
+                      )}
+                      <select
+                        value={status}
+                        onChange={(e) => handleStatusChange(r, e.target.value as TeacherStatus)}
+                        disabled={markingAbsent}
+                        className={`rounded-lg border px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 transition-colors ${
+                          status === "ABSENT"
+                            ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"
+                            : status === "REASSIGNED"
+                              ? "bg-teal-50 dark:bg-teal-950/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300"
+                              : "bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+                        }`}
+                      >
+                        <option value="PRESENT">Present</option>
+                        <option value="ABSENT">Absent from school</option>
+                        <option value="REASSIGNED">Covering another club</option>
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
               <button
                 type="button"
                 onClick={() => setEditing(true)}

@@ -103,20 +103,30 @@ export async function PATCH(
   if (parsed.data.rotations !== undefined) updateData.rotations = parsed.data.rotations;
   if ("roomOverrideId" in parsed.data) updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
   if ("capacityOverride" in parsed.data) updateData.capacityOverride = parsed.data.capacityOverride ?? null;
-  if (parsed.data.teacherAbsent !== undefined) updateData.teacherAbsent = parsed.data.teacherAbsent;
-  if (parsed.data.teacherReassigned !== undefined) updateData.teacherReassigned = parsed.data.teacherReassigned;
+  const { absences } = parsed.data;
 
-  const updated = await prisma.clubSession.update({
-    where: { id: sessionId },
-    data: updateData,
-    select: {
-      id: true,
-      rotations: true,
-      roomOverrideId: true,
-      capacityOverride: true,
-      teacherAbsent: true,
-      teacherReassigned: true,
-    },
+  const [updated] = await prisma.$transaction(async (tx) => {
+    if (absences !== undefined) {
+      await tx.sessionRotationAbsence.deleteMany({ where: { sessionId } });
+      if (absences.length > 0) {
+        await tx.sessionRotationAbsence.createMany({
+          data: absences.map((a) => ({ sessionId, rotation: a.rotation, type: a.type })),
+        });
+      }
+    }
+
+    const cs = await tx.clubSession.update({
+      where: { id: sessionId },
+      data: updateData,
+      select: {
+        id: true,
+        rotations: true,
+        roomOverrideId: true,
+        capacityOverride: true,
+        sessionRotationAbsences: { select: { rotation: true, type: true } },
+      },
+    });
+    return [cs];
   });
 
   return NextResponse.json(updated);
