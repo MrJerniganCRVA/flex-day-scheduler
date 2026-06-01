@@ -115,7 +115,7 @@ export default async function AdminClubsPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activities</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              One-off activities on upcoming flex days
+              One-time events on specific Flex Days — not recurring
             </p>
           </div>
         </div>

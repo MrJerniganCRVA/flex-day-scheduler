@@ -51,7 +51,7 @@ export default async function AdminFlexDaysPage({
         <div className="flex items-center gap-3">
           <Link
             href={showPast ? "/admin/flex-days" : "/admin/flex-days?showPast=1"}
-            className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             {showPast ? "Hide past" : "Show past"}
           </Link>
