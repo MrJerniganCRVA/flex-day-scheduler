@@ -41,7 +41,7 @@ export default function VolunteerButton({
         disabled={loading}
         className="rounded-lg border border-teal-400 dark:border-teal-600 px-2.5 py-1 text-xs font-medium text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40 disabled:opacity-50 transition-colors"
       >
-        {loading ? "…" : `Cover ${label}`}
+        {loading ? "…" : label === "primary" ? "Volunteer to cover (lead)" : "Volunteer to assist"}
       </button>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </div>

@@ -45,9 +45,24 @@ export default function TeacherAbsenceSelector({ flexDayId, initialAbsences }: P
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-lg bg-white/60 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
-      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide shrink-0">
-        My status:
-      </span>
+      <div className="w-full flex flex-wrap items-center gap-2 mb-2">
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 shrink-0">
+          My attendance status:
+        </span>
+        <div className="flex gap-2 flex-wrap">
+          <span className="text-xs text-gray-400 dark:text-gray-500 self-center">Mark all:</span>
+          {(["PRESENT", "ABSENT", "REASSIGNED"] as AbsenceStatus[]).map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => ALL_ROTATIONS.forEach((r) => handleChange(r, status))}
+              className="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              {status === "PRESENT" ? "Present" : status === "ABSENT" ? "Absent" : "Covering"}
+            </button>
+          ))}
+        </div>
+      </div>
       {ALL_ROTATIONS.map((rotation) => {
         const status = getStatus(rotation);
         const isSaving = saving === rotation;

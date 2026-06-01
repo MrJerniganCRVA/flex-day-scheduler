@@ -162,11 +162,13 @@ export default function ClubForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">Basic Info</p>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
           Club Name <span className="text-red-500">*</span>
         </label>
         <input
+          autoFocus
           type="text"
           required
           value={form.name}
@@ -257,14 +259,14 @@ export default function ClubForm({
         )}
       </div>
 
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-4 mb-1">Schedule</p>
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-          Default Rotations <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          When does this club meet? <span className="text-red-500">*</span>
         </label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Which rotations does this club normally run in? This club will be
-          automatically scheduled for these rotations on every flex day. This
-          can be modified later for any and all flex days if needed.
+          Choose which time blocks this club runs during.{" "}
+          <span className="text-gray-400 dark:text-gray-500">It will automatically appear on every Flex Day in the blocks you choose. You can adjust individual days later.</span>
         </p>
         <div className="space-y-2">
           {ALL_ROTATIONS.map((rotation) => (
