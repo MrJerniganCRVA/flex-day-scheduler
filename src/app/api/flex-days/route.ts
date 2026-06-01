@@ -82,6 +82,22 @@ export async function POST(request: NextRequest) {
       )
     );
 
+    // Auto-enroll required members for the newly created sessions
+    const memberships = await prisma.clubMember.findMany({
+      where: { clubId: { in: eligibleClubs.map((c) => c.id) } },
+      select: { clubId: true, studentId: true },
+    });
+    if (memberships.length > 0) {
+      await prisma.signup.createMany({
+        data: createdSessions.flatMap((s) =>
+          memberships
+            .filter((m) => m.clubId === s.clubId)
+            .map((m) => ({ studentId: m.studentId, clubSessionId: s.id, forced: true }))
+        ),
+        skipDuplicates: true,
+      });
+    }
+
     // Create Google Calendar events for each auto-scheduled session (non-blocking)
     for (let i = 0; i < sessionEntries.length; i++) {
       const { club, rotations } = sessionEntries[i];

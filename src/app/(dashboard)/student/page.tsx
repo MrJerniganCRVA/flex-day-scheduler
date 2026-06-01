@@ -35,7 +35,7 @@ export default async function StudentDashboard() {
           _count: { select: { signups: true } },
           signups: {
             where: { studentId: session.user.id },
-            select: { id: true },
+            select: { id: true, forced: true },
           },
         },
       },
@@ -91,6 +91,7 @@ export default async function StudentDashboard() {
       enrolledCount: cs._count.signups,
       capacity,
       isMySignup,
+      isForced: cs.signups[0]?.forced ?? false,
       signupId: cs.signups[0]?.id,
       isFull,
       isConflicted: !isMySignup && cs.rotations.some((r) => bookedRotations.has(r)),

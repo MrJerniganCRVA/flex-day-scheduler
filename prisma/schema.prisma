@@ -82,6 +82,7 @@ model User {
   rotCovSecondary SessionRotationCoverage[] @relation("RotCovSecondary")
   oneOffSessions  ClubSession[]             @relation("OneOffOwner")
   flexDayAbsences TeacherFlexDayAbsence[]
+  clubMemberships ClubMember[]
 
   @@index([email])
 }
@@ -135,6 +136,7 @@ model Club {
   defaultRoom      Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   defaultCoTeacher User?         @relation("ClubCoTeacher", fields: [defaultCoTeacherId], references: [id], onDelete: SetNull)
   clubSessions     ClubSession[]
+  members          ClubMember[]
 
   @@index([ownerId])
   @@index([defaultRoomId])
@@ -203,6 +205,7 @@ model Signup {
   studentId     String
   clubSessionId String
   attended      Boolean?
+  forced        Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -211,4 +214,18 @@ model Signup {
   @@unique([studentId, clubSessionId])
   @@index([studentId])
   @@index([clubSessionId])
+}
+
+model ClubMember {
+  id        String   @id @default(cuid())
+  clubId    String
+  studentId String
+  createdAt DateTime @default(now())
+
+  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, studentId])
+  @@index([clubId])
+  @@index([studentId])
 }

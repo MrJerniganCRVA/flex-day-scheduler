@@ -148,7 +148,13 @@ export default async function MySignupsPage() {
                   )}
                   {showCancel && (
                     <td className="px-4 py-3 text-right">
-                      <CancelButton signupId={signup.id} disabled={deadlinePast} />
+                      {signup.forced ? (
+                        <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                          Required
+                        </span>
+                      ) : (
+                        <CancelButton signupId={signup.id} disabled={deadlinePast} />
+                      )}
                     </td>
                   )}
                 </tr>

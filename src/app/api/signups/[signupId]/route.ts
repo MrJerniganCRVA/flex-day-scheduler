@@ -37,6 +37,14 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Students cannot cancel required signups
+  if (signup.forced && session.user.role === "STUDENT") {
+    return NextResponse.json(
+      { error: "This signup is required and cannot be cancelled" },
+      { status: 403 }
+    );
+  }
+
   // Enforce deadline for students (admins can override)
   if (
     session.user.role !== "ADMIN" &&
