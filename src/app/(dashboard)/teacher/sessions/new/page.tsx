@@ -28,7 +28,10 @@ export default async function NewSessionPage({
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         New Activity
       </h1>
-      <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">An activity is a "one-off" Flex Day Activity that doesn't rise to the level of club, but a teacher still wants to host. Making an Activity will not automatically populate to all Flex Days. For an Activity, that you want to happen over multiple Flex Days, consider making a Club.</p>
+      <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700 px-4 py-3 mb-4 text-sm text-amber-800 dark:text-amber-300">
+        Use this for a one-time event on a single Flex Day — like a study session, tournament, or guest speaker.{" "}
+        <span className="font-medium">If you run this activity every Flex Day, create a Club instead.</span>
+      </div>
       <OneOffForm
         flexDays={flexDays}
         preselectedFlexDayId={preselectedFlexDayId}

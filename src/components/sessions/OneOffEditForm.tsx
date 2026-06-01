@@ -56,6 +56,13 @@ export default function OneOffEditForm({
       .finally(() => setLoadingRooms(false));
   }, [initialRoomId]);
 
+  useEffect(() => {
+    const room = rooms.find((r) => r.id === roomOverrideId);
+    if (room && Number(capacity) > room.capacity) {
+      setCapacity(room.capacity);
+    }
+  }, [roomOverrideId, rooms]);
+
   function toggleRotation(r: RotationSlot) {
     setRotations((prev) =>
       prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]

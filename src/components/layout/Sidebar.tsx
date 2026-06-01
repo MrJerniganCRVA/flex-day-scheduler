@@ -13,8 +13,7 @@ const studentNav: NavItem[] = [
 
 const teacherNav: NavItem[] = [
   { label: "Dashboard", href: "/teacher", exact: true },
-  { label: "Clubs", href: "/teacher/clubs" },
-  { label: "New Activity", href: "/teacher/sessions/new" },
+  { label: "Clubs & Activities", href: "/teacher/clubs" },
 ];
 
 const adminNav: NavItem[] = [
