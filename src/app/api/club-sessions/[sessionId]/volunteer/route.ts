@@ -94,13 +94,13 @@ export async function POST(
     return NextResponse.json({ error: "Already volunteered for this slot" }, { status: 409 });
   }
 
-  // Bug 2: block absent/reassigned teachers from volunteering in this rotation
+  // Block absent teachers from volunteering — REASSIGNED teachers can still cover other sessions
   const ownAbsence = await prisma.teacherFlexDayAbsence.findFirst({
-    where: { userId, flexDayId: clubSession.flexDayId, rotation },
+    where: { userId, flexDayId: clubSession.flexDayId, rotation, type: "ABSENT" },
   });
   if (ownAbsence) {
     return NextResponse.json(
-      { error: "You are marked absent or covering another club for this rotation" },
+      { error: "You are marked absent from school for this rotation" },
       { status: 409 }
     );
   }
