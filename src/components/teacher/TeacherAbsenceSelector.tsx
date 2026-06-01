@@ -68,7 +68,7 @@ export default function TeacherAbsenceSelector({ flexDayId, initialAbsences }: P
             >
               <option value="PRESENT">Present</option>
               <option value="ABSENT">Absent from school</option>
-              <option value="REASSIGNED">Covering another club</option>
+              <option value="REASSIGNED">Running other activity</option>
             </select>
           </div>
         );
