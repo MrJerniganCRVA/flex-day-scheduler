@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 interface FinalizeButtonProps {
   flexDayId: string;
   isFinalized: boolean;
+  uncoveredCount?: number;
 }
 
 export default function FinalizeButton({
   flexDayId,
   isFinalized,
+  uncoveredCount = 0,
 }: FinalizeButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -67,11 +69,11 @@ export default function FinalizeButton({
           </button>
         ) : (
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-600 dark:text-gray-300">Revert to unfinalized?</span>
+            <span className="text-gray-600 dark:text-gray-300">Mark as unfinalized? Calendar invites already sent will not be recalled.</span>
             <button
               onClick={handleUnfinalize}
               disabled={isPending}
-              className="font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+              className="font-medium text-gray-700 dark:text-gray-200 hover:underline disabled:opacity-50"
             >
               Yes
             </button>
@@ -92,7 +94,13 @@ export default function FinalizeButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-2">
+      {uncoveredCount > 0 && (
+        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 max-w-xs text-right">
+          ⚠ {uncoveredCount} session{uncoveredCount !== 1 ? "s" : ""} have absent teachers.{" "}
+          <a href="/admin/coverage" className="underline font-medium">Check Coverage</a> before finalizing.
+        </div>
+      )}
       <button
         onClick={handleFinalize}
         disabled={isPending}

@@ -228,6 +228,13 @@ export default function CoverageDashboard({
       .sort((a, b) => b.freeCount - a.freeCount);
   }, [teachers, clubs, assignments]);
 
+  const totalNeeds = clubs.filter((c) =>
+    c.rotations.some((r) => urgencyOf(c, assignments[c.sessionId]?.[r]) === "needs")
+  ).length;
+  const totalConsider = clubs.filter((c) =>
+    c.rotations.some((r) => urgencyOf(c, assignments[c.sessionId]?.[r]) === "consider")
+  ).length;
+
   return (
     <div>
       <div className="mb-6">
@@ -237,6 +244,27 @@ export default function CoverageDashboard({
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {flexDayLabel}
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {totalNeeds === 0 && totalConsider === 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-medium">
+            All sessions covered ✓
+          </span>
+        ) : (
+          <>
+            {totalNeeds > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-3 py-1 text-xs font-medium">
+                {totalNeeds} session{totalNeeds !== 1 ? "s" : ""} need a lead teacher
+              </span>
+            )}
+            {totalConsider > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-1 text-xs font-medium">
+                {totalConsider} large class{totalConsider !== 1 ? "es" : ""} without an assistant
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex gap-5">
@@ -330,7 +358,7 @@ export default function CoverageDashboard({
                       )}
                       {grouped.consider.length > 0 && (
                         <>
-                          <SectionLabel label="Consider 2nd" color="amber" />
+                          <SectionLabel label="Large class — consider adding Asst" color="amber" />
                           {grouped.consider.map((club) => (
                             <ClubCard
                               key={club.sessionId}
@@ -576,6 +604,7 @@ function ClubCard({
           {statusIndicator}
           {club.studentCount > 0 && (
             <span
+              title={isHighEnrollment ? "≥20 students — consider adding an assistant teacher" : undefined}
               className={`text-xs ${
                 isHighEnrollment
                   ? "text-red-600 dark:text-red-400 font-semibold"
@@ -589,7 +618,7 @@ function ClubCard({
       </div>
       <div className="space-y-1.5">
         <TeacherDropdown
-          label="T1"
+          label="Lead"
           value={assignment.t1}
           options={availableTeachers("t1")}
           currentTeacher={
@@ -601,7 +630,7 @@ function ClubCard({
           onChange={(v) => onAssign("t1", v)}
         />
         <TeacherDropdown
-          label="T2"
+          label="Asst"
           value={assignment.t2}
           options={availableTeachers("t2")}
           currentTeacher={
@@ -645,7 +674,7 @@ function TeacherDropdown({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-5 shrink-0">
+      <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
         {label}
       </span>
       <select

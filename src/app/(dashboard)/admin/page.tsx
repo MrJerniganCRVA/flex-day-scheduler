@@ -105,12 +105,18 @@ export default async function AdminDashboard() {
             ))}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800">
+          <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800 flex items-center gap-3 flex-wrap">
             <Link
               href={`/admin/flex-days/${nextFlexDay.id}`}
               className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
             >
               View full details →
+            </Link>
+            <Link
+              href="/admin/coverage"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300 dark:border-teal-700 px-3 py-1.5 text-sm font-medium text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+            >
+              Manage Coverage →
             </Link>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import RoleSelect from "@/components/admin/RoleSelect";
 import DeleteUserButton from "@/components/admin/DeleteUserButton";
+import UserSearchTable from "@/components/admin/UserSearchTable";
 
 export default async function AdminUsersPage({
   searchParams,
@@ -117,39 +118,61 @@ export default async function AdminUsersPage({
       </h1>
 
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
-        {tabs.map((t) => (
-          <Link
-            key={t}
-            href={`?tab=${t}`}
-            className={
-              tab === t
-                ? "px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px"
-                : "px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }
-          >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </Link>
-        ))}
+        {tabs.map((t) => {
+          const count =
+            t === "students" && tab === "students"
+              ? students.length
+              : t === "teachers" && tab === "teachers"
+                ? teachers.length
+                : t === "admins" && tab === "admins"
+                  ? admins.length
+                  : null;
+          return (
+            <Link
+              key={t}
+              href={`?tab=${t}`}
+              className={
+                tab === t
+                  ? "px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px"
+                  : "px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              }
+            >
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {count !== null && (
+                <span className="ml-1.5 text-xs opacity-60">({count})</span>
+              )}
+            </Link>
+          );
+        })}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Email</th>
-              {tab === "students" && nextFlexDay && (
-                <th className="px-4 py-3 text-left">{flexDayLabel}</th>
-              )}
-              {tab === "teachers" && (
-                <th className="px-4 py-3 text-left">Club(s)</th>
-              )}
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-            {tab === "students" &&
-              students.map((user) => (
+        {tab === "teachers" ? (
+          <UserSearchTable
+            users={teachers}
+            tab="teachers"
+            currentUserId={session.user.id!}
+          />
+        ) : tab === "admins" ? (
+          <UserSearchTable
+            users={admins}
+            tab="admins"
+            currentUserId={session.user.id!}
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-3 text-left">Name</th>
+                <th className="px-4 py-3 text-left">Email</th>
+                {nextFlexDay && (
+                  <th className="px-4 py-3 text-left">{flexDayLabel}</th>
+                )}
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+              {students.map((user) => (
                 <tr
                   key={user.id}
                   className="hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -187,83 +210,9 @@ export default async function AdminUsersPage({
                   </td>
                 </tr>
               ))}
-
-            {tab === "teachers" &&
-              teachers.map((user) => (
-                <tr
-                  key={user.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                    {user.name}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    {user.email}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                    {user.clubsOwned.length === 0 ? (
-                      <span className="text-gray-400 dark:text-gray-500">—</span>
-                    ) : (
-                      user.clubsOwned.map((club, i) => (
-                        <span key={club.id}>
-                          {i > 0 && (
-                            <span className="text-gray-300 dark:text-gray-600">
-                              ,{" "}
-                            </span>
-                          )}
-                          <Link
-                            href={`/admin/clubs/${club.id}`}
-                            className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
-                          >
-                            {club.name}
-                          </Link>
-                        </span>
-                      ))
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <RoleSelect
-                        userId={user.id}
-                        currentRole={user.role as "STUDENT" | "TEACHER" | "ADMIN"}
-                        isSelf={user.id === session.user.id}
-                      />
-                      {user.id !== session.user.id && (
-                        <DeleteUserButton userId={user.id} />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-            {tab === "admins" &&
-              admins.map((user) => (
-                <tr
-                  key={user.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                    {user.name}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    {user.email}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <RoleSelect
-                        userId={user.id}
-                        currentRole={user.role as "STUDENT" | "TEACHER" | "ADMIN"}
-                        isSelf={user.id === session.user.id}
-                      />
-                      {user.id !== session.user.id && (
-                        <DeleteUserButton userId={user.id} />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

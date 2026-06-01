@@ -201,11 +201,11 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
       ) : (
         <>
           {/* How it works */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-2">
+          <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
+            <summary className="font-semibold text-gray-900 dark:text-white text-sm cursor-pointer select-none">
               How auto-assign works
-            </h3>
-            <ul className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+            </summary>
+            <ul className="mt-3 space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
               <li>• Only fills rotations a student has not already signed up for</li>
               <li>• Clubs with more open seats are weighted higher</li>
               <li>• Each student is guaranteed at least 2 different clubs across the day</li>
@@ -213,7 +213,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
               <li>• Excluded clubs are never randomly assigned</li>
               <li>• If no eligible session exists for a slot, it is left unassigned</li>
             </ul>
-          </div>
+          </details>
 
           {/* Proposed placements — admin reviews before confirming */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
@@ -297,7 +297,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                   Create {preview.proposedAssignments.length} signup{preview.proposedAssignments.length !== 1 ? "s" : ""} exactly as shown above?
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  This cannot be undone automatically. Use &ldquo;Regenerate&rdquo; first if you want different placements.
+                  Signups created here can only be removed individually. Use &ldquo;Regenerate&rdquo; first if you want different placements.
                 </p>
                 <div className="flex gap-2">
                   <button

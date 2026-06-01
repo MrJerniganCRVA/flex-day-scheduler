@@ -26,6 +26,7 @@ export default function DeleteUserButton({ userId }: { userId: string }) {
   if (confirming) {
     return (
       <div className="flex flex-col gap-1">
+        <span className="text-xs text-gray-600 dark:text-gray-300">Delete this user?</span>
         <div className="flex items-center gap-1">
           <button
             onClick={handleDelete}
@@ -54,7 +55,7 @@ export default function DeleteUserButton({ userId }: { userId: string }) {
       onClick={() => setConfirming(true)}
       className="text-xs text-red-500 dark:text-red-400 hover:underline"
     >
-      Remove
+      Delete
     </button>
   );
 }
