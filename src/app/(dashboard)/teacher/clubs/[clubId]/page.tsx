@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import SessionCard from "@/components/sessions/SessionCard";
+import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@/types";
 
@@ -31,6 +32,10 @@ export default async function ClubDetailPage({
       owner: { select: { id: true, name: true } },
       defaultRoom: { select: { id: true, name: true } },
       defaultCoTeacher: { select: { id: true, name: true } },
+      members: {
+        include: { student: { select: { id: true, name: true, email: true } } },
+        orderBy: { student: { name: "asc" } },
+      },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
         include: {
@@ -195,6 +200,12 @@ export default async function ClubDetailPage({
           )}
         </div>
       </div>
+
+      {/* ── Required Members ───────────────────────────────────────── */}
+      <RequiredMembersPanel
+        clubId={clubId}
+        initialMembers={club.members}
+      />
 
       {/* ── Upcoming Flex Days ──────────────────────────────────────── */}
       <div>
