@@ -16,6 +16,7 @@ export default async function AdminCoveragePage() {
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
     include: {
+      teacherAbsences: { select: { userId: true, rotation: true, type: true } },
       clubSessions: {
         include: {
           club: {
@@ -35,9 +36,6 @@ export default async function AdminCoveragePage() {
               primaryTeacherId: true,
               secondaryTeacherId: true,
             },
-          },
-          sessionRotationAbsences: {
-            select: { rotation: true, type: true },
           },
         },
       },
@@ -73,44 +71,51 @@ export default async function AdminCoveragePage() {
   const absentTeacherIds = [
     ...new Set(
       nextFlexDay.clubSessions
-        .filter(
-          (cs) =>
-            cs.rotations.length > 0 &&
-            cs.rotations.every((r) =>
-              cs.sessionRotationAbsences.some((a) => a.rotation === r && a.type === "ABSENT")
+        .filter((cs) => {
+          const ownerId = cs.club?.ownerId ?? cs.oneOffOwner?.id;
+          if (!ownerId || cs.rotations.length === 0) return false;
+          return cs.rotations.every((r) =>
+            nextFlexDay.teacherAbsences.some(
+              (a) => a.userId === ownerId && a.rotation === r && a.type === "ABSENT"
             )
-        )
+          );
+        })
         .flatMap((cs) =>
           [cs.club?.ownerId, cs.oneOffOwner?.id].filter(Boolean) as string[]
         )
     ),
   ];
 
-  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => ({
-    sessionId: cs.id,
-    clubId: cs.club?.id ?? null,
-    name: cs.club?.name ?? cs.title ?? "Untitled Activity",
-    ownerId: cs.club?.ownerId ?? cs.oneOffOwner?.id ?? "",
-    ownerName: cs.club?.owner.name ?? cs.oneOffOwner?.name ?? "Unknown",
-    rotations: cs.rotations,
-    studentCount: cs._count.signups,
-    sessionRotationAbsences: cs.sessionRotationAbsences,
-    defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
-    coverage: Object.fromEntries(
-      cs.rotationCoverage.map((rc) => [
-        rc.rotation,
-        {
-          primaryTeacherId: rc.primaryTeacherId,
-          secondaryTeacherId: rc.secondaryTeacherId,
-        },
-      ])
-    ) as Partial<
-      Record<
-        RotationSlot,
-        { primaryTeacherId: string | null; secondaryTeacherId: string | null }
-      >
-    >,
-  }));
+  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => {
+    const ownerId = cs.club?.ownerId ?? cs.oneOffOwner?.id ?? "";
+    return {
+      sessionId: cs.id,
+      clubId: cs.club?.id ?? null,
+      name: cs.club?.name ?? cs.title ?? "Untitled Activity",
+      ownerId,
+      ownerName: cs.club?.owner.name ?? cs.oneOffOwner?.name ?? "Unknown",
+      rotations: cs.rotations,
+      studentCount: cs._count.signups,
+      ownerAbsentRotations: cs.rotations.filter((r) =>
+        nextFlexDay.teacherAbsences.some((a) => a.userId === ownerId && a.rotation === r)
+      ),
+      defaultCoTeacherId: cs.club?.defaultCoTeacherId ?? null,
+      coverage: Object.fromEntries(
+        cs.rotationCoverage.map((rc) => [
+          rc.rotation,
+          {
+            primaryTeacherId: rc.primaryTeacherId,
+            secondaryTeacherId: rc.secondaryTeacherId,
+          },
+        ])
+      ) as Partial<
+        Record<
+          RotationSlot,
+          { primaryTeacherId: string | null; secondaryTeacherId: string | null }
+        >
+      >,
+    };
+  });
 
   const flexDayLabel = nextFlexDay.label
     ? nextFlexDay.label

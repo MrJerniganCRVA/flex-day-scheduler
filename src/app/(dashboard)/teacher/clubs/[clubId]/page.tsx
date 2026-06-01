@@ -34,14 +34,23 @@ export default async function ClubDetailPage({
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
         include: {
-          flexDay: { select: { id: true, date: true, label: true } },
+          flexDay: {
+            select: {
+              id: true,
+              date: true,
+              label: true,
+              teacherAbsences: {
+                where: { userId: session.user.id },
+                select: { rotation: true, type: true },
+              },
+            },
+          },
           _count: { select: { signups: true } },
           signups: {
             include: {
               student: { select: { id: true, name: true, email: true } },
             },
           },
-          sessionRotationAbsences: { select: { rotation: true, type: true } },
         },
       },
     },
@@ -210,7 +219,7 @@ export default async function ClubDetailPage({
                 enrollmentCount={cs._count.signups}
                 maxCapacity={club.maxCapacity}
                 capacityOverride={cs.capacityOverride}
-                sessionRotationAbsences={cs.sessionRotationAbsences}
+                teacherAbsences={cs.flexDay.teacherAbsences}
                 roomOverrideId={cs.roomOverrideId}
                 defaultRoomName={club.defaultRoom?.name ?? null}
                 signups={cs.signups}

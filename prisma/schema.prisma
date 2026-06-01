@@ -81,6 +81,7 @@ model User {
   rotCovPrimary   SessionRotationCoverage[] @relation("RotCovPrimary")
   rotCovSecondary SessionRotationCoverage[] @relation("RotCovSecondary")
   oneOffSessions  ClubSession[]             @relation("OneOffOwner")
+  flexDayAbsences TeacherFlexDayAbsence[]
 
   @@index([email])
 }
@@ -94,7 +95,8 @@ model FlexDay {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  clubSessions ClubSession[]
+  clubSessions    ClubSession[]
+  teacherAbsences TeacherFlexDayAbsence[]
 
   @@unique([date])
   @@index([date])
@@ -156,9 +158,8 @@ model ClubSession {
   club             Club?                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   roomOverride     Room?                     @relation("SessionRoom", fields: [roomOverrideId], references: [id], onDelete: SetNull)
   oneOffOwner      User?                     @relation("OneOffOwner", fields: [oneOffOwnerId], references: [id], onDelete: SetNull)
-  signups                 Signup[]
-  rotationCoverage        SessionRotationCoverage[]
-  sessionRotationAbsences SessionRotationAbsence[]
+  signups          Signup[]
+  rotationCoverage SessionRotationCoverage[]
 
   @@index([flexDayId])
   @@index([clubId])
@@ -182,16 +183,19 @@ model SessionRotationCoverage {
   @@index([secondaryTeacherId])
 }
 
-model SessionRotationAbsence {
+model TeacherFlexDayAbsence {
   id        String       @id @default(cuid())
-  sessionId String
+  userId    String
+  flexDayId String
   rotation  RotationSlot
   type      AbsenceType
 
-  session ClubSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId],    references: [id], onDelete: Cascade)
+  flexDay FlexDay @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionId, rotation])
-  @@index([sessionId])
+  @@unique([userId, flexDayId, rotation])
+  @@index([userId])
+  @@index([flexDayId])
 }
 
 model Signup {

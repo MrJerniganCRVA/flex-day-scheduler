@@ -28,11 +28,6 @@ interface Room {
   capacity: number;
 }
 
-interface RotationAbsence {
-  rotation: RotationSlot;
-  type: "ABSENT" | "REASSIGNED";
-}
-
 interface Props {
   clubId: string;
   sessionId: string;
@@ -42,7 +37,7 @@ interface Props {
   enrollmentCount: number;
   maxCapacity: number;
   capacityOverride?: number | null;
-  sessionRotationAbsences?: RotationAbsence[];
+  teacherAbsences?: { rotation: RotationSlot; type: string }[];
   roomOverrideId?: string | null;
   defaultRoomName?: string | null;
   signups: Signup[];
@@ -61,7 +56,7 @@ export default function SessionCard({
   enrollmentCount,
   maxCapacity,
   capacityOverride: initialCapacityOverride,
-  sessionRotationAbsences: initialAbsences = [],
+  teacherAbsences = [],
   roomOverrideId: initialRoomOverrideId,
   defaultRoomName,
   signups,
@@ -78,17 +73,11 @@ export default function SessionCard({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   type TeacherStatus = "PRESENT" | "ABSENT" | "REASSIGNED";
-  const [absences, setAbsences] = useState<RotationAbsence[]>(initialAbsences);
-  const [markingAbsent, setMarkingAbsent] = useState(false);
 
-  function getStatus(rotation: RotationSlot): TeacherStatus {
-    return (absences.find((a) => a.rotation === rotation)?.type as TeacherStatus) ?? "PRESENT";
-  }
-
-  // Overall card status: ABSENT takes priority over REASSIGNED
-  const cardStatus: TeacherStatus = absences.some((a) => a.type === "ABSENT")
+  // Overall card status derived from teacherAbsences prop (read-only)
+  const cardStatus: TeacherStatus = teacherAbsences.some((a) => a.type === "ABSENT")
     ? "ABSENT"
-    : absences.some((a) => a.type === "REASSIGNED")
+    : teacherAbsences.some((a) => a.type === "REASSIGNED")
       ? "REASSIGNED"
       : "PRESENT";
 
@@ -155,26 +144,6 @@ export default function SessionCard({
     }
     setEditing(false);
     router.refresh();
-  }
-
-  async function handleStatusChange(rotation: RotationSlot, newStatus: TeacherStatus) {
-    const newAbsences: RotationAbsence[] = [
-      ...absences.filter((a) => a.rotation !== rotation),
-      ...(newStatus !== "PRESENT"
-        ? [{ rotation, type: newStatus as "ABSENT" | "REASSIGNED" }]
-        : []),
-    ];
-    setMarkingAbsent(true);
-    const res = await fetch(`/api/club-sessions/${sessionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ absences: newAbsences }),
-    });
-    setMarkingAbsent(false);
-    if (res.ok) {
-      setAbsences(newAbsences);
-      router.refresh();
-    }
   }
 
   async function handleSplit() {
@@ -471,36 +440,6 @@ export default function SessionCard({
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {enrollmentCount}/{displayCapacity} enrolled
               </span>
-              <div className="flex flex-col gap-1">
-                {initialRotations.map((r) => {
-                  const status = getStatus(r);
-                  return (
-                    <div key={r} className="flex items-center gap-1.5">
-                      {initialRotations.length > 1 && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500 w-10 shrink-0">
-                          {ROTATION_LABELS[r]}
-                        </span>
-                      )}
-                      <select
-                        value={status}
-                        onChange={(e) => handleStatusChange(r, e.target.value as TeacherStatus)}
-                        disabled={markingAbsent}
-                        className={`rounded-lg border px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 transition-colors ${
-                          status === "ABSENT"
-                            ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"
-                            : status === "REASSIGNED"
-                              ? "bg-teal-50 dark:bg-teal-950/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300"
-                              : "bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-                        }`}
-                      >
-                        <option value="PRESENT">Present</option>
-                        <option value="ABSENT">Absent from school</option>
-                        <option value="REASSIGNED">Covering another club</option>
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
               <button
                 type="button"
                 onClick={() => setEditing(true)}
