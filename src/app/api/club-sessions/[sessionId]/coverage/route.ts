@@ -77,12 +77,12 @@ export async function PATCH(
             // Owner is physically present only if no absence record and no explicit T1 override
             {
               club: { ownerId: teacherId },
-              sessionRotationAbsences: { none: { rotation } },
+              flexDay: { teacherAbsences: { none: { userId: teacherId, rotation } } },
               rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
             },
             {
               oneOffOwnerId: teacherId,
-              sessionRotationAbsences: { none: { rotation } },
+              flexDay: { teacherAbsences: { none: { userId: teacherId, rotation } } },
               rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
             },
             // Explicitly assigned as T1 or T2 via coverage record

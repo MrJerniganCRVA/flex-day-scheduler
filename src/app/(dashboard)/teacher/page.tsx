@@ -7,6 +7,7 @@ import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import VolunteerButton from "@/components/sessions/VolunteerButton";
 import StopCoveringButton from "@/components/sessions/StopCoveringButton";
+import TeacherAbsenceSelector from "@/components/teacher/TeacherAbsenceSelector";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -22,6 +23,7 @@ export default async function TeacherDashboard() {
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
     include: {
+      teacherAbsences: { select: { userId: true, rotation: true, type: true } },
       clubSessions: {
         where: {
           OR: [
@@ -67,7 +69,6 @@ export default async function TeacherDashboard() {
             orderBy: { student: { name: "asc" } },
           },
           _count: { select: { signups: true } },
-          sessionRotationAbsences: { select: { rotation: true, type: true } },
         },
       },
     },
@@ -85,7 +86,6 @@ export default async function TeacherDashboard() {
           id: true,
           rotations: true,
           title: true,
-          sessionRotationAbsences: { select: { rotation: true, type: true } },
           club: { select: { name: true, ownerId: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
@@ -117,9 +117,9 @@ export default async function TeacherDashboard() {
       const alreadyVolunteered =
         cov?.primaryTeacherId === userId || cov?.secondaryTeacherId === userId;
       if (alreadyVolunteered) continue;
-      const ownerAbsence = cs.sessionRotationAbsences.find((a) => a.rotation === r);
       const ownerIsAbsentPrimary =
-        !!ownerAbsence && cov?.primaryTeacherId === cs.club?.ownerId;
+        nextFlexDay!.teacherAbsences.some((a) => a.userId === cs.club?.ownerId && a.rotation === r) &&
+        cov?.primaryTeacherId === cs.club?.ownerId;
       if (!cov || cov.primaryTeacherId === null || ownerIsAbsentPrimary) {
         openSlots.push({ rotation: r, needsPrimary: true });
       } else if (cov.secondaryTeacherId === null) {
@@ -156,9 +156,16 @@ export default async function TeacherDashboard() {
               })}
             </h2>
             {nextFlexDay.label && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 {nextFlexDay.label}
               </p>
+            )}
+
+            {session.user.role !== "STUDENT" && (
+              <TeacherAbsenceSelector
+                flexDayId={nextFlexDay.id}
+                initialAbsences={nextFlexDay.teacherAbsences.filter((a) => a.userId === userId)}
+              />
             )}
 
             <div className="grid gap-4 sm:grid-cols-3 mt-3">
@@ -202,6 +209,13 @@ export default async function TeacherDashboard() {
                             owned &&
                             coverageForSlot?.primaryTeacherId != null &&
                             coverageForSlot.primaryTeacherId !== userId;
+                          const ownerIdForSession = cs.club?.ownerId ?? cs.oneOffOwnerId;
+                          const isAbsent = nextFlexDay.teacherAbsences.some(
+                            (a) => a.userId === ownerIdForSession && a.rotation === slot && a.type === "ABSENT"
+                          );
+                          const isReassigned = nextFlexDay.teacherAbsences.some(
+                            (a) => a.userId === ownerIdForSession && a.rotation === slot && a.type === "REASSIGNED"
+                          );
                           return (
                             <div key={cs.id} className="px-4 py-4">
                               <div className="flex items-start justify-between gap-2 mb-1">
@@ -222,12 +236,12 @@ export default async function TeacherDashboard() {
                                       Covered
                                     </span>
                                   )}
-                                  {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "ABSENT") && (
+                                  {owned && !coveredByOther && isAbsent && (
                                     <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                                       Absent
                                     </span>
                                   )}
-                                  {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "REASSIGNED") && (
+                                  {owned && !coveredByOther && isReassigned && (
                                     <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
                                       Covering elsewhere
                                     </span>
@@ -269,12 +283,12 @@ export default async function TeacherDashboard() {
                                   Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
                                 </p>
                               )}
-                              {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "ABSENT") && (
+                              {owned && !coveredByOther && isAbsent && (
                                 <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
                                   You&apos;re marked absent — coverage is being arranged.
                                 </p>
                               )}
-                              {owned && !coveredByOther && cs.sessionRotationAbsences.some((a) => a.rotation === slot && a.type === "REASSIGNED") && (
+                              {owned && !coveredByOther && isReassigned && (
                                 <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">
                                   You&apos;re covering another club — coverage for your session is being arranged.
                                 </p>

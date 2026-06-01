@@ -27,7 +27,7 @@ export type CoverageClub = {
   ownerName: string;
   rotations: RotationSlot[];
   studentCount: number;
-  sessionRotationAbsences?: { rotation: RotationSlot; type: string }[];
+  ownerAbsentRotations: RotationSlot[];
   defaultCoTeacherId?: string | null;
   coverage: Partial<
     Record<
@@ -77,16 +77,13 @@ export default function CoverageDashboard({
         c.sessionId,
         Object.fromEntries(
           c.rotations.map((r) => {
-            const absenceForRotation = c.sessionRotationAbsences?.find(
-              (a) => a.rotation === r
-            );
             return [
               r,
               {
                 t1:
                   c.coverage[r] !== undefined
                     ? c.coverage[r].primaryTeacherId
-                    : absenceForRotation
+                    : c.ownerAbsentRotations.includes(r)
                       ? null
                       : c.ownerId,
                 t2:

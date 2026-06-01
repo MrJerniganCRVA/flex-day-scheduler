@@ -23,10 +23,11 @@ export default async function AdminFlexDayDetailPage({
   const flexDay = await prisma.flexDay.findUnique({
     where: { id: flexDayId },
     include: {
+      teacherAbsences: { select: { userId: true, rotation: true } },
       clubSessions: {
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true },
+            select: { id: true, name: true, maxCapacity: true, ownerId: true },
           },
           oneOffOwner: { select: { id: true, name: true } },
           signups: {
@@ -37,7 +38,6 @@ export default async function AdminFlexDayDetailPage({
             },
           },
           _count: { select: { signups: true } },
-          sessionRotationAbsences: { select: { rotation: true, type: true } },
         },
       },
     },
@@ -132,7 +132,13 @@ export default async function AdminFlexDayDetailPage({
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
                                 {cs.title ?? cs.club?.name ?? "Session"}
                               </span>
-                              {cs.sessionRotationAbsences.length > 0 && (
+                              {cs.rotations.some((r) =>
+                                flexDay.teacherAbsences.some(
+                                  (a) =>
+                                    a.userId === (cs.club?.ownerId ?? cs.oneOffOwner?.id) &&
+                                    a.rotation === r
+                                )
+                              ) && (
                                 <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
                                   Coverage Needed
                                 </span>

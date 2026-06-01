@@ -95,15 +95,8 @@ export async function POST(
   }
 
   // Bug 2: block absent/reassigned teachers from volunteering in this rotation
-  const ownAbsence = await prisma.sessionRotationAbsence.findFirst({
-    where: {
-      rotation,
-      session: {
-        flexDayId: clubSession.flexDayId,
-        rotations: { has: rotation },
-        OR: [{ club: { ownerId: userId } }, { oneOffOwnerId: userId }],
-      },
-    },
+  const ownAbsence = await prisma.teacherFlexDayAbsence.findFirst({
+    where: { userId, flexDayId: clubSession.flexDayId, rotation },
   });
   if (ownAbsence) {
     return NextResponse.json(
@@ -121,12 +114,12 @@ export async function POST(
       OR: [
         {
           club: { ownerId: userId },
-          sessionRotationAbsences: { none: { rotation } },
+          flexDay: { teacherAbsences: { none: { userId, rotation } } },
           rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
         },
         {
           oneOffOwnerId: userId,
-          sessionRotationAbsences: { none: { rotation } },
+          flexDay: { teacherAbsences: { none: { userId, rotation } } },
           rotationCoverage: { none: { rotation, primaryTeacherId: { not: null } } },
         },
         {

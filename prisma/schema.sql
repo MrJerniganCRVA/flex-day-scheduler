@@ -118,15 +118,19 @@ CREATE TABLE "ClubSession" (
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- SessionRotationAbsence (depends on ClubSession)
-CREATE TABLE "SessionRotationAbsence" (
+-- TeacherFlexDayAbsence (depends on User, FlexDay)
+CREATE TABLE "TeacherFlexDayAbsence" (
   "id"        TEXT           NOT NULL,
-  "sessionId" TEXT           NOT NULL,
+  "userId"    TEXT           NOT NULL,
+  "flexDayId" TEXT           NOT NULL,
   "rotation"  "RotationSlot" NOT NULL,
   "type"      "AbsenceType"  NOT NULL,
-  CONSTRAINT "SessionRotationAbsence_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "SessionRotationAbsence_sessionId_fkey"
-    FOREIGN KEY ("sessionId") REFERENCES "ClubSession"("id")
+  CONSTRAINT "TeacherFlexDayAbsence_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "TeacherFlexDayAbsence_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES "User"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "TeacherFlexDayAbsence_flexDayId_fkey"
+    FOREIGN KEY ("flexDayId") REFERENCES "FlexDay"("id")
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -163,8 +167,8 @@ CREATE UNIQUE INDEX "Club_googleCalendarId_key"
   ON "Club"("googleCalendarId");
 CREATE UNIQUE INDEX "Signup_studentId_clubSessionId_key"
   ON "Signup"("studentId", "clubSessionId");
-CREATE UNIQUE INDEX "SessionRotationAbsence_sessionId_rotation_key"
-  ON "SessionRotationAbsence"("sessionId", "rotation");
+CREATE UNIQUE INDEX "TeacherFlexDayAbsence_userId_flexDayId_rotation_key"
+  ON "TeacherFlexDayAbsence"("userId", "flexDayId", "rotation");
 
 -- ─── Regular indexes ─────────────────────────────────────────────────────────
 
@@ -173,8 +177,9 @@ CREATE INDEX "FlexDay_date_idx"          ON "FlexDay"("date");
 CREATE INDEX "Club_ownerId_idx"          ON "Club"("ownerId");
 CREATE INDEX "ClubSession_flexDayId_idx" ON "ClubSession"("flexDayId");
 CREATE INDEX "ClubSession_clubId_idx"    ON "ClubSession"("clubId");
-CREATE INDEX "Signup_studentId_idx"                        ON "Signup"("studentId");
-CREATE INDEX "Signup_clubSessionId_idx"                    ON "Signup"("clubSessionId");
-CREATE INDEX "SessionRotationAbsence_sessionId_idx"        ON "SessionRotationAbsence"("sessionId");
+CREATE INDEX "Signup_studentId_idx"                            ON "Signup"("studentId");
+CREATE INDEX "Signup_clubSessionId_idx"                        ON "Signup"("clubSessionId");
+CREATE INDEX "TeacherFlexDayAbsence_userId_idx"                ON "TeacherFlexDayAbsence"("userId");
+CREATE INDEX "TeacherFlexDayAbsence_flexDayId_idx"             ON "TeacherFlexDayAbsence"("flexDayId");
 
 COMMIT;
