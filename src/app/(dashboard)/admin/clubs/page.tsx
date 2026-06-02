@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
+import DeleteActivityButton from "@/components/sessions/DeleteActivityButton";
 
 export default async function AdminClubsPage() {
   const session = await auth();
@@ -115,7 +116,7 @@ export default async function AdminClubsPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activities</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              One-off activities on upcoming flex days
+              One-time events on specific Flex Days — not recurring
             </p>
           </div>
         </div>
@@ -172,12 +173,15 @@ export default async function AdminClubsPage() {
                       {activity.capacityOverride ? `/${activity.capacityOverride}` : ""}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/teacher/sessions/${activity.id}/edit?return=/admin/clubs`}
-                        className="text-gray-500 dark:text-gray-400 hover:underline text-xs font-medium"
-                      >
-                        Edit
-                      </Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/teacher/sessions/${activity.id}/edit?return=/admin/clubs`}
+                          className="text-gray-500 dark:text-gray-400 hover:underline text-xs font-medium"
+                        >
+                          Edit
+                        </Link>
+                        <DeleteActivityButton sessionId={activity.id} />
+                      </div>
                     </td>
                   </tr>
                 ))}

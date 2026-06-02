@@ -161,6 +161,13 @@ export default async function TeacherDashboard() {
               </p>
             )}
 
+            {isToday && (
+              <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-700 px-4 py-3 mb-3 text-sm text-green-800 dark:text-green-200">
+                <span className="font-semibold">Today is a Flex Day.</span>
+                {" "}Go to your room, take attendance in the session below, and save when done.
+              </div>
+            )}
+
             {session.user.role !== "STUDENT" && (
               <TeacherAbsenceSelector
                 flexDayId={nextFlexDay.id}
@@ -197,9 +204,15 @@ export default async function TeacherDashboard() {
 
                     <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
                       {sessions.length === 0 ? (
-                        <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
-                          Not scheduled
-                        </p>
+                        <div className="px-4 py-4 space-y-1">
+                          <p className="text-sm text-gray-400 dark:text-gray-500 italic">No activity this rotation.</p>
+                          <Link
+                            href={`/teacher/sessions/new?flexDayId=${nextFlexDay.id}`}
+                            className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
+                          >
+                            Schedule something →
+                          </Link>
+                        </div>
                       ) : (
                         sessions.map((cs) => {
                           const roomName = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
@@ -237,8 +250,8 @@ export default async function TeacherDashboard() {
                                     </span>
                                   )}
                                   {owned && !coveredByOther && isAbsent && (
-                                    <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-                                      Absent
+                                    <span className="shrink-0 rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">
+                                      Absent — needs coverage
                                     </span>
                                   )}
                                   {owned && !coveredByOther && isReassigned && (
@@ -284,8 +297,8 @@ export default async function TeacherDashboard() {
                                 </p>
                               )}
                               {owned && !coveredByOther && isAbsent && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-                                  You&apos;re marked absent — coverage is being arranged.
+                                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                                  No one has volunteered yet. Contact an admin.
                                 </p>
                               )}
                               {owned && !coveredByOther && isReassigned && (
@@ -357,9 +370,9 @@ export default async function TeacherDashboard() {
                 <div className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-800">
                   <Link
                     href={`/teacher/sessions/new?flexDayId=${nextFlexDay.id}`}
-                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
                   >
-                    + Schedule an Activity →
+                    + Schedule an Activity
                   </Link>
                 </div>
               );
@@ -387,8 +400,11 @@ export default async function TeacherDashboard() {
 
         return (
           <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-1">
               Sessions seeking coverage
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              These sessions need a substitute teacher. Volunteer for any rotation you are free during. Note: If you don&apos;t volunteer for a club, one may be assigned to you.
             </p>
             <div className="grid gap-4 sm:grid-cols-3">
               {ALL_ROTATIONS.map((slot) => (

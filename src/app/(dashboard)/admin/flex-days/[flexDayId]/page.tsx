@@ -46,6 +46,14 @@ export default async function AdminFlexDayDetailPage({
 
   if (!flexDay) notFound();
 
+  const sessionsNeedingCoverage = flexDay.clubSessions.filter((cs) =>
+    cs.rotations.some((r) =>
+      flexDay.teacherAbsences.some(
+        (a) => a.userId === (cs.club?.ownerId ?? cs.oneOffOwner?.id) && a.rotation === r
+      )
+    )
+  ).length;
+
   const totalSignups = flexDay.clubSessions.reduce(
     (acc, cs) => acc + cs._count.signups,
     0
@@ -77,6 +85,7 @@ export default async function AdminFlexDayDetailPage({
         <FinalizeButton
           flexDayId={flexDay.id}
           isFinalized={flexDay.isFinalized}
+          uncoveredCount={sessionsNeedingCoverage}
         />
       </div>
 
@@ -159,19 +168,19 @@ export default async function AdminFlexDayDetailPage({
                             </div>
                             <div className="flex items-center gap-3">
                               {cs.club ? (
-                                <a
+                                <Link
                                   href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
-                                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                                  className="rounded border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
                                 >
                                   Edit
-                                </a>
+                                </Link>
                               ) : cs.oneOffOwner ? (
-                                <a
+                                <Link
                                   href={`/teacher/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
-                                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                                  className="rounded border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
                                 >
                                   Edit
-                                </a>
+                                </Link>
                               ) : null}
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"}

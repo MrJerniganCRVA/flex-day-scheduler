@@ -14,17 +14,25 @@ export default async function TeacherClubsPage() {
   const where =
     isAdmin ? undefined : { ownerId: userId };
 
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
   const clubs = await prisma.club.findMany({
     where,
     include: {
       owner: { select: { name: true } },
       defaultRoom: { select: { name: true } },
+      clubSessions: {
+        where: { flexDay: { date: { gte: today }, isActive: true } },
+        orderBy: { flexDay: { date: "asc" } },
+        take: 1,
+        include: {
+          _count: { select: { signups: true } },
+        },
+      },
     },
     orderBy: { name: "asc" },
   });
-
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
 
   const activities = await prisma.clubSession.findMany({
     where: {
@@ -73,6 +81,7 @@ export default async function TeacherClubsPage() {
                 <th className="px-4 py-3 text-left">Club</th>
                 <th className="px-4 py-3 text-left">Location</th>
                 <th className="px-4 py-3 text-left">Capacity</th>
+                <th className="px-4 py-3 text-left">Enrolled (next)</th>
                 <th className="px-4 py-3 text-left">Rotations</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -92,6 +101,11 @@ export default async function TeacherClubsPage() {
                     {club.defaultRoom?.name ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.maxCapacity}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                    {club.clubSessions[0]
+                      ? `${club.clubSessions[0]._count.signups} / ${club.maxCapacity}`
+                      : "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1 flex-wrap">
                       {club.defaultRotations.length === 0 ? (
@@ -111,9 +125,9 @@ export default async function TeacherClubsPage() {
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/teacher/clubs/${club.id}`}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
+                      className="rounded-md border border-indigo-300 dark:border-indigo-700 px-2.5 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
                     >
-                      View
+                      View →
                     </Link>
                   </td>
                 </tr>
@@ -128,8 +142,8 @@ export default async function TeacherClubsPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activities</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              One-off activities on upcoming flex days
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              One-time events on specific Flex Days — not recurring
             </p>
           </div>
           <Link

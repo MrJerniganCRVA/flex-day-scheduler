@@ -54,6 +54,13 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
       .finally(() => setLoadingRooms(false));
   }, []);
 
+  useEffect(() => {
+    const room = rooms.find((r) => r.id === roomOverrideId);
+    if (room && (!capacity || capacity === 25 || Number(capacity) > room.capacity)) {
+      setCapacity(room.capacity);
+    }
+  }, [roomOverrideId, rooms]);
+
   function toggleRotation(r: RotationSlot) {
     setRotations((prev) =>
       prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]
