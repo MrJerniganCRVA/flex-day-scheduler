@@ -94,6 +94,7 @@ export const createOneOffSchema = z.object({
     .min(1, "At least one rotation is required"),
   roomOverrideId: z.string().cuid(),
   capacity: z.number().int().positive().min(1).max(1000),
+  override: z.boolean().optional(),
 });
 
 export const updateClubSessionPerDaySchema = z.object({
