@@ -38,6 +38,7 @@ export default async function AdminFlexDayDetailPage({
             },
           },
           _count: { select: { signups: true } },
+          rotationCoverage: { select: { rotation: true, primaryTeacherId: true } },
         },
       },
     },
@@ -132,17 +133,29 @@ export default async function AdminFlexDayDetailPage({
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
                                 {cs.title ?? cs.club?.name ?? "Session"}
                               </span>
-                              {cs.rotations.some((r) =>
-                                flexDay.teacherAbsences.some(
-                                  (a) =>
-                                    a.userId === (cs.club?.ownerId ?? cs.oneOffOwner?.id) &&
-                                    a.rotation === r
-                                )
-                              ) && (
-                                <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
-                                  Coverage Needed
-                                </span>
-                              )}
+                              {(() => {
+                                const ownerId = cs.club?.ownerId ?? cs.oneOffOwner?.id;
+                                const absentRotations = cs.rotations.filter((r) =>
+                                  flexDay.teacherAbsences.some(
+                                    (a) => a.userId === ownerId && a.rotation === r
+                                  )
+                                );
+                                if (absentRotations.length === 0) return null;
+                                const allCovered = absentRotations.every((r) =>
+                                  cs.rotationCoverage.some(
+                                    (rc) => rc.rotation === r && rc.primaryTeacherId !== null
+                                  )
+                                );
+                                return allCovered ? (
+                                  <span className="rounded-full bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700 px-2 py-0.5 text-xs font-medium">
+                                    Covered
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
+                                    Coverage Needed
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center gap-3">
                               {cs.club ? (
