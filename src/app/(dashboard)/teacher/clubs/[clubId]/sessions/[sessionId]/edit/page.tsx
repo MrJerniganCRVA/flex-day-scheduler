@@ -27,7 +27,8 @@ export default async function EditSessionPage({
     where: { id: sessionId },
     include: {
       flexDay: { select: { date: true, label: true } },
-      club: { select: { name: true } },
+      club: { select: { name: true, defaultRoom: { select: { name: true } } } },
+      roomOverride: { select: { id: true, name: true } },
     },
   });
 
@@ -63,6 +64,9 @@ export default async function EditSessionPage({
         clubId={clubId}
         sessionId={sessionId}
         initialRotations={clubSession.rotations}
+        initialRoomOverrideId={clubSession.roomOverride?.id ?? null}
+        adminRoomLocked={clubSession.adminRoomLocked}
+        defaultRoomName={clubSession.roomOverride?.name ?? clubSession.club?.defaultRoom?.name ?? null}
         returnPath={returnPath}
         siblingSessionOptions={siblingSessionOptions}
       />

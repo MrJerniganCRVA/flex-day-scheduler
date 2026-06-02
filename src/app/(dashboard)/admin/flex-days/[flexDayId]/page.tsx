@@ -6,6 +6,7 @@ import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
+import AdminRoomSelector from "@/components/admin/AdminRoomSelector";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -27,8 +28,15 @@ export default async function AdminFlexDayDetailPage({
       clubSessions: {
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true, ownerId: true },
+            select: {
+              id: true,
+              name: true,
+              maxCapacity: true,
+              ownerId: true,
+              defaultRoom: { select: { name: true } },
+            },
           },
+          roomOverride: { select: { name: true } },
           oneOffOwner: { select: { id: true, name: true } },
           signups: {
             select: {
@@ -147,9 +155,16 @@ export default async function AdminFlexDayDetailPage({
                         <div key={cs.id} className="px-5 py-4">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
+                              <div>
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
                                 {cs.title ?? cs.club?.name ?? "Session"}
                               </span>
+                              <AdminRoomSelector
+                                sessionId={cs.id}
+                                currentRoomName={cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null}
+                                adminRoomLocked={cs.adminRoomLocked}
+                              />
+                              </div>
                               {(() => {
                                 const ownerId = cs.club?.ownerId ?? cs.oneOffOwner?.id;
                                 const absentRotations = cs.rotations.filter((r) =>
