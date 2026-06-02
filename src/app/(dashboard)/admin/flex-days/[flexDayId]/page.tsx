@@ -23,7 +23,7 @@ export default async function AdminFlexDayDetailPage({
   const flexDay = await prisma.flexDay.findUnique({
     where: { id: flexDayId },
     include: {
-      teacherAbsences: { select: { userId: true, rotation: true } },
+      teacherAbsences: { select: { userId: true, rotation: true, type: true } },
       clubSessions: {
         include: {
           club: {
@@ -46,13 +46,21 @@ export default async function AdminFlexDayDetailPage({
 
   if (!flexDay) notFound();
 
-  const sessionsNeedingCoverage = flexDay.clubSessions.filter((cs) =>
-    cs.rotations.some((r) =>
-      flexDay.teacherAbsences.some(
-        (a) => a.userId === (cs.club?.ownerId ?? cs.oneOffOwner?.id) && a.rotation === r
-      )
-    )
-  ).length;
+  const sessionsNeedingCoverage = flexDay.clubSessions.filter((cs) => {
+    if (!cs.clubId) return false;
+    const ownerId = cs.club?.ownerId;
+    if (!ownerId) return false;
+    return cs.rotations.some((r) => {
+      const ownerIsAbsent = flexDay.teacherAbsences.some(
+        (a) => a.userId === ownerId && a.rotation === r && a.type === "ABSENT"
+      );
+      if (!ownerIsAbsent) return false;
+      const covered = cs.rotationCoverage.some(
+        (rc) => rc.rotation === r && rc.primaryTeacherId !== null
+      );
+      return !covered;
+    });
+  }).length;
 
   const totalSignups = flexDay.clubSessions.reduce(
     (acc, cs) => acc + cs._count.signups,
