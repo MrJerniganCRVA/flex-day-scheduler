@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 
 /**
  * GET /api/rooms?excludeClubId=<id>
- * Returns active rooms not already claimed as default by another club.
+ * Returns rooms not already claimed as default by another club.
  * Accessible to TEACHER and ADMIN.
  * Pass excludeClubId when editing a club so that club's own room still appears.
  */
@@ -19,7 +19,6 @@ export async function GET(req: NextRequest) {
 
   const rooms = await prisma.room.findMany({
     where: {
-      isActive: true,
       clubsWithDefault: {
         none: excludeClubId ? { id: { not: excludeClubId } } : {},
       },

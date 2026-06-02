@@ -5,19 +5,14 @@ import { createRoomSchema } from "@/lib/validations";
 
 /**
  * GET /api/admin/rooms
- * List all rooms with optional filter for inactive rooms
  */
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const includeInactive = searchParams.get("includeInactive") === "true";
-
   const rooms = await prisma.room.findMany({
-    where: includeInactive ? {} : { isActive: true },
     orderBy: { name: "asc" },
     include: {
       _count: {

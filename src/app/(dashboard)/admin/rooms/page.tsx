@@ -8,7 +8,6 @@ export default async function AdminRoomsPage() {
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
   const rooms = await prisma.room.findMany({
-    where: { isActive: true },
     orderBy: { name: "asc" },
     include: {
       _count: {

@@ -8,7 +8,6 @@ interface Room {
   id: string;
   name: string;
   capacity: number;
-  isActive: boolean;
   _count: {
     clubsWithDefault: number;
     sessionOverrides: number;
@@ -23,17 +22,13 @@ export default function RoomManagementClient({ initialRooms }: Props) {
   const router = useRouter();
   const [rooms, setRooms] = useState(initialRooms);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Filter rooms by search query
-  const filteredRooms = rooms.filter((room) => {
-    const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = showInactive || room.isActive;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredRooms = rooms.filter((room) =>
+    room.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   async function refreshRooms() {
     try {
@@ -52,23 +47,13 @@ export default function RoomManagementClient({ initialRooms }: Props) {
     const room = rooms.find((r) => r.id === roomId);
     if (!room) return;
 
-    const totalUsage = room._count.clubsWithDefault + room._count.sessionOverrides;
-    if (totalUsage > 0) {
-      setDeleteError(
-        `Cannot delete "${room.name}" - currently used by ${room._count.clubsWithDefault} club(s) and ${room._count.sessionOverrides} session(s)`
-      );
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to deactivate "${room.name}"?`)) return;
+    if (!confirm(`Delete "${room.name}"? Any clubs or sessions using this room will have their room assignment cleared.`)) return;
 
     try {
-      const res = await fetch(`/api/admin/rooms/${roomId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/admin/rooms/${roomId}`, { method: "DELETE" });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setDeleteError(data.error ?? "Failed to delete room");
         return;
       }
@@ -102,16 +87,6 @@ export default function RoomManagementClient({ initialRooms }: Props) {
             className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
-
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded border-gray-300 dark:border-gray-600 accent-indigo-600"
-          />
-          Show inactive
-        </label>
 
         <div className="text-sm text-gray-500 dark:text-gray-400">
           {filteredRooms.length} room{filteredRooms.length !== 1 ? "s" : ""}
@@ -157,9 +132,6 @@ export default function RoomManagementClient({ initialRooms }: Props) {
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                   Usage
                 </th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                  Status
-                </th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                   Actions
                 </th>
@@ -188,15 +160,6 @@ export default function RoomManagementClient({ initialRooms }: Props) {
                         <span className="text-gray-400 dark:text-gray-500">Not in use</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-sm">
-                      {room.isActive ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
-                          <span className="text-lg">✓</span> Active
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 dark:text-gray-500">Inactive</span>
-                      )}
-                    </td>
                     <td className="px-5 py-4 text-sm text-right space-x-2">
                       <button
                         onClick={() => setEditingRoom(room)}
@@ -204,14 +167,12 @@ export default function RoomManagementClient({ initialRooms }: Props) {
                       >
                         Edit
                       </button>
-                      {room.isActive && (
-                        <button
-                          onClick={() => handleDelete(room.id)}
-                          className="text-red-600 dark:text-red-400 hover:underline font-medium"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDelete(room.id)}
+                        className="text-red-600 dark:text-red-400 hover:underline font-medium"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 );

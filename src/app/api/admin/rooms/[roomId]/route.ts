@@ -37,7 +37,7 @@ export async function PUT(
     );
   }
 
-  const { name, capacity, isActive } = parsed.data;
+  const { name, capacity } = parsed.data;
 
   // If updating name, check for duplicates
   if (name && name !== existing.name) {
@@ -58,7 +58,6 @@ export async function PUT(
     data: {
       ...(name !== undefined && { name }),
       ...(capacity !== undefined && { capacity }),
-      ...(isActive !== undefined && { isActive }),
     },
   });
 
@@ -67,11 +66,11 @@ export async function PUT(
 
 /**
  * DELETE /api/admin/rooms/[roomId]
- * Soft delete a room (sets isActive to false)
- * Prevents deletion if room is currently in use
+ * Hard deletes the room. FK onDelete: SetNull clears Club.defaultRoomId
+ * and ClubSession.roomOverrideId automatically.
  */
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const session = await auth();
@@ -81,43 +80,12 @@ export async function DELETE(
 
   const { roomId } = await params;
 
-  // Check if room exists
-  const room = await prisma.room.findUnique({
-    where: { id: roomId },
-    include: {
-      _count: {
-        select: {
-          clubsWithDefault: true,
-          sessionOverrides: true,
-        },
-      },
-    },
-  });
-
+  const room = await prisma.room.findUnique({ where: { id: roomId } });
   if (!room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  // Prevent deletion if room is in use
-  const inUseCount = room._count.clubsWithDefault + room._count.sessionOverrides;
-  if (inUseCount > 0) {
-    return NextResponse.json(
-      {
-        error: "Cannot delete room that is in use",
-        details: {
-          clubsUsing: room._count.clubsWithDefault,
-          sessionsUsing: room._count.sessionOverrides,
-        },
-      },
-      { status: 409 }
-    );
-  }
+  await prisma.room.delete({ where: { id: roomId } });
 
-  // Soft delete by setting isActive to false
-  const updated = await prisma.room.update({
-    where: { id: roomId },
-    data: { isActive: false },
-  });
-
-  return NextResponse.json(updated);
+  return new NextResponse(null, { status: 204 });
 }
