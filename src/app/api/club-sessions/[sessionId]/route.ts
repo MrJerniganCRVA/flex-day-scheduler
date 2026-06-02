@@ -16,6 +16,7 @@ async function resolveOwnerAndSession(sessionId: string, userId: string, userRol
         },
       },
     },
+    // adminRoomLocked is a scalar field on ClubSession — included automatically
   });
   if (!clubSession) return { error: "Session not found", status: 404, clubSession: null };
 
@@ -56,6 +57,20 @@ export async function PATCH(
     return NextResponse.json(
       { error: "Invalid input", details: parsed.error.flatten() },
       { status: 400 }
+    );
+  }
+
+  const isAdmin = session.user.role === "ADMIN";
+
+  // Block non-admins from changing a room the admin has locked
+  if (
+    "roomOverrideId" in parsed.data &&
+    clubSession.adminRoomLocked &&
+    !isAdmin
+  ) {
+    return NextResponse.json(
+      { error: "Room has been set by an admin and cannot be changed." },
+      { status: 403 }
     );
   }
 
@@ -103,6 +118,7 @@ export async function PATCH(
   if (parsed.data.rotations !== undefined) updateData.rotations = parsed.data.rotations;
   if ("roomOverrideId" in parsed.data) updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
   if ("capacityOverride" in parsed.data) updateData.capacityOverride = parsed.data.capacityOverride ?? null;
+  if (isAdmin && parsed.data.adminRoomLocked !== undefined) updateData.adminRoomLocked = parsed.data.adminRoomLocked;
 
   const updated = await prisma.clubSession.update({
     where: { id: sessionId },

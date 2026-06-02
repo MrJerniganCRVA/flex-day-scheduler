@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+
+interface Room {
+  id: string;
+  name: string;
+  capacity: number;
+}
 
 interface SiblingSession {
   id: string;
@@ -20,6 +26,9 @@ interface Props {
   clubId: string;
   sessionId: string;
   initialRotations: RotationSlot[];
+  initialRoomOverrideId?: string | null;
+  adminRoomLocked?: boolean;
+  defaultRoomName?: string | null;
   returnPath?: string;
   siblingSessionOptions?: SiblingSession[];
 }
@@ -28,6 +37,9 @@ export default function SessionEditForm({
   clubId,
   sessionId,
   initialRotations,
+  initialRoomOverrideId = null,
+  adminRoomLocked = false,
+  defaultRoomName = null,
   returnPath,
   siblingSessionOptions = [],
 }: Props) {
@@ -35,8 +47,18 @@ export default function SessionEditForm({
   const destination = returnPath ?? `/teacher/clubs/${clubId}`;
 
   const [rotations, setRotations] = useState<RotationSlot[]>(initialRotations);
+  const [roomOverrideId, setRoomOverrideId] = useState<string>(initialRoomOverrideId ?? "");
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (adminRoomLocked) return;
+    fetch("/api/rooms")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: Room[]) => setRooms(data))
+      .catch(() => {});
+  }, [adminRoomLocked]);
 
   const [splitting, setSplitting] = useState(false);
   const [splitError, setSplitError] = useState<string | null>(null);
@@ -65,10 +87,14 @@ export default function SessionEditForm({
     setError(null);
     setLoading(true);
 
+    const body: Record<string, unknown> = { rotations };
+    if (!adminRoomLocked) {
+      body.roomOverrideId = roomOverrideId || null;
+    }
     const res = await fetch(`/api/clubs/${clubId}/sessions/${sessionId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rotations }),
+      body: JSON.stringify(body),
     });
 
     setLoading(false);
@@ -162,6 +188,35 @@ export default function SessionEditForm({
             <p className="text-xs text-red-600 dark:text-red-400 mt-2">
               Please select at least one rotation
             </p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+            Room
+          </label>
+          {adminRoomLocked ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700 dark:text-gray-200">
+                {defaultRoomName ?? "Default room"}
+              </span>
+              <span className="rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                Set by admin
+              </span>
+            </div>
+          ) : (
+            <select
+              value={roomOverrideId}
+              onChange={(e) => setRoomOverrideId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">Use club default room</option>
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} (capacity: {r.capacity})
+                </option>
+              ))}
+            </select>
           )}
         </div>
 

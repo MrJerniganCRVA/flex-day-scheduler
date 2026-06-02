@@ -81,10 +81,22 @@ export async function PUT(
   // Fetch the existing session to get flexDayId, googleEventId, and room for calendar sync
   const existingSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
-    select: { flexDayId: true, googleEventId: true, roomOverrideId: true },
+    select: { flexDayId: true, googleEventId: true, roomOverrideId: true, adminRoomLocked: true },
   });
   if (!existingSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Block non-admins from changing a room the admin has locked
+  if (
+    "roomOverrideId" in parsed.data &&
+    existingSession.adminRoomLocked &&
+    session.user.role !== "ADMIN"
+  ) {
+    return NextResponse.json(
+      { error: "Room has been set by an admin and cannot be changed." },
+      { status: 403 }
+    );
   }
 
   // If rotations are being changed, re-run teacher conflict check (excluding this session)

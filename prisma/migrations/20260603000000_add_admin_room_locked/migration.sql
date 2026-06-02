@@ -1,0 +1,1 @@
+ALTER TABLE "ClubSession" ADD COLUMN "adminRoomLocked" BOOLEAN NOT NULL DEFAULT false;

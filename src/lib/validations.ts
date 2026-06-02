@@ -105,4 +105,5 @@ export const updateClubSessionPerDaySchema = z.object({
     .optional(),
   roomOverrideId: z.string().cuid().nullable().optional(),
   capacityOverride: z.number().int().positive().min(1).nullable().optional(),
+  adminRoomLocked: z.boolean().optional(),
 });

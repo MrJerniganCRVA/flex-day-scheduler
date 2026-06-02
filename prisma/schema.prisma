@@ -148,6 +148,7 @@ model ClubSession {
   clubId           String?
   rotations        RotationSlot[]
   roomOverrideId   String?
+  adminRoomLocked  Boolean        @default(false)
   googleEventId    String?
   title            String?
   capacityOverride Int?
