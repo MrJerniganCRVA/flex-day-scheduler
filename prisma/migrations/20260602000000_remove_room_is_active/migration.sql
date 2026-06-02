@@ -1,0 +1,1 @@
+ALTER TABLE "Room" DROP COLUMN "isActive";

@@ -73,7 +73,6 @@ export const createRoomSchema = z.object({
 export const updateRoomSchema = z.object({
   name: z.string().min(1, "Room name is required").max(100).optional(),
   capacity: z.number().int().positive().min(1).max(1000).optional(),
-  isActive: z.boolean().optional(),
 });
 
 export const bulkAttendanceSchema = z.object({

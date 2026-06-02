@@ -256,7 +256,7 @@ export default async function TeacherDashboard() {
                                   )}
                                   {owned && !coveredByOther && isReassigned && (
                                     <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
-                                      Covering elsewhere
+                                      Running other activity
                                     </span>
                                   )}
                                 </div>
@@ -303,7 +303,7 @@ export default async function TeacherDashboard() {
                               )}
                               {owned && !coveredByOther && isReassigned && (
                                 <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">
-                                  You&apos;re covering another club — coverage for your session is being arranged.
+                                  You&apos;re running another activity this rotation — your club needs coverage.
                                 </p>
                               )}
 
