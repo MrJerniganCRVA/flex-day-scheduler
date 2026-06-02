@@ -254,86 +254,98 @@ export default async function TeacherDashboard() {
                                       Absent — needs coverage
                                     </span>
                                   )}
-                                  {owned && !coveredByOther && isReassigned && (
+                                  {owned && !coveredByOther && isReassigned && cs.clubId && (
                                     <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
                                       Running other activity
                                     </span>
                                   )}
                                 </div>
-                                <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                                  {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
-                                </span>
+                                {!(owned && (isAbsent || isReassigned) && cs.clubId) && (
+                                  <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                    {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
+                                  </span>
+                                )}
                               </div>
 
-                              {roomName && (
-                                <div className="mb-2 text-xs">
-                                  {isToday
-                                    ? <span className="font-medium text-indigo-600 dark:text-indigo-400">📍 {roomName}</span>
-                                    : <span className="text-gray-500 dark:text-gray-400">{roomName}</span>
-                                  }
-                                </div>
-                              )}
-
-                              {/* capacity bar */}
-                              <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">
-                                <div
-                                  className="h-full rounded-full bg-indigo-400 dark:bg-indigo-500 transition-all"
-                                  style={{
-                                    width: `${Math.min(
-                                      100,
-                                      Math.round(
-                                        (cs._count.signups /
-                                          (cs.capacityOverride ?? cs.club?.maxCapacity ?? 1)) *
-                                          100
-                                      )
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-
-                              {owned && coveredByOther && (
-                                <p className="text-xs text-green-600 dark:text-green-400 mb-2">
-                                  Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
+                              {owned && (isAbsent || isReassigned) && cs.clubId ? (
+                                <p className="text-xs mt-1">
+                                  {coveredByOther ? (
+                                    <span className="text-green-600 dark:text-green-400">
+                                      Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you&apos;re all set.
+                                    </span>
+                                  ) : isAbsent ? (
+                                    <span className="text-red-500 dark:text-red-400">
+                                      No coverage assigned yet — contact an admin.
+                                    </span>
+                                  ) : (
+                                    <span className="text-teal-600 dark:text-teal-400">
+                                      Your club needs coverage for this rotation.
+                                    </span>
+                                  )}
                                 </p>
-                              )}
-                              {owned && !coveredByOther && isAbsent && (
-                                <p className="text-xs text-red-600 dark:text-red-400 mb-2">
-                                  No one has volunteered yet. Contact an admin.
-                                </p>
-                              )}
-                              {owned && !coveredByOther && isReassigned && (
-                                <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">
-                                  You&apos;re running another activity this rotation — your club needs coverage.
-                                </p>
-                              )}
-
-                              {cs.signups.length > 0 ? (
-                                isToday ? (
-                                  <SessionAttendanceForm
-                                    sessionId={cs.id}
-                                    signups={cs.signups}
-                                  />
-                                ) : (
-                                  <details>
-                                    <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                                      Roster ({cs.signups.length})
-                                    </summary>
-                                    <ul className="mt-2 space-y-0.5">
-                                      {cs.signups.map((s) => (
-                                        <li
-                                          key={s.id}
-                                          className="text-xs text-gray-600 dark:text-gray-300"
-                                        >
-                                          {s.student.name}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </details>
-                                )
                               ) : (
-                                <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-                                  No signups yet
-                                </p>
+                                <>
+                                  {roomName && (
+                                    <div className="mb-2 text-xs">
+                                      {isToday
+                                        ? <span className="font-medium text-indigo-600 dark:text-indigo-400">📍 {roomName}</span>
+                                        : <span className="text-gray-500 dark:text-gray-400">{roomName}</span>
+                                      }
+                                    </div>
+                                  )}
+
+                                  {/* capacity bar */}
+                                  <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">
+                                    <div
+                                      className="h-full rounded-full bg-indigo-400 dark:bg-indigo-500 transition-all"
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          Math.round(
+                                            (cs._count.signups /
+                                              (cs.capacityOverride ?? cs.club?.maxCapacity ?? 1)) *
+                                              100
+                                          )
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+
+                                  {owned && coveredByOther && (
+                                    <p className="text-xs text-green-600 dark:text-green-400 mb-2">
+                                      Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
+                                    </p>
+                                  )}
+
+                                  {cs.signups.length > 0 ? (
+                                    isToday ? (
+                                      <SessionAttendanceForm
+                                        sessionId={cs.id}
+                                        signups={cs.signups}
+                                      />
+                                    ) : (
+                                      <details>
+                                        <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                          Roster ({cs.signups.length})
+                                        </summary>
+                                        <ul className="mt-2 space-y-0.5">
+                                          {cs.signups.map((s) => (
+                                            <li
+                                              key={s.id}
+                                              className="text-xs text-gray-600 dark:text-gray-300"
+                                            >
+                                              {s.student.name}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
+                                    )
+                                  ) : (
+                                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                                      No signups yet
+                                    </p>
+                                  )}
+                                </>
                               )}
                             </div>
                           );
