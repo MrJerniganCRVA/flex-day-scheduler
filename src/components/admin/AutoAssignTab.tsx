@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { ROTATION_LABELS } from "@/types";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 
 interface ProposedAssignment {
@@ -10,6 +10,11 @@ interface ProposedAssignment {
   clubSessionId: string;
   sessionName: string;
   rotations: RotationSlot[];
+}
+
+interface SessionOption {
+  id: string;
+  name: string;
 }
 
 interface PreviewData {
@@ -21,6 +26,22 @@ interface PreviewData {
   sessionsEligible: number;
   totalSessions: number;
   proposedAssignments: ProposedAssignment[];
+  sessionsPerRotation: Record<RotationSlot, SessionOption[]>;
+}
+
+type EditableAssignments = Record<string, Record<RotationSlot, string>>;
+
+function initEditableAssignments(proposals: ProposedAssignment[]): EditableAssignments {
+  const result: EditableAssignments = {};
+  for (const a of proposals) {
+    if (!result[a.studentId]) {
+      result[a.studentId] = { FLEX_1: "", FLEX_2: "", FLEX_3: "" };
+    }
+    for (const r of a.rotations) {
+      result[a.studentId][r] = a.clubSessionId;
+    }
+  }
+  return result;
 }
 
 export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
@@ -28,6 +49,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [editableAssignments, setEditableAssignments] = useState<EditableAssignments>({});
 
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
@@ -42,7 +64,9 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
     try {
       const res = await fetch(`/api/admin/flex-days/${flexDayId}/auto-assign`);
       if (!res.ok) throw new Error("Failed to load preview");
-      setPreview(await res.json());
+      const data: PreviewData = await res.json();
+      setPreview(data);
+      setEditableAssignments(initEditableAssignments(data.proposedAssignments));
     } catch {
       setPreviewError("Could not load assignment preview. Please refresh.");
     } finally {
@@ -54,16 +78,64 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
     loadPreview();
   }, [loadPreview]);
 
+  // Unique students with proposed assignments, preserving algorithm order
+  const studentList = useMemo(() => {
+    if (!preview) return [];
+    const seen = new Set<string>();
+    const students: { id: string; name: string }[] = [];
+    for (const a of preview.proposedAssignments) {
+      if (!seen.has(a.studentId)) {
+        seen.add(a.studentId);
+        students.push({ id: a.studentId, name: a.studentName ?? "Unknown" });
+      }
+    }
+    return students;
+  }, [preview]);
+
+  const filteredStudents = searchQuery.trim()
+    ? studentList.filter((s) =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : studentList;
+
+  // Count unique (studentId, clubSessionId) pairs for the confirm button
+  const pendingSignupCount = useMemo(() => {
+    const seen = new Set<string>();
+    for (const [studentId, slots] of Object.entries(editableAssignments)) {
+      for (const clubSessionId of Object.values(slots)) {
+        if (clubSessionId) seen.add(`${studentId}:${clubSessionId}`);
+      }
+    }
+    return seen.size;
+  }, [editableAssignments]);
+
+  function setSlot(studentId: string, rotation: RotationSlot, sessionId: string) {
+    setEditableAssignments((prev) => ({
+      ...prev,
+      [studentId]: {
+        ...(prev[studentId] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" }),
+        [rotation]: sessionId,
+      },
+    }));
+  }
+
   async function handleConfirm() {
-    if (!preview) return;
     setRunning(true);
     setRunError(null);
     setConfirming(false);
     try {
-      const assignments = preview.proposedAssignments.map((a) => ({
-        studentId: a.studentId,
-        clubSessionId: a.clubSessionId,
-      }));
+      const seen = new Set<string>();
+      const assignments: { studentId: string; clubSessionId: string }[] = [];
+      for (const [studentId, slots] of Object.entries(editableAssignments)) {
+        for (const clubSessionId of Object.values(slots)) {
+          if (!clubSessionId) continue;
+          const key = `${studentId}:${clubSessionId}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            assignments.push({ studentId, clubSessionId });
+          }
+        }
+      }
       const res = await fetch(`/api/admin/flex-days/${flexDayId}/auto-assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,44 +154,6 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
       setRunning(false);
     }
   }
-
-  // Group proposed assignments by student for display
-  const studentBreakdown = preview
-    ? Array.from(
-        preview.proposedAssignments
-          .reduce(
-            (map, a) => {
-              if (!map.has(a.studentId)) {
-                map.set(a.studentId, {
-                  studentId: a.studentId,
-                  studentName: a.studentName ?? "Unknown",
-                  sessions: [] as { sessionName: string; rotations: RotationSlot[] }[],
-                });
-              }
-              map.get(a.studentId)!.sessions.push({
-                sessionName: a.sessionName,
-                rotations: a.rotations,
-              });
-              return map;
-            },
-            new Map<
-              string,
-              {
-                studentId: string;
-                studentName: string;
-                sessions: { sessionName: string; rotations: RotationSlot[] }[];
-              }
-            >()
-          )
-          .values()
-      )
-    : [];
-
-  const filteredBreakdown = searchQuery.trim()
-    ? studentBreakdown.filter((s) =>
-        s.studentName.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : studentBreakdown;
 
   if (previewLoading) {
     return (
@@ -140,7 +174,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
   if (!preview) return null;
 
   const nothingToDo = preview.studentsNeedingSlots === 0;
-  const noEligibleSessions = !nothingToDo && studentBreakdown.length === 0;
+  const noEligibleSessions = !nothingToDo && studentList.length === 0;
 
   return (
     <div className="space-y-6">
@@ -215,7 +249,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
             </ul>
           </details>
 
-          {/* Proposed placements — admin reviews before confirming */}
+          {/* Proposed placements — editable per-student per-rotation dropdowns */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
               <div>
@@ -223,9 +257,9 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                   Proposed placements
                 </span>
                 <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                  {studentBreakdown.length} student{studentBreakdown.length !== 1 ? "s" : ""}
+                  {studentList.length} student{studentList.length !== 1 ? "s" : ""}
                   {" · "}
-                  {preview.proposedAssignments.length} signup{preview.proposedAssignments.length !== 1 ? "s" : ""}
+                  adjust dropdowns before confirming
                 </span>
               </div>
               <button
@@ -247,30 +281,55 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
               />
             </div>
 
-            <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-96 overflow-y-auto">
-              {filteredBreakdown.length === 0 ? (
+            {/* Column headers (desktop) */}
+            <div className="hidden sm:grid sm:grid-cols-[2fr_1fr_1fr_1fr] gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700/50">
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Student</div>
+              {ALL_ROTATIONS.map((slot) => (
+                <div key={slot} className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {ROTATION_LABELS[slot]}
+                </div>
+              ))}
+            </div>
+
+            <div className="divide-y divide-gray-100 dark:divide-gray-700/50 max-h-[32rem] overflow-y-auto">
+              {filteredStudents.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                   No students match your search.
                 </div>
               ) : (
-                filteredBreakdown.map((entry) => (
-                  <div key={entry.studentId} className="px-4 py-3">
-                    <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                      {entry.studentName}
-                    </div>
-                    <ul className="space-y-0.5">
-                      {entry.sessions.map((s, j) => (
-                        <li key={j} className="text-xs text-gray-500 dark:text-gray-400">
-                          <span className="font-medium text-gray-700 dark:text-gray-300">
-                            {s.sessionName}
-                          </span>
-                          {" — "}
-                          {s.rotations.map((r) => ROTATION_LABELS[r]).join(", ")}
-                        </li>
+                filteredStudents.map((student) => {
+                  const slots = editableAssignments[student.id] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" };
+                  return (
+                    <div
+                      key={student.id}
+                      className="px-4 py-3 sm:grid sm:grid-cols-[2fr_1fr_1fr_1fr] sm:gap-3 sm:items-center space-y-2 sm:space-y-0"
+                    >
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        {student.name}
+                      </div>
+                      {ALL_ROTATIONS.map((slot) => (
+                        <div key={slot}>
+                          <label className="sm:hidden text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">
+                            {ROTATION_LABELS[slot]}
+                          </label>
+                          <select
+                            value={slots[slot] ?? ""}
+                            onChange={(e) => setSlot(student.id, slot, e.target.value)}
+                            disabled={running}
+                            className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+                          >
+                            <option value="">— no assignment —</option>
+                            {(preview.sessionsPerRotation[slot] ?? []).map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       ))}
-                    </ul>
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -286,18 +345,18 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
             {!confirming ? (
               <button
                 onClick={() => setConfirming(true)}
-                disabled={running || studentBreakdown.length === 0}
+                disabled={running || pendingSignupCount === 0}
                 className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-3 text-sm font-semibold text-white transition-colors"
               >
-                Confirm auto-assign for {studentBreakdown.length} student{studentBreakdown.length !== 1 ? "s" : ""}
+                Confirm {pendingSignupCount} signup{pendingSignupCount !== 1 ? "s" : ""} for {studentList.length} student{studentList.length !== 1 ? "s" : ""}
               </button>
             ) : (
               <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
                 <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
-                  Create {preview.proposedAssignments.length} signup{preview.proposedAssignments.length !== 1 ? "s" : ""} exactly as shown above?
+                  Create {pendingSignupCount} signup{pendingSignupCount !== 1 ? "s" : ""} as shown above?
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Signups created here can only be removed individually. Use &ldquo;Regenerate&rdquo; first if you want different placements.
+                  Signups created here can only be removed individually.
                 </p>
                 <div className="flex gap-2">
                   <button

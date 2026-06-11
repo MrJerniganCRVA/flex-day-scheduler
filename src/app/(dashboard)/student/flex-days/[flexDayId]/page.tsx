@@ -65,7 +65,7 @@ export default async function StudentFlexDayPage({
     const capacity = cs.capacityOverride ?? cs.club?.maxCapacity ?? 0;
     const isFull = cs._count.signups >= capacity;
     const isMySignup = cs.signups.length > 0;
-    const conflictingRotation = cs.rotations.find((r) => bookedRotations.has(r));
+    const conflictingRotations = cs.rotations.filter((r) => bookedRotations.has(r));
     return {
       id: cs.id,
       sessionName: cs.title ?? cs.club?.name ?? "Session",
@@ -78,10 +78,13 @@ export default async function StudentFlexDayPage({
       isForced: cs.signups[0]?.forced ?? false,
       signupId: cs.signups[0]?.id,
       isFull,
-      isConflicted: !isMySignup && cs.rotations.some((r) => bookedRotations.has(r)),
-      conflictLabel: conflictingRotation
-        ? `You have ${bookedSessionByRotation.get(conflictingRotation) ?? "another session"} in ${ROTATION_LABELS[conflictingRotation]}`
-        : undefined,
+      isConflicted: !isMySignup && conflictingRotations.length > 0,
+      conflictLabel:
+        conflictingRotations.length === 1
+          ? `You have ${bookedSessionByRotation.get(conflictingRotations[0]!) ?? "another session"} in ${ROTATION_LABELS[conflictingRotations[0]!]}`
+          : conflictingRotations.length > 1
+          ? `Conflict in ${conflictingRotations.map((r) => ROTATION_LABELS[r]).join(" & ")}`
+          : undefined,
       spansRotations: cs.rotations.length > 1,
     };
   });
