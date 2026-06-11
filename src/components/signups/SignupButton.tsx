@@ -62,6 +62,8 @@ export default function SignupButton({
       setConfirming(false);
       return;
     }
+    setSignedUp(false);
+    setConfirming(false);
     startTransition(() => router.refresh());
   }
 

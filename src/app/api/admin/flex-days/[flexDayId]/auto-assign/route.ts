@@ -207,6 +207,26 @@ export async function GET(
 
   const proposedAssignments = runAssignmentAlgorithm(students, studentState, sessionPool);
 
+  // Build per-rotation session lists for dropdown options
+  const sessionsPerRotation: Record<RotationSlot, { id: string; name: string }[]> = {
+    FLEX_1: [],
+    FLEX_2: [],
+    FLEX_3: [],
+  };
+  const seenPerRotation: Record<RotationSlot, Set<string>> = {
+    FLEX_1: new Set(),
+    FLEX_2: new Set(),
+    FLEX_3: new Set(),
+  };
+  for (const cs of sessionPool) {
+    for (const r of cs.rotations) {
+      if (!seenPerRotation[r].has(cs.id)) {
+        seenPerRotation[r].add(cs.id);
+        sessionsPerRotation[r].push({ id: cs.id, name: cs.displayName });
+      }
+    }
+  }
+
   return NextResponse.json({
     totalStudents: students.length,
     fullyUnassigned,
@@ -216,6 +236,7 @@ export async function GET(
     totalSessions: allSessions.length,
     excludedClubs,
     proposedAssignments,
+    sessionsPerRotation,
   });
 }
 

@@ -260,14 +260,14 @@ export default async function TeacherDashboard() {
                                     </span>
                                   )}
                                 </div>
-                                {!(owned && (isAbsent || isReassigned) && cs.clubId) && (
+                                {!(owned && (isAbsent || isReassigned || coveredByOther) && cs.clubId) && (
                                   <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                     {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
                                   </span>
                                 )}
                               </div>
 
-                              {owned && (isAbsent || isReassigned) && cs.clubId ? (
+                              {owned && (isAbsent || isReassigned || coveredByOther) && cs.clubId ? (
                                 <p className="text-xs mt-1">
                                   {coveredByOther ? (
                                     <span className="text-green-600 dark:text-green-400">
@@ -310,12 +310,6 @@ export default async function TeacherDashboard() {
                                       }}
                                     />
                                   </div>
-
-                                  {owned && coveredByOther && (
-                                    <p className="text-xs text-green-600 dark:text-green-400 mb-2">
-                                      Covered by {coverageForSlot!.primaryTeacher?.name ?? "another teacher"} — you don&apos;t need to be present.
-                                    </p>
-                                  )}
 
                                   {cs.signups.length > 0 ? (
                                     isToday ? (
