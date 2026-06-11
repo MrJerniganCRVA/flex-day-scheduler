@@ -207,6 +207,14 @@ export async function GET(
 
   const proposedAssignments = runAssignmentAlgorithm(students, studentState, sessionPool);
 
+  // Build per-student existing rotation coverage (slots already filled before auto-assign)
+  const existingRotations: Record<string, RotationSlot[]> = {};
+  for (const [id, state] of studentState.entries()) {
+    if (state.coveredRotations.size > 0) {
+      existingRotations[id] = [...state.coveredRotations];
+    }
+  }
+
   // Build per-rotation session lists for dropdown options
   const sessionsPerRotation: Record<RotationSlot, { id: string; name: string }[]> = {
     FLEX_1: [],
@@ -237,6 +245,7 @@ export async function GET(
     excludedClubs,
     proposedAssignments,
     sessionsPerRotation,
+    existingRotations,
   });
 }
 

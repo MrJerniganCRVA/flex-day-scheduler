@@ -27,6 +27,7 @@ interface PreviewData {
   totalSessions: number;
   proposedAssignments: ProposedAssignment[];
   sessionsPerRotation: Record<RotationSlot, SessionOption[]>;
+  existingRotations: Record<string, RotationSlot[]>;
 }
 
 type EditableAssignments = Record<string, Record<RotationSlot, string>>;
@@ -297,36 +298,49 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                   No students match your search.
                 </div>
               ) : (
-                filteredStudents.map((student) => {
+                filteredStudents.map((student, idx) => {
                   const slots = editableAssignments[student.id] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" };
+                  const filledSlots = preview.existingRotations[student.id] ?? [];
                   return (
                     <div
                       key={student.id}
-                      className="px-4 py-3 sm:grid sm:grid-cols-[2fr_1fr_1fr_1fr] sm:gap-3 sm:items-center space-y-2 sm:space-y-0"
+                      className={`px-4 py-3.5 sm:grid sm:grid-cols-[2fr_1fr_1fr_1fr] sm:gap-3 sm:items-center space-y-2 sm:space-y-0 ${
+                        idx % 2 === 1 ? "bg-gray-50/70 dark:bg-gray-800/30" : ""
+                      }`}
                     >
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white border-l-2 border-l-indigo-400 pl-2">
                         {student.name}
                       </div>
-                      {ALL_ROTATIONS.map((slot) => (
-                        <div key={slot}>
-                          <label className="sm:hidden text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">
-                            {ROTATION_LABELS[slot]}
-                          </label>
-                          <select
-                            value={slots[slot] ?? ""}
-                            onChange={(e) => setSlot(student.id, slot, e.target.value)}
-                            disabled={running}
-                            className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none disabled:opacity-50"
-                          >
-                            <option value="">— no assignment —</option>
-                            {(preview.sessionsPerRotation[slot] ?? []).map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
+                      {ALL_ROTATIONS.map((slot) => {
+                        const isAlreadyFilled = filledSlots.includes(slot);
+                        return (
+                          <div key={slot}>
+                            <label className="sm:hidden text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">
+                              {ROTATION_LABELS[slot]}
+                            </label>
+                            {isAlreadyFilled ? (
+                              <div className="w-full rounded-md border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 px-2 py-1.5 text-xs text-green-700 dark:text-green-400 flex items-center gap-1 cursor-not-allowed">
+                                <span>✓</span>
+                                <span>Already signed up</span>
+                              </div>
+                            ) : (
+                              <select
+                                value={slots[slot] ?? ""}
+                                onChange={(e) => setSlot(student.id, slot, e.target.value)}
+                                disabled={running}
+                                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+                              >
+                                <option value="">— no assignment —</option>
+                                {(preview.sessionsPerRotation[slot] ?? []).map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })
