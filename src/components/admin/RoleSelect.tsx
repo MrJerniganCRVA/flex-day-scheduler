@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Role } from "@prisma/client";
 
-const roles: Role[] = ["STUDENT", "TEACHER", "ADMIN"];
+const nonStudentRoles: Role[] = ["TEACHER", "ADMIN"];
 
 export default function RoleSelect({
   userId,
@@ -62,6 +62,12 @@ export default function RoleSelect({
     );
   }
 
+  if (currentRole === "STUDENT") {
+    return (
+      <span className="text-xs text-gray-400 dark:text-gray-500 italic">Student</span>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <select
@@ -70,7 +76,7 @@ export default function RoleSelect({
         disabled={loading || isPending || pendingRole !== null}
         className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
       >
-        {roles.map((r) => (
+        {nonStudentRoles.map((r) => (
           <option key={r} value={r}>
             {r.charAt(0) + r.slice(1).toLowerCase()}
           </option>

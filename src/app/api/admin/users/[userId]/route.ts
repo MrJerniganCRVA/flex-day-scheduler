@@ -22,6 +22,17 @@ export async function PUT(
     );
   }
 
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!target) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (target.role === "STUDENT") {
+    return NextResponse.json({ error: "Student roles cannot be changed" }, { status: 403 });
+  }
+
   const user = await prisma.user.update({
     where: { id: userId },
     data: { role: parsed.data.role },
