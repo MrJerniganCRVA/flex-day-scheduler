@@ -2,22 +2,26 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import RoomManagementClient from "@/components/admin/RoomManagementClient";
+import DutyStationManager from "@/components/admin/DutyStationManager";
 
 export default async function AdminRoomsPage() {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
-  const rooms = await prisma.room.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      _count: {
-        select: {
-          clubsWithDefault: true,
-          sessionOverrides: true,
+  const [rooms, dutyStations] = await Promise.all([
+    prisma.room.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: {
+            clubsWithDefault: true,
+            sessionOverrides: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.dutyStation.findMany({ orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div>
@@ -31,6 +35,7 @@ export default async function AdminRoomsPage() {
       </div>
 
       <RoomManagementClient initialRooms={rooms} />
+      <DutyStationManager initialStations={dutyStations} />
     </div>
   );
 }

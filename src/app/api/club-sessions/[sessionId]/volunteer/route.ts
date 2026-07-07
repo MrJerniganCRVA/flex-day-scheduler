@@ -40,6 +40,13 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (existing.adminLocked) {
+    return NextResponse.json(
+      { error: "This coverage was assigned by an admin and cannot be removed" },
+      { status: 403 }
+    );
+  }
+
   const newT1 = isT1 ? null : existing.primaryTeacherId;
   const newT2 = isT2 ? null : existing.secondaryTeacherId;
 
@@ -92,6 +99,13 @@ export async function POST(
 
   if (existing?.primaryTeacherId === userId || existing?.secondaryTeacherId === userId) {
     return NextResponse.json({ error: "Already volunteered for this slot" }, { status: 409 });
+  }
+
+  if (existing?.adminLocked) {
+    return NextResponse.json(
+      { error: "This coverage has been locked by an admin" },
+      { status: 403 }
+    );
   }
 
   // Block absent teachers from volunteering — REASSIGNED teachers can still cover other sessions

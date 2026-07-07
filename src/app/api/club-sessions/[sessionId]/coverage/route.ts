@@ -118,6 +118,21 @@ export async function PATCH(
   if ("secondary" in parsed.data)
     updateData.secondaryTeacherId = secondary ?? null;
 
+  const current = await prisma.sessionRotationCoverage.findUnique({
+    where: { sessionId_rotation: { sessionId, rotation } },
+    select: { primaryTeacherId: true, secondaryTeacherId: true },
+  });
+
+  const finalT1 = "primaryTeacherId" in updateData
+    ? updateData.primaryTeacherId
+    : current?.primaryTeacherId ?? null;
+  const finalT2 = "secondaryTeacherId" in updateData
+    ? updateData.secondaryTeacherId
+    : current?.secondaryTeacherId ?? null;
+
+  // Lock when admin has assigned at least one teacher; unlock when all slots cleared
+  const adminLocked = finalT1 !== null || finalT2 !== null;
+
   await prisma.sessionRotationCoverage.upsert({
     where: { sessionId_rotation: { sessionId, rotation } },
     create: {
@@ -125,8 +140,9 @@ export async function PATCH(
       rotation,
       primaryTeacherId: updateData.primaryTeacherId ?? null,
       secondaryTeacherId: updateData.secondaryTeacherId ?? null,
+      adminLocked,
     },
-    update: updateData,
+    update: { ...updateData, adminLocked },
   });
 
   return NextResponse.json({ ok: true });

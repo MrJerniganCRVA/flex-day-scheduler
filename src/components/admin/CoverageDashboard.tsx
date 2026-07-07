@@ -42,11 +42,29 @@ export type CoverageTeacher = {
   name: string;
 };
 
+export type CoverageDutyStation = {
+  stationId: string;
+  name: string;
+  location: string | null;
+  maxTeachers: number;
+  assignments: Partial<
+    Record<
+      RotationSlot,
+      Array<{ assignmentId: string; teacherId: string; teacherName: string; adminLocked: boolean }>
+    >
+  >;
+};
+
 // assignments[sessionId][rotation] = { t1, t2 }
 type Assignment = { t1: string | null; t2: string | null };
 type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
+
+// dutyAssignments[stationId][rotation] = array of { assignmentId, teacherId, adminLocked }
+type DutySlot = { assignmentId: string; teacherId: string; adminLocked: boolean };
+type DutyAssignments = Record<string, Partial<Record<RotationSlot, DutySlot[]>>>;
+type DutySaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
 
 function urgencyOf(
   club: CoverageClub,
@@ -65,11 +83,15 @@ export default function CoverageDashboard({
   teachers,
   flexDayLabel,
   absentTeacherIds = [],
+  dutyStations = [],
+  flexDayId,
 }: {
   clubs: CoverageClub[];
   teachers: CoverageTeacher[];
   flexDayLabel: string;
   absentTeacherIds?: string[];
+  dutyStations?: CoverageDutyStation[];
+  flexDayId?: string;
 }) {
   const [assignments, setAssignments] = useState<Assignments>(() =>
     Object.fromEntries(
@@ -103,6 +125,25 @@ export default function CoverageDashboard({
       clubs.map((c) => [
         c.sessionId,
         Object.fromEntries(c.rotations.map((r) => [r, "idle" as SaveStatus])),
+      ])
+    )
+  );
+
+  const [dutyAssignments, setDutyAssignments] = useState<DutyAssignments>(() =>
+    Object.fromEntries(
+      dutyStations.map((ds) => [
+        ds.stationId,
+        Object.fromEntries(
+          ALL_ROTATIONS.map((r) => [r, ds.assignments[r] ?? []])
+        ),
+      ])
+    )
+  );
+  const [dutySaveStatus, setDutySaveStatus] = useState<DutySaveStatuses>(() =>
+    Object.fromEntries(
+      dutyStations.map((ds) => [
+        ds.stationId,
+        Object.fromEntries(ALL_ROTATIONS.map((r) => [r, "idle" as SaveStatus])),
       ])
     )
   );
@@ -182,7 +223,107 @@ export default function CoverageDashboard({
     [assignments]
   );
 
-  // Teachers available for a given slot, filtered by rotation conflicts and absences
+  async function assignDuty(
+    stationId: string,
+    rotation: RotationSlot,
+    teacherId: string
+  ) {
+    if (!flexDayId) return;
+    setDutySaveStatus((prev) => ({
+      ...prev,
+      [stationId]: { ...prev[stationId], [rotation]: "saving" },
+    }));
+    try {
+      const res = await fetch(`/api/duty-stations/${stationId}/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flexDayId, rotation, teacherId }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setDutyAssignments((prev) => ({
+          ...prev,
+          [stationId]: {
+            ...prev[stationId],
+            [rotation]: [
+              ...(prev[stationId]?.[rotation] ?? []),
+              { assignmentId: created.id, teacherId, adminLocked: true },
+            ],
+          },
+        }));
+        setDutySaveStatus((prev) => ({
+          ...prev,
+          [stationId]: { ...prev[stationId], [rotation]: "saved" },
+        }));
+        setTimeout(() => {
+          setDutySaveStatus((prev) => ({
+            ...prev,
+            [stationId]: { ...prev[stationId], [rotation]: "idle" },
+          }));
+        }, 2000);
+      } else {
+        setDutySaveStatus((prev) => ({
+          ...prev,
+          [stationId]: { ...prev[stationId], [rotation]: "error" },
+        }));
+      }
+    } catch {
+      setDutySaveStatus((prev) => ({
+        ...prev,
+        [stationId]: { ...prev[stationId], [rotation]: "error" },
+      }));
+    }
+  }
+
+  async function removeDutyAssignment(
+    stationId: string,
+    rotation: RotationSlot,
+    assignmentId: string
+  ) {
+    setDutySaveStatus((prev) => ({
+      ...prev,
+      [stationId]: { ...prev[stationId], [rotation]: "saving" },
+    }));
+    try {
+      const res = await fetch(
+        `/api/duty-stations/${stationId}/assignments/${assignmentId}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setDutyAssignments((prev) => ({
+          ...prev,
+          [stationId]: {
+            ...prev[stationId],
+            [rotation]: (prev[stationId]?.[rotation] ?? []).filter(
+              (a) => a.assignmentId !== assignmentId
+            ),
+          },
+        }));
+        setDutySaveStatus((prev) => ({
+          ...prev,
+          [stationId]: { ...prev[stationId], [rotation]: "saved" },
+        }));
+        setTimeout(() => {
+          setDutySaveStatus((prev) => ({
+            ...prev,
+            [stationId]: { ...prev[stationId], [rotation]: "idle" },
+          }));
+        }, 2000);
+      } else {
+        setDutySaveStatus((prev) => ({
+          ...prev,
+          [stationId]: { ...prev[stationId], [rotation]: "error" },
+        }));
+      }
+    } catch {
+      setDutySaveStatus((prev) => ({
+        ...prev,
+        [stationId]: { ...prev[stationId], [rotation]: "error" },
+      }));
+    }
+  }
+
+  // Teachers available for a given slot, filtered by rotation conflicts, absences, and duty assignments
   function getAvailableTeachers(
     sessionId: string,
     rotation: RotationSlot,
@@ -195,7 +336,6 @@ export default function CoverageDashboard({
     for (const s of sessionsInRotation) {
       const a = assignments[s.sessionId]?.[rotation];
       if (s.sessionId === sessionId) {
-        // Exclude the sibling slot in the same card
         const other = slot === "t1" ? a?.t2 : a?.t1;
         if (other) taken.add(other);
       } else {
@@ -203,10 +343,41 @@ export default function CoverageDashboard({
         if (a?.t2) taken.add(a.t2);
       }
     }
+    // Also exclude teachers already assigned to a duty station in this rotation
+    for (const ds of dutyStations) {
+      for (const slot of dutyAssignments[ds.stationId]?.[rotation] ?? []) {
+        taken.add(slot.teacherId);
+      }
+    }
     return teachers.filter((t) => !taken.has(t.id));
   }
 
-  // Derive teacher sidebar data from current assignments
+  function getAvailableTeachersForDuty(
+    stationId: string,
+    rotation: RotationSlot
+  ): CoverageTeacher[] {
+    const taken = new Set<string>(absentTeacherIds);
+    // Exclude teachers in club sessions
+    const sessionsInRotation = clubs.filter((c) => c.rotations.includes(rotation));
+    for (const s of sessionsInRotation) {
+      const a = assignments[s.sessionId]?.[rotation];
+      if (a?.t1) taken.add(a.t1);
+      if (a?.t2) taken.add(a.t2);
+    }
+    // Exclude teachers already at another duty station (or another slot at same station)
+    for (const ds of dutyStations) {
+      for (const slot of dutyAssignments[ds.stationId]?.[rotation] ?? []) {
+        taken.add(slot.teacherId);
+      }
+    }
+    // Re-allow teachers already assigned to THIS station (already shown as assigned)
+    for (const slot of dutyAssignments[stationId]?.[rotation] ?? []) {
+      taken.delete(slot.teacherId);
+    }
+    return teachers.filter((t) => !taken.has(t.id));
+  }
+
+  // Derive teacher sidebar data from current assignments (clubs + duty stations)
   const teacherRows = useMemo(() => {
     return teachers
       .map((t) => {
@@ -220,13 +391,20 @@ export default function CoverageDashboard({
             }
           }
         }
+        for (const ds of dutyStations) {
+          for (const r of ALL_ROTATIONS) {
+            if ((dutyAssignments[ds.stationId]?.[r] ?? []).some((a) => a.teacherId === t.id)) {
+              assignedRotations.add(r);
+            }
+          }
+        }
         const freeCount = ALL_ROTATIONS.filter(
           (r) => !assignedRotations.has(r)
         ).length;
         return { ...t, freeCount, assignedRotations };
       })
       .sort((a, b) => b.freeCount - a.freeCount);
-  }, [teachers, clubs, assignments]);
+  }, [teachers, clubs, assignments, dutyStations, dutyAssignments]);
 
   const totalNeeds = clubs.filter((c) =>
     c.rotations.some((r) => urgencyOf(c, assignments[c.sessionId]?.[r]) === "needs")
@@ -234,6 +412,15 @@ export default function CoverageDashboard({
   const totalConsider = clubs.filter((c) =>
     c.rotations.some((r) => urgencyOf(c, assignments[c.sessionId]?.[r]) === "consider")
   ).length;
+
+  const dutyNeedsCount = dutyStations.reduce((acc, ds) => {
+    const anyUnfilled = ALL_ROTATIONS.some(
+      (r) =>
+        ds.maxTeachers > 0 &&
+        (dutyAssignments[ds.stationId]?.[r]?.length ?? 0) < ds.maxTeachers
+    );
+    return acc + (anyUnfilled ? 1 : 0);
+  }, 0);
 
   return (
     <div>
@@ -247,7 +434,7 @@ export default function CoverageDashboard({
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {totalNeeds === 0 && totalConsider === 0 ? (
+        {totalNeeds === 0 && totalConsider === 0 && dutyNeedsCount === 0 ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-medium">
             All sessions covered ✓
           </span>
@@ -261,6 +448,11 @@ export default function CoverageDashboard({
             {totalConsider > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-1 text-xs font-medium">
                 {totalConsider} large class{totalConsider !== 1 ? "es" : ""} without an assistant
+              </span>
+            )}
+            {dutyNeedsCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-3 py-1 text-xs font-medium">
+                {dutyNeedsCount} duty station{dutyNeedsCount !== 1 ? "s" : ""} need coverage
               </span>
             )}
           </>
@@ -290,7 +482,19 @@ export default function CoverageDashboard({
                   "covered"
               ),
             };
-            const uncoveredCount = grouped.needs.length;
+
+            const dutyNeedsInRotation = dutyStations.filter(
+              (ds) =>
+                ds.maxTeachers > 0 &&
+                (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) < ds.maxTeachers
+            );
+            const dutyCoveredInRotation = dutyStations.filter(
+              (ds) =>
+                ds.maxTeachers === 0 ||
+                (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) >= ds.maxTeachers
+            );
+
+            const uncoveredCount = grouped.needs.length + dutyNeedsInRotation.length;
 
             return (
               <div
@@ -317,15 +521,28 @@ export default function CoverageDashboard({
 
                 {/* Cards */}
                 <div className="flex-1 overflow-y-auto">
-                  {sessionsInRotation.length === 0 ? (
+                  {sessionsInRotation.length === 0 && dutyStations.length === 0 ? (
                     <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500 italic">
                       No clubs scheduled.
                     </p>
                   ) : (
                     <>
-                      {grouped.needs.length > 0 && (
+                      {(grouped.needs.length > 0 || dutyNeedsInRotation.length > 0) && (
                         <>
                           <SectionLabel label="Needs teacher" color="red" />
+                          {dutyNeedsInRotation.map((ds) => (
+                            <DutyStationCard
+                              key={ds.stationId}
+                              station={ds}
+                              rotation={rotation}
+                              assignments={dutyAssignments[ds.stationId]?.[rotation] ?? []}
+                              saveStatus={dutySaveStatus[ds.stationId]?.[rotation] ?? "idle"}
+                              availableTeachers={getAvailableTeachersForDuty(ds.stationId, rotation)}
+                              teachers={teachers}
+                              onAssign={(teacherId) => assignDuty(ds.stationId, rotation, teacherId)}
+                              onRemove={(assignmentId) => removeDutyAssignment(ds.stationId, rotation, assignmentId)}
+                            />
+                          ))}
                           {grouped.needs.map((club) => (
                             <ClubCard
                               key={club.sessionId}
@@ -389,9 +606,22 @@ export default function CoverageDashboard({
                           ))}
                         </>
                       )}
-                      {grouped.covered.length > 0 && (
+                      {(grouped.covered.length > 0 || dutyCoveredInRotation.length > 0) && (
                         <>
                           <SectionLabel label="Covered" color="gray" />
+                          {dutyCoveredInRotation.map((ds) => (
+                            <DutyStationCard
+                              key={ds.stationId}
+                              station={ds}
+                              rotation={rotation}
+                              assignments={dutyAssignments[ds.stationId]?.[rotation] ?? []}
+                              saveStatus={dutySaveStatus[ds.stationId]?.[rotation] ?? "idle"}
+                              availableTeachers={getAvailableTeachersForDuty(ds.stationId, rotation)}
+                              teachers={teachers}
+                              onAssign={(teacherId) => assignDuty(ds.stationId, rotation, teacherId)}
+                              onRemove={(assignmentId) => removeDutyAssignment(ds.stationId, rotation, assignmentId)}
+                            />
+                          ))}
                           {grouped.covered.map((club) => (
                             <ClubCard
                               key={club.sessionId}
@@ -642,6 +872,107 @@ function ClubCard({
           onChange={(v) => onAssign("t2", v)}
         />
       </div>
+    </div>
+  );
+}
+
+function DutyStationCard({
+  station,
+  rotation,
+  assignments,
+  saveStatus,
+  availableTeachers,
+  teachers,
+  onAssign,
+  onRemove,
+}: {
+  station: CoverageDutyStation;
+  rotation: RotationSlot;
+  assignments: Array<{ assignmentId: string; teacherId: string; adminLocked: boolean }>;
+  saveStatus: SaveStatus;
+  availableTeachers: CoverageTeacher[];
+  teachers: CoverageTeacher[];
+  onAssign: (teacherId: string) => void;
+  onRemove: (assignmentId: string) => void;
+}) {
+  void rotation;
+  const isFull = assignments.length >= station.maxTeachers;
+
+  const statusIndicator =
+    saveStatus === "saving" ? (
+      <span className="text-gray-400 dark:text-gray-500 text-xs animate-pulse">Saving…</span>
+    ) : saveStatus === "saved" ? (
+      <span className="text-green-600 dark:text-green-400 text-xs font-medium">Saved ✓</span>
+    ) : saveStatus === "error" ? (
+      <span className="text-red-500 dark:text-red-400 text-xs font-medium">Error — retry</span>
+    ) : null;
+
+  const borderColor = isFull || station.maxTeachers === 0 ? "border-l-transparent" : "border-l-red-400";
+
+  return (
+    <div className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${borderColor} bg-blue-50/30 dark:bg-blue-950/10`}>
+      <div className="flex items-center justify-between mb-1 gap-2">
+        <div className="min-w-0">
+          <span className="text-sm font-medium text-gray-900 dark:text-white truncate block" title={station.name}>
+            {station.name}
+          </span>
+          {station.location && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate block">{station.location}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {statusIndicator}
+          <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+            Floor duty
+          </span>
+        </div>
+      </div>
+
+      {station.maxTeachers === 0 ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic mt-1">No staff needed</p>
+      ) : (
+        <div className="space-y-1.5 mt-2">
+          {assignments.map((a) => {
+            const teacherName = teachers.find((t) => t.id === a.teacherId)?.name ?? "Unknown";
+            return (
+              <div key={a.assignmentId} className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
+                  {assignments.indexOf(a) === 0 ? "T1" : "T2"}
+                </span>
+                <span className="flex-1 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/40 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 truncate">
+                  {teacherName}
+                  {a.adminLocked && (
+                    <span className="ml-1 text-gray-400 dark:text-gray-500">🔒</span>
+                  )}
+                </span>
+                <button
+                  onClick={() => onRemove(a.assignmentId)}
+                  className="text-xs text-red-500 dark:text-red-400 hover:underline shrink-0"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+          {!isFull && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
+                {assignments.length === 0 ? "T1" : "T2"}
+              </span>
+              <select
+                className="flex-1 rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 px-2 py-1 text-xs text-gray-600 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                value=""
+                onChange={(e) => { if (e.target.value) onAssign(e.target.value); }}
+              >
+                <option value="">None</option>
+                {availableTeachers.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

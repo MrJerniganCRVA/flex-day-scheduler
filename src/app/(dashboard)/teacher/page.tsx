@@ -8,6 +8,8 @@ import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import VolunteerButton from "@/components/sessions/VolunteerButton";
 import StopCoveringButton from "@/components/sessions/StopCoveringButton";
 import TeacherAbsenceSelector from "@/components/teacher/TeacherAbsenceSelector";
+import DutyStationVolunteerButton from "@/components/duty-stations/DutyStationVolunteerButton";
+import DutyStationUnvolunteerButton from "@/components/duty-stations/DutyStationUnvolunteerButton";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -78,6 +80,22 @@ export default async function TeacherDashboard() {
     ? nextFlexDay.date.getTime() === today.getTime()
     : false;
 
+  // Duty station assignments for this teacher on the next flex day
+  const myDutyAssignments = nextFlexDay
+    ? await prisma.dutyStationAssignment.findMany({
+        where: { flexDayId: nextFlexDay.id, teacherId: userId },
+        include: { dutyStation: { select: { id: true, name: true, location: true } } },
+      })
+    : [];
+
+  // All duty stations and assignments for the next flex day (to find open slots)
+  const [allDutyStations, allDutyAssignmentsForDay] = nextFlexDay
+    ? await Promise.all([
+        prisma.dutyStation.findMany({ where: { maxTeachers: { gt: 0 } }, orderBy: { name: "asc" } }),
+        prisma.dutyStationAssignment.findMany({ where: { flexDayId: nextFlexDay.id } }),
+      ])
+    : [[], []];
+
   // Fetch ALL sessions for the next flex day (to find open coverage spots)
   const allSessionsForNextDay = nextFlexDay
     ? await prisma.clubSession.findMany({
@@ -129,6 +147,29 @@ export default async function TeacherDashboard() {
     if (openSlots.length === 0) return [];
     return [{ id: cs.id, name: cs.club?.name ?? cs.title ?? "Activity", openSlots }];
   });
+
+  // Open duty station slots this teacher can volunteer for
+  type OpenDutySlot = { stationId: string; stationName: string; rotation: RotationSlot };
+  const openDutySlots: OpenDutySlot[] = nextFlexDay
+    ? allDutyStations.flatMap((ds) =>
+        ALL_ROTATIONS.flatMap((r) => {
+          const alreadyAssigned = myDutyAssignments.some(
+            (a) => a.dutyStationId === ds.id && a.rotation === r
+          );
+          if (alreadyAssigned) return [];
+          const countForSlot = allDutyAssignmentsForDay.filter(
+            (a) => a.dutyStationId === ds.id && a.rotation === r
+          ).length;
+          if (countForSlot >= ds.maxTeachers) return [];
+          // Check teacher isn't absent for this rotation
+          const isAbsent = nextFlexDay.teacherAbsences.some(
+            (a) => a.userId === userId && a.rotation === r && a.type === "ABSENT"
+          );
+          if (isAbsent) return [];
+          return [{ stationId: ds.id, stationName: ds.name, rotation: r }];
+        })
+      )
+    : [];
 
   return (
     <div className="space-y-8">
@@ -186,6 +227,8 @@ export default async function TeacherDashboard() {
                       (rc.primaryTeacherId === userId || rc.secondaryTeacherId === userId)
                   );
                 });
+                const dutyForSlot = myDutyAssignments.filter((a) => a.rotation === slot);
+                const hasContent = sessions.length > 0 || dutyForSlot.length > 0;
 
                 return (
                   <div
@@ -194,7 +237,7 @@ export default async function TeacherDashboard() {
                   >
                     <div
                       className={`px-4 py-2.5 font-semibold text-sm ${
-                        sessions.length > 0
+                        hasContent
                           ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
                           : "bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
                       }`}
@@ -203,7 +246,37 @@ export default async function TeacherDashboard() {
                     </div>
 
                     <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                      {sessions.length === 0 ? (
+                      {dutyForSlot.map((da) => (
+                        <div key={da.id} className="px-4 py-4 bg-blue-50/40 dark:bg-blue-950/10">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                {da.dutyStation.name}
+                              </div>
+                              {da.dutyStation.location && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  {da.dutyStation.location}
+                                </div>
+                              )}
+                            </div>
+                            <span className="shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                              Floor duty
+                            </span>
+                          </div>
+                          {da.adminLocked ? (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">🔒 Assigned by admin</p>
+                          ) : (
+                            <div className="mt-2">
+                              <DutyStationUnvolunteerButton
+                                stationId={da.dutyStationId}
+                                flexDayId={nextFlexDay.id}
+                                rotation={slot}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {sessions.length === 0 && dutyForSlot.length === 0 ? (
                         <div className="px-4 py-4 space-y-1">
                           <p className="text-sm text-gray-400 dark:text-gray-500 italic">No activity this rotation.</p>
                           <Link
@@ -213,7 +286,7 @@ export default async function TeacherDashboard() {
                             Schedule something →
                           </Link>
                         </div>
-                      ) : (
+                      ) : sessions.length === 0 ? null : (
                         sessions.map((cs) => {
                           const roomName = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
                           const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
@@ -392,7 +465,7 @@ export default async function TeacherDashboard() {
       </section>
 
       {/* ── Sessions seeking coverage ─────────────────────────────── */}
-      {openSessionsForCoverage.length > 0 && (() => {
+      {(openSessionsForCoverage.length > 0 || openDutySlots.length > 0) && (() => {
         const coverageByRotation = Object.fromEntries(
           ALL_ROTATIONS.map((r) => [
             r,
@@ -403,6 +476,10 @@ export default async function TeacherDashboard() {
             ),
           ])
         ) as Record<RotationSlot, Array<{ id: string; name: string; needsPrimary: boolean }>>;
+
+        const dutyByRotation = Object.fromEntries(
+          ALL_ROTATIONS.map((r) => [r, openDutySlots.filter((s) => s.rotation === r)])
+        ) as Record<RotationSlot, OpenDutySlot[]>;
 
         return (
           <section>
@@ -422,23 +499,38 @@ export default async function TeacherDashboard() {
                     {ROTATION_LABELS[slot]}
                   </div>
                   <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                    {coverageByRotation[slot].length === 0 ? (
+                    {coverageByRotation[slot].length === 0 && dutyByRotation[slot].length === 0 ? (
                       <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
                         No coverage needed
                       </p>
                     ) : (
-                      coverageByRotation[slot].map((cs) => (
-                        <div key={cs.id} className="px-4 py-3">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                            {cs.name}
-                          </p>
-                          <VolunteerButton
-                            sessionId={cs.id}
-                            rotation={slot}
-                            label={cs.needsPrimary ? "primary" : "secondary"}
-                          />
-                        </div>
-                      ))
+                      <>
+                        {coverageByRotation[slot].map((cs) => (
+                          <div key={cs.id} className="px-4 py-3">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              {cs.name}
+                            </p>
+                            <VolunteerButton
+                              sessionId={cs.id}
+                              rotation={slot}
+                              label={cs.needsPrimary ? "primary" : "secondary"}
+                            />
+                          </div>
+                        ))}
+                        {dutyByRotation[slot].map((ds) => (
+                          <div key={ds.stationId} className="px-4 py-3">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                              {ds.stationName}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Floor duty</p>
+                            <DutyStationVolunteerButton
+                              stationId={ds.stationId}
+                              flexDayId={nextFlexDay!.id}
+                              rotation={slot}
+                            />
+                          </div>
+                        ))}
+                      </>
                     )}
                   </div>
                 </div>
