@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import CoverageDashboard from "@/components/admin/CoverageDashboard";
-import type { CoverageClub, CoverageTeacher } from "@/components/admin/CoverageDashboard";
+import type { CoverageClub, CoverageTeacher, CoverageDutyStation } from "@/components/admin/CoverageDashboard";
 import type { RotationSlot } from "@prisma/client";
 
 export default async function AdminCoveragePage() {
@@ -42,16 +42,48 @@ export default async function AdminCoveragePage() {
     },
   });
 
-  const teacherUsers = await prisma.user.findMany({
-    where: { role: { in: ["TEACHER", "ADMIN"] } },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  const [teacherUsers, allDutyStations, rawDutyAssignments] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: { in: ["TEACHER", "ADMIN"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.dutyStation.findMany({ orderBy: { name: "asc" } }),
+    nextFlexDay
+      ? prisma.dutyStationAssignment.findMany({
+          where: { flexDayId: nextFlexDay.id },
+          include: { teacher: { select: { id: true, name: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const teachers: CoverageTeacher[] = teacherUsers.map((u) => ({
     id: u.id,
     name: u.name ?? u.id,
   }));
+
+  const dutyStations: CoverageDutyStation[] = allDutyStations.map((ds) => {
+    const stationAssignments = rawDutyAssignments.filter(
+      (a) => a.dutyStationId === ds.id
+    );
+    const assignments: CoverageDutyStation["assignments"] = {};
+    for (const a of stationAssignments) {
+      if (!assignments[a.rotation]) assignments[a.rotation] = [];
+      assignments[a.rotation]!.push({
+        assignmentId: a.id,
+        teacherId: a.teacherId,
+        teacherName: a.teacher.name ?? a.teacherId,
+        adminLocked: a.adminLocked,
+      });
+    }
+    return {
+      stationId: ds.id,
+      name: ds.name,
+      location: ds.location,
+      maxTeachers: ds.maxTeachers,
+      assignments,
+    };
+  });
 
   if (!nextFlexDay) {
     return (
@@ -133,6 +165,8 @@ export default async function AdminCoveragePage() {
       teachers={teachers}
       flexDayLabel={flexDayLabel}
       absentTeacherIds={absentTeacherIds}
+      dutyStations={dutyStations}
+      flexDayId={nextFlexDay.id}
     />
   );
 }

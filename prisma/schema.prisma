@@ -83,6 +83,7 @@ model User {
   oneOffSessions  ClubSession[]             @relation("OneOffOwner")
   flexDayAbsences TeacherFlexDayAbsence[]
   clubMemberships ClubMember[]
+  dutyAssignments DutyStationAssignment[]
 
   @@index([email])
 }
@@ -98,6 +99,7 @@ model FlexDay {
 
   clubSessions    ClubSession[]
   teacherAbsences TeacherFlexDayAbsence[]
+  dutyAssignments DutyStationAssignment[]
 
   @@unique([date])
   @@index([date])
@@ -175,6 +177,7 @@ model SessionRotationCoverage {
   rotation           RotationSlot
   primaryTeacherId   String?
   secondaryTeacherId String?
+  adminLocked        Boolean      @default(false)
 
   session          ClubSession @relation(fields: [sessionId],          references: [id], onDelete: Cascade)
   primaryTeacher   User?       @relation("RotCovPrimary",   fields: [primaryTeacherId],   references: [id], onDelete: SetNull)
@@ -228,4 +231,36 @@ model ClubMember {
   @@unique([clubId, studentId])
   @@index([clubId])
   @@index([studentId])
+}
+
+model DutyStation {
+  id          String   @id @default(cuid())
+  name        String
+  location    String?
+  maxTeachers Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments DutyStationAssignment[]
+
+  @@index([name])
+}
+
+model DutyStationAssignment {
+  id            String       @id @default(cuid())
+  dutyStationId String
+  flexDayId     String
+  rotation      RotationSlot
+  teacherId     String
+  adminLocked   Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  dutyStation DutyStation @relation(fields: [dutyStationId], references: [id], onDelete: Cascade)
+  flexDay     FlexDay     @relation(fields: [flexDayId],     references: [id], onDelete: Cascade)
+  teacher     User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([dutyStationId, flexDayId, rotation, teacherId])
+  @@index([dutyStationId])
+  @@index([flexDayId])
+  @@index([teacherId])
 }
