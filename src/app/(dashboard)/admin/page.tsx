@@ -11,6 +11,7 @@ export default async function AdminDashboard() {
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+  const userId = session.user.id!;
 
   const nextFlexDay = await prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
@@ -18,7 +19,7 @@ export default async function AdminDashboard() {
     include: {
       clubSessions: {
         include: {
-          club: { select: { name: true, maxCapacity: true } },
+          club: { select: { name: true, maxCapacity: true, ownerId: true } },
           _count: { select: { signups: true } },
         },
       },
@@ -40,6 +41,34 @@ export default async function AdminDashboard() {
   const overallPct =
     overallCapacity > 0 ? Math.round((overallSignups / overallCapacity) * 100) : 0;
 
+  // Admin's own sessions (clubs they own or cover)
+  const mySessionsForNextDay = nextFlexDay
+    ? await prisma.clubSession.findMany({
+        where: {
+          flexDayId: nextFlexDay.id,
+          OR: [
+            { club: { ownerId: userId } },
+            { oneOffOwnerId: userId },
+            { rotationCoverage: { some: { OR: [{ primaryTeacherId: userId }, { secondaryTeacherId: userId }] } } },
+          ],
+        },
+        include: {
+          club: { select: { name: true, ownerId: true } },
+          rotationCoverage: { select: { rotation: true, primaryTeacherId: true } },
+        },
+      })
+    : [];
+
+  // Admin's duty assignments for next flex day
+  const myDutyAssignments = nextFlexDay
+    ? await prisma.dutyStationAssignment.findMany({
+        where: { flexDayId: nextFlexDay.id, teacherId: userId },
+        include: { dutyStation: { select: { name: true } } },
+      })
+    : [];
+
+  const hasPersonalSchedule = mySessionsForNextDay.length > 0 || myDutyAssignments.length > 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -53,73 +82,145 @@ export default async function AdminDashboard() {
       </div>
 
       {nextFlexDay ? (
-        <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-1">
-                Next Flex Day
-              </p>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                  timeZone: "UTC",
-                })}
-              </h2>
-              {nextFlexDay.label && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{nextFlexDay.label}</p>
-              )}
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                {overallSignups}/{overallCapacity}
+        <>
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-1">
+                  Next Flex Day
+                </p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })}
+                </h2>
+                {nextFlexDay.label && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{nextFlexDay.label}</p>
+                )}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">{overallPct}% filled overall</div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                  {overallSignups}/{overallCapacity}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">{overallPct}% filled overall</div>
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-3">
-            {rotationStats.map(({ slot, clubCount: clubs, totalCapacity, totalSignups, pct }) => (
-              <div key={slot}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {ROTATION_LABELS[slot as RotationSlot]}
-                    <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
-                      {clubs} club{clubs !== 1 ? "s" : ""}
+            <div className="space-y-3">
+              {rotationStats.map(({ slot, clubCount: clubs, totalCapacity, totalSignups, pct }) => (
+                <div key={slot}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      {ROTATION_LABELS[slot as RotationSlot]}
+                      <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
+                        {clubs} club{clubs !== 1 ? "s" : ""}
+                      </span>
                     </span>
-                  </span>
-                  <span className="text-sm text-gray-600 dark:text-gray-300">
-                    {totalSignups}/{totalCapacity}
-                    <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{pct}%</span>
-                  </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                      {totalSignups}/{totalCapacity}
+                      <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{pct}%</span>
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-indigo-100 dark:bg-indigo-900/40 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-indigo-500 dark:bg-indigo-400 transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-indigo-100 dark:bg-indigo-900/40 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-indigo-500 dark:bg-indigo-400 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800">
+              <Link
+                href={`/admin/flex-days/${nextFlexDay.id}`}
+                className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                View full details →
+              </Link>
+            </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800 flex items-center gap-3 flex-wrap">
-            <Link
-              href={`/admin/flex-days/${nextFlexDay.id}`}
-              className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              View full details →
-            </Link>
-            <Link
-              href="/admin/coverage"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300 dark:border-teal-700 px-3 py-1.5 text-sm font-medium text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
-            >
-              Manage Coverage →
-            </Link>
-          </div>
-        </div>
+          {/* Admin's personal schedule */}
+          {hasPersonalSchedule && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-3">
+                Your Schedule
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                {ALL_ROTATIONS.map((slot: RotationSlot) => {
+                  const sessions = mySessionsForNextDay.filter((cs) => {
+                    const owned = cs.club?.ownerId === userId || cs.oneOffOwnerId === userId;
+                    if (owned) return cs.rotations.includes(slot);
+                    return cs.rotationCoverage.some(
+                      (rc) => rc.rotation === slot && rc.primaryTeacherId === userId
+                    );
+                  });
+                  const dutyForSlot = myDutyAssignments.filter((a) => a.rotation === slot);
+                  const hasContent = sessions.length > 0 || dutyForSlot.length > 0;
+
+                  return (
+                    <div
+                      key={slot}
+                      className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden"
+                    >
+                      <div
+                        className={`px-4 py-2.5 font-semibold text-sm ${
+                          hasContent
+                            ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
+                            : "bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
+                        }`}
+                      >
+                        {ROTATION_LABELS[slot]}
+                      </div>
+                      <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                        {dutyForSlot.map((da) => (
+                          <div key={da.id} className="px-4 py-3 border-l-4 border-l-amber-400 dark:border-l-amber-500">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                {da.dutyStation.name}
+                              </span>
+                              <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                Floor duty
+                              </span>
+                            </div>
+                            {da.adminLocked && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Assigned by admin</p>
+                            )}
+                          </div>
+                        ))}
+                        {sessions.length === 0 && dutyForSlot.length === 0 ? (
+                          <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
+                            No activity this rotation.
+                          </p>
+                        ) : (
+                          sessions.map((cs) => (
+                            <div key={cs.id} className="px-4 py-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                  {cs.club?.name ?? cs.title ?? "Session"}
+                                </span>
+                                {cs.club?.ownerId !== userId && cs.oneOffOwnerId !== userId && (
+                                  <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                                    Covering
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </>
       ) : (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
           No upcoming Flex Days scheduled.{" "}

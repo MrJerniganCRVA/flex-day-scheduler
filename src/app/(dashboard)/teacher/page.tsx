@@ -84,7 +84,7 @@ export default async function TeacherDashboard() {
   const myDutyAssignments = nextFlexDay
     ? await prisma.dutyStationAssignment.findMany({
         where: { flexDayId: nextFlexDay.id, teacherId: userId },
-        include: { dutyStation: { select: { id: true, name: true, location: true } } },
+        include: { dutyStation: { select: { id: true, name: true } } },
       })
     : [];
 
@@ -247,24 +247,17 @@ export default async function TeacherDashboard() {
 
                     <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
                       {dutyForSlot.map((da) => (
-                        <div key={da.id} className="px-4 py-4 bg-blue-50/40 dark:bg-blue-950/10">
+                        <div key={da.id} className="px-4 py-4 border-l-4 border-l-amber-400 dark:border-l-amber-500">
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <div className="min-w-0">
-                              <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
-                                {da.dutyStation.name}
-                              </div>
-                              {da.dutyStation.location && (
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                  {da.dutyStation.location}
-                                </div>
-                              )}
+                            <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                              {da.dutyStation.name}
                             </div>
-                            <span className="shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                            <span className="shrink-0 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                               Floor duty
                             </span>
                           </div>
                           {da.adminLocked ? (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">🔒 Assigned by admin</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Assigned by admin</p>
                           ) : (
                             <div className="mt-2">
                               <DutyStationUnvolunteerButton
