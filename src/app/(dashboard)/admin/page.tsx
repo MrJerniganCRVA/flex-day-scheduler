@@ -53,8 +53,21 @@ export default async function AdminDashboard() {
           ],
         },
         include: {
-          club: { select: { name: true, ownerId: true } },
+          club: {
+            select: {
+              name: true,
+              ownerId: true,
+              maxCapacity: true,
+              defaultRoom: { select: { name: true } },
+            },
+          },
+          roomOverride: { select: { name: true } },
           rotationCoverage: { select: { rotation: true, primaryTeacherId: true } },
+          _count: { select: { signups: true } },
+          signups: {
+            select: { student: { select: { id: true, name: true } } },
+            orderBy: { student: { name: "asc" } },
+          },
         },
       })
     : [];
@@ -198,20 +211,58 @@ export default async function AdminDashboard() {
                             No activity this rotation.
                           </p>
                         ) : (
-                          sessions.map((cs) => (
-                            <div key={cs.id} className="px-4 py-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
-                                  {cs.club?.name ?? cs.title ?? "Session"}
-                                </span>
-                                {cs.club?.ownerId !== userId && cs.oneOffOwnerId !== userId && (
-                                  <span className="shrink-0 rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
-                                    Covering
+                          sessions.map((cs) => {
+                            const room = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name;
+                            const capacity = cs.capacityOverride ?? cs.club?.maxCapacity ?? 0;
+                            const count = cs._count.signups;
+                            const pct = capacity > 0 ? Math.round((count / capacity) * 100) : 0;
+                            return (
+                              <div key={cs.id} className="px-4 py-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                    {cs.club?.name ?? cs.title ?? "Session"}
                                   </span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {capacity > 0 && (
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        {count}/{capacity}
+                                      </span>
+                                    )}
+                                    {cs.club?.ownerId !== userId && cs.oneOffOwnerId !== userId && (
+                                      <span className="rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300">
+                                        Covering
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {room && (
+                                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{room}</p>
+                                )}
+                                {capacity > 0 && (
+                                  <div className="mt-2 h-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-indigo-500 dark:bg-indigo-400"
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                )}
+                                {cs.signups.length > 0 && (
+                                  <details className="mt-2">
+                                    <summary className="cursor-pointer text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
+                                      Roster ({cs.signups.length})
+                                    </summary>
+                                    <ul className="mt-1.5 space-y-0.5">
+                                      {cs.signups.map((s) => (
+                                        <li key={s.student.id} className="text-xs text-gray-600 dark:text-gray-300 pl-2">
+                                          {s.student.name}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </details>
                                 )}
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </div>
