@@ -15,6 +15,7 @@ interface ProposedAssignment {
 interface SessionOption {
   id: string;
   name: string;
+  rotations: RotationSlot[];
 }
 
 interface PreviewData {
@@ -79,6 +80,18 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
     loadPreview();
   }, [loadPreview]);
 
+  // Build sessionId -> rotations[] lookup so setSlot can cascade across linked sessions
+  const sessionRotations = useMemo(() => {
+    const map: Record<string, RotationSlot[]> = {};
+    if (!preview) return map;
+    for (const sessions of Object.values(preview.sessionsPerRotation)) {
+      for (const s of sessions) {
+        if (!map[s.id]) map[s.id] = s.rotations;
+      }
+    }
+    return map;
+  }, [preview]);
+
   // Unique students with proposed assignments, preserving algorithm order
   const studentList = useMemo(() => {
     if (!preview) return [];
@@ -111,13 +124,23 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
   }, [editableAssignments]);
 
   function setSlot(studentId: string, rotation: RotationSlot, sessionId: string) {
-    setEditableAssignments((prev) => ({
-      ...prev,
-      [studentId]: {
-        ...(prev[studentId] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" }),
-        [rotation]: sessionId,
-      },
-    }));
+    setEditableAssignments((prev) => {
+      const current = prev[studentId] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" };
+      const updated = { ...current };
+      if (sessionId) {
+        // Set all rotations this session covers (linked sessions span multiple slots)
+        const covered = sessionRotations[sessionId] ?? [rotation];
+        for (const r of covered) updated[r] = sessionId;
+      } else {
+        // Clearing — also clear any other slots that held the same linked session
+        const prev_session = current[rotation];
+        const covered = prev_session ? (sessionRotations[prev_session] ?? [rotation]) : [rotation];
+        for (const r of covered) {
+          if (updated[r] === prev_session) updated[r] = "";
+        }
+      }
+      return { ...prev, [studentId]: updated };
+    });
   }
 
   async function handleConfirm() {
@@ -313,6 +336,18 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                       </div>
                       {ALL_ROTATIONS.map((slot) => {
                         const isAlreadyFilled = filledSlots.includes(slot);
+                        const assignedSessionId = slots[slot] ?? "";
+                        const assignedSessionRotations = assignedSessionId
+                          ? (sessionRotations[assignedSessionId] ?? [slot])
+                          : [];
+                        // A slot is "linked-secondary" if it's controlled by a multi-rotation session
+                        // but is not the first rotation of that session (the first rotation hosts the dropdown)
+                        const isLinkedSecondary =
+                          !isAlreadyFilled &&
+                          assignedSessionId !== "" &&
+                          assignedSessionRotations.length > 1 &&
+                          assignedSessionRotations[0] !== slot;
+
                         return (
                           <div key={slot}>
                             <label className="sm:hidden text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">
@@ -323,9 +358,24 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                                 <span>✓</span>
                                 <span>Already signed up</span>
                               </div>
+                            ) : isLinkedSecondary ? (
+                              <div className="w-full rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1.5 text-xs text-indigo-700 dark:text-indigo-300 flex items-center justify-between gap-1">
+                                <span className="truncate">
+                                  {preview.sessionsPerRotation[slot]?.find((s) => s.id === assignedSessionId)?.name ?? "Linked"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSlot(student.id, assignedSessionRotations[0], "")}
+                                  disabled={running}
+                                  title="Remove linked assignment"
+                                  className="shrink-0 text-indigo-400 dark:text-indigo-500 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-50"
+                                >
+                                  ×
+                                </button>
+                              </div>
                             ) : (
                               <select
-                                value={slots[slot] ?? ""}
+                                value={assignedSessionId}
                                 onChange={(e) => setSlot(student.id, slot, e.target.value)}
                                 disabled={running}
                                 className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none disabled:opacity-50"
@@ -333,7 +383,7 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
                                 <option value="">— no assignment —</option>
                                 {(preview.sessionsPerRotation[slot] ?? []).map((s) => (
                                   <option key={s.id} value={s.id}>
-                                    {s.name}
+                                    {s.name}{s.rotations.length > 1 ? ` (${s.rotations.map((r) => r === "FLEX_1" ? "F1" : r === "FLEX_2" ? "F2" : "F3").join("+")})` : ""}
                                   </option>
                                 ))}
                               </select>
