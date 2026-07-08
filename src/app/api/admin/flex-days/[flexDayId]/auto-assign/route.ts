@@ -215,8 +215,8 @@ export async function GET(
     }
   }
 
-  // Build per-rotation session lists for dropdown options
-  const sessionsPerRotation: Record<RotationSlot, { id: string; name: string }[]> = {
+  // Build per-rotation session lists for dropdown options (includes rotations so client can cascade)
+  const sessionsPerRotation: Record<RotationSlot, { id: string; name: string; rotations: RotationSlot[] }[]> = {
     FLEX_1: [],
     FLEX_2: [],
     FLEX_3: [],
@@ -230,7 +230,7 @@ export async function GET(
     for (const r of cs.rotations) {
       if (!seenPerRotation[r].has(cs.id)) {
         seenPerRotation[r].add(cs.id);
-        sessionsPerRotation[r].push({ id: cs.id, name: cs.displayName });
+        sessionsPerRotation[r].push({ id: cs.id, name: cs.displayName, rotations: cs.rotations });
       }
     }
   }
@@ -286,6 +286,29 @@ export async function POST(
 
   if (rows.length === 0) {
     return NextResponse.json({ signupsCreated: 0, studentsAffected: 0 });
+  }
+
+  // Validate: no student has two sessions that share a rotation
+  const sessionIds = [...new Set(rows.map((r) => r.clubSessionId))];
+  const sessionRotationMap = await prisma.clubSession.findMany({
+    where: { id: { in: sessionIds } },
+    select: { id: true, rotations: true },
+  });
+  const rotationsById = Object.fromEntries(sessionRotationMap.map((s) => [s.id, s.rotations as RotationSlot[]]));
+
+  const studentOccupied = new Map<string, Set<RotationSlot>>();
+  for (const { studentId, clubSessionId } of rows) {
+    if (!studentOccupied.has(studentId)) studentOccupied.set(studentId, new Set());
+    const occupied = studentOccupied.get(studentId)!;
+    for (const r of rotationsById[clubSessionId] ?? []) {
+      if (occupied.has(r)) {
+        return NextResponse.json(
+          { error: `Rotation conflict: student ${studentId} has two sessions assigned to ${r}` },
+          { status: 409 }
+        );
+      }
+      occupied.add(r);
+    }
   }
 
   const result = await prisma.signup.createMany({
