@@ -412,12 +412,9 @@ export default function CoverageDashboard({
     c.rotations.some((r) => urgencyOf(c, assignments[c.sessionId]?.[r]) === "consider")
   ).length;
 
-  const dutyNeedsCount = dutyStations.reduce((acc, ds) => {
-    const anyEmpty = ALL_ROTATIONS.some(
-      (r) => (dutyAssignments[ds.stationId]?.[r]?.length ?? 0) === 0
-    );
-    return acc + (anyEmpty ? 1 : 0);
-  }, 0);
+  const anyDutyEmpty = dutyStations.some((ds) =>
+    ALL_ROTATIONS.some((r) => (dutyAssignments[ds.stationId]?.[r]?.length ?? 0) === 0)
+  );
 
   return (
     <div>
@@ -431,7 +428,7 @@ export default function CoverageDashboard({
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {totalNeeds === 0 && totalConsider === 0 && dutyNeedsCount === 0 ? (
+        {totalNeeds === 0 && totalConsider === 0 && !anyDutyEmpty ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-medium">
             All sessions covered ✓
           </span>
@@ -445,11 +442,6 @@ export default function CoverageDashboard({
             {totalConsider > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-1 text-xs font-medium">
                 {totalConsider} large class{totalConsider !== 1 ? "es" : ""} without an assistant
-              </span>
-            )}
-            {dutyNeedsCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-3 py-1 text-xs font-medium">
-                {dutyNeedsCount} duty station{dutyNeedsCount !== 1 ? "s" : ""} need coverage
               </span>
             )}
           </>
