@@ -45,7 +45,6 @@ export type CoverageTeacher = {
 export type CoverageDutyStation = {
   stationId: string;
   name: string;
-  location: string | null;
   maxTeachers: number;
   assignments: Partial<
     Record<
@@ -414,12 +413,10 @@ export default function CoverageDashboard({
   ).length;
 
   const dutyNeedsCount = dutyStations.reduce((acc, ds) => {
-    const anyUnfilled = ALL_ROTATIONS.some(
-      (r) =>
-        ds.maxTeachers > 0 &&
-        (dutyAssignments[ds.stationId]?.[r]?.length ?? 0) < ds.maxTeachers
+    const anyEmpty = ALL_ROTATIONS.some(
+      (r) => (dutyAssignments[ds.stationId]?.[r]?.length ?? 0) === 0
     );
-    return acc + (anyUnfilled ? 1 : 0);
+    return acc + (anyEmpty ? 1 : 0);
   }, 0);
 
   return (
@@ -484,14 +481,10 @@ export default function CoverageDashboard({
             };
 
             const dutyNeedsInRotation = dutyStations.filter(
-              (ds) =>
-                ds.maxTeachers > 0 &&
-                (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) < ds.maxTeachers
+              (ds) => (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) === 0
             );
             const dutyCoveredInRotation = dutyStations.filter(
-              (ds) =>
-                ds.maxTeachers === 0 ||
-                (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) >= ds.maxTeachers
+              (ds) => (dutyAssignments[ds.stationId]?.[rotation]?.length ?? 0) > 0
             );
 
             const uncoveredCount = grouped.needs.length + dutyNeedsInRotation.length;
@@ -907,72 +900,58 @@ function DutyStationCard({
       <span className="text-red-500 dark:text-red-400 text-xs font-medium">Error — retry</span>
     ) : null;
 
-  const borderColor = isFull || station.maxTeachers === 0 ? "border-l-transparent" : "border-l-red-400";
-
   return (
-    <div className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${borderColor} bg-blue-50/30 dark:bg-blue-950/10`}>
+    <div className="px-4 py-3 border-l-4 border-l-amber-400 dark:border-l-amber-500 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0">
       <div className="flex items-center justify-between mb-1 gap-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium text-gray-900 dark:text-white truncate block" title={station.name}>
-            {station.name}
-          </span>
-          {station.location && (
-            <span className="text-xs text-gray-500 dark:text-gray-400 truncate block">{station.location}</span>
-          )}
-        </div>
+        <span className="text-sm font-medium text-gray-900 dark:text-white truncate" title={station.name}>
+          {station.name}
+        </span>
         <div className="flex items-center gap-1.5 shrink-0">
           {statusIndicator}
-          <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
             Floor duty
           </span>
         </div>
       </div>
 
-      {station.maxTeachers === 0 ? (
-        <p className="text-xs text-gray-400 dark:text-gray-500 italic mt-1">No staff needed</p>
-      ) : (
-        <div className="space-y-1.5 mt-2">
-          {assignments.map((a) => {
-            const teacherName = teachers.find((t) => t.id === a.teacherId)?.name ?? "Unknown";
-            return (
-              <div key={a.assignmentId} className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
-                  {assignments.indexOf(a) === 0 ? "T1" : "T2"}
-                </span>
-                <span className="flex-1 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/40 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 truncate">
-                  {teacherName}
-                  {a.adminLocked && (
-                    <span className="ml-1 text-gray-400 dark:text-gray-500">🔒</span>
-                  )}
-                </span>
-                <button
-                  onClick={() => onRemove(a.assignmentId)}
-                  className="text-xs text-red-500 dark:text-red-400 hover:underline shrink-0"
-                >
-                  Remove
-                </button>
-              </div>
-            );
-          })}
-          {!isFull && (
-            <div className="flex items-center gap-2">
+      <div className="space-y-1.5 mt-2">
+        {assignments.map((a, i) => {
+          const teacherName = teachers.find((t) => t.id === a.teacherId)?.name ?? "Unknown";
+          return (
+            <div key={a.assignmentId} className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
-                {assignments.length === 0 ? "T1" : "T2"}
+                {i === 0 ? "T1" : "T2"}
               </span>
-              <select
-                className="flex-1 rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 px-2 py-1 text-xs text-gray-600 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                value=""
-                onChange={(e) => { if (e.target.value) onAssign(e.target.value); }}
+              <span className="flex-1 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/40 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 truncate">
+                {teacherName}
+              </span>
+              <button
+                onClick={() => onRemove(a.assignmentId)}
+                className="text-xs text-red-500 dark:text-red-400 hover:underline shrink-0"
               >
-                <option value="">None</option>
-                {availableTeachers.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                Remove
+              </button>
             </div>
-          )}
-        </div>
-      )}
+          );
+        })}
+        {!isFull && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-8 shrink-0">
+              {assignments.length === 0 ? "T1" : "T2"}
+            </span>
+            <select
+              className="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              value=""
+              onChange={(e) => { if (e.target.value) onAssign(e.target.value); }}
+            >
+              <option value="">Assign teacher…</option>
+              {availableTeachers.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

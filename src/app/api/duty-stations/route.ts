@@ -5,8 +5,7 @@ import { z } from "zod";
 
 const createSchema = z.object({
   name: z.string().min(1),
-  location: z.string().optional(),
-  maxTeachers: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  maxTeachers: z.union([z.literal(1), z.literal(2)]),
 });
 
 export async function GET() {

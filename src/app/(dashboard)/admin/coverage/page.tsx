@@ -79,7 +79,6 @@ export default async function AdminCoveragePage() {
     return {
       stationId: ds.id,
       name: ds.name,
-      location: ds.location,
       maxTeachers: ds.maxTeachers,
       assignments,
     };
