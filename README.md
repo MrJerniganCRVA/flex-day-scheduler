@@ -98,11 +98,17 @@ Admins can promote any user to ADMIN (or change roles) from the admin panel. The
 
 **Flex Days** are scheduled events (always Wednesdays at this school) with up to three rotation slots (Flex 1, Flex 2, Flex 3).
 
-**Clubs** are created by teachers and assigned to one or more rotation slots per flex day. A club can span multiple rotations (a "linked" session) for activities that need a longer block.
+**Clubs** are created by teachers and assigned to one or more rotation slots per flex day. A club can span multiple rotations (a "linked" session) for activities that need a longer block. Clubs can also have **required members** — students who are automatically enrolled in every session of that club regardless of the normal signup flow.
 
 **Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits. Signups close at a configurable deadline before the flex day.
 
-**Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time.
+**Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time. Room assignments can be **admin-locked** to prevent the auto-assign algorithm from overriding a manually chosen room. The system also tracks whether a teacher was reassigned to a session rather than volunteering for it.
+
+**Duty Stations** are non-club locations (hallways, cafeteria, etc.) that require teacher supervision during flex day rotations. Admins create and manage duty stations; teachers volunteer for open slots. Like coverage, individual assignments can be admin-locked to prevent auto-assign from overriding them.
+
+**Teacher Absence** lets teachers mark themselves absent for a specific rotation on a flex day. Absent teachers are excluded from coverage and duty-station assignments for that slot.
+
+**One-Off Sessions** allow admins to create ad-hoc sessions not tied to a standing club for a specific flex day and rotation — useful for assemblies, testing blocks, or other non-recurring activities.
 
 **Finalization** triggers a Google Calendar sync: attendees (students + assigned teachers) are added to each session's calendar event. The flex day can be unfinalized to make corrections and re-send.
 
