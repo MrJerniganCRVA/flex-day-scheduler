@@ -127,6 +127,15 @@ export default function AutoAssignTab({ flexDayId }: { flexDayId: string }) {
     setEditableAssignments((prev) => {
       const current = prev[studentId] ?? { FLEX_1: "", FLEX_2: "", FLEX_3: "" };
       const updated = { ...current };
+      // Always clear the previous session's linked rotations before writing the new one
+      const prevSessionId = current[rotation];
+      if (prevSessionId) {
+        const prevCovered = sessionRotations[prevSessionId] ?? [rotation];
+        for (const r of prevCovered) {
+          if (updated[r] === prevSessionId) updated[r] = "";
+        }
+      }
+
       if (sessionId) {
         // Set all rotations this session covers (linked sessions span multiple slots)
         const covered = sessionRotations[sessionId] ?? [rotation];
