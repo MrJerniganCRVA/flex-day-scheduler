@@ -30,112 +30,139 @@ export async function POST(request: NextRequest) {
   const { clubSessionId } = parsed.data;
   const studentId = session.user.id;
 
-  try {
-    const signup = await prisma.$transaction(async (tx) => {
-      const targetSession = await tx.clubSession.findUnique({
-        where: { id: clubSessionId },
-        include: {
-          club: { select: { maxCapacity: true, googleCalendarId: true } },
-          flexDay: { select: { id: true, date: true } },
-        },
-      });
-
-      if (!targetSession) {
-        throw Object.assign(new Error("SESSION_NOT_FOUND"), { status: 404 });
-      }
-
-      // Check signup deadline
-      if (isPastSignupDeadline(targetSession.flexDay.date)) {
-        throw Object.assign(new Error("SIGNUPS_CLOSED"), { status: 403 });
-      }
-
-      // Check capacity — per-day override takes precedence over club default
-      const maxCapacity =
-        targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
-      const currentCount = await tx.signup.count({
-        where: { clubSessionId },
-      });
-      if (currentCount >= maxCapacity) {
-        throw Object.assign(new Error("CAPACITY_FULL"), { status: 409 });
-      }
-
-      // Check for rotation conflicts on the same flex day
-      const existingSignups = await tx.signup.findMany({
-        where: {
-          studentId,
-          clubSession: { flexDayId: targetSession.flexDay.id },
-        },
-        include: { clubSession: { select: { rotations: true } } },
-      });
-
-      const occupiedRotations = existingSignups.flatMap(
-        (s) => s.clubSession.rotations
-      );
-      const conflicts = targetSession.rotations.filter((r) =>
-        occupiedRotations.includes(r)
-      );
-
-      if (conflicts.length > 0) {
-        throw Object.assign(new Error("ROTATION_CONFLICT"), {
-          status: 409,
-          rotations: conflicts,
-        });
-      }
-
-      return tx.signup.create({
-        data: { studentId, clubSessionId },
-        include: {
-          clubSession: {
+  // Capacity/rotation checks are check-then-write, so run the transaction at
+  // Serializable isolation to prevent two concurrent signups from both
+  // reading "under capacity" and both committing (overbooking). Postgres
+  // aborts the losing side with a P2034 write-conflict error, which we
+  // retry a couple of times before giving up.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const signup = await prisma.$transaction(
+        async (tx) => {
+          const targetSession = await tx.clubSession.findUnique({
+            where: { id: clubSessionId },
             include: {
-              club: {
-                select: { name: true, googleCalendarId: true },
-              },
-              flexDay: { select: { date: true } },
+              club: { select: { maxCapacity: true, googleCalendarId: true } },
+              flexDay: { select: { id: true, date: true } },
             },
-          },
-        },
-      });
-    });
+          });
 
-    return NextResponse.json(signup, { status: 201 });
-  } catch (error: unknown) {
-    const err = error as Error & { status?: number; rotations?: string[] };
-    if (err.message === "SESSION_NOT_FOUND") {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-    if (err.message === "SIGNUPS_CLOSED") {
-      return NextResponse.json(
-        { error: "Signups for this flex day are closed" },
-        { status: 403 }
-      );
-    }
-    if (err.message === "CAPACITY_FULL") {
-      return NextResponse.json(
-        { error: "This club is full" },
-        { status: 409 }
-      );
-    }
-    if (err.message === "ROTATION_CONFLICT") {
-      return NextResponse.json(
-        {
-          error: "You are already signed up for a club in this rotation",
-          conflicts: err.rotations,
+          if (!targetSession) {
+            throw Object.assign(new Error("SESSION_NOT_FOUND"), { status: 404 });
+          }
+
+          // Check signup deadline
+          if (isPastSignupDeadline(targetSession.flexDay.date)) {
+            throw Object.assign(new Error("SIGNUPS_CLOSED"), { status: 403 });
+          }
+
+          // Check capacity — per-day override takes precedence over club default
+          const maxCapacity =
+            targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
+          const currentCount = await tx.signup.count({
+            where: { clubSessionId },
+          });
+          if (currentCount >= maxCapacity) {
+            throw Object.assign(new Error("CAPACITY_FULL"), { status: 409 });
+          }
+
+          // Check for rotation conflicts on the same flex day
+          const existingSignups = await tx.signup.findMany({
+            where: {
+              studentId,
+              clubSession: { flexDayId: targetSession.flexDay.id },
+            },
+            include: { clubSession: { select: { rotations: true } } },
+          });
+
+          const occupiedRotations = existingSignups.flatMap(
+            (s) => s.clubSession.rotations
+          );
+          const conflicts = targetSession.rotations.filter((r) =>
+            occupiedRotations.includes(r)
+          );
+
+          if (conflicts.length > 0) {
+            throw Object.assign(new Error("ROTATION_CONFLICT"), {
+              status: 409,
+              rotations: conflicts,
+            });
+          }
+
+          return tx.signup.create({
+            data: { studentId, clubSessionId },
+            include: {
+              clubSession: {
+                include: {
+                  club: {
+                    select: { name: true, googleCalendarId: true },
+                  },
+                  flexDay: { select: { date: true } },
+                },
+              },
+            },
+          });
         },
-        { status: 409 }
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
+
+      return NextResponse.json(signup, { status: 201 });
+    } catch (error: unknown) {
+      const isSerializationConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034";
+      if (isSerializationConflict && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      if (isSerializationConflict) {
+        return NextResponse.json(
+          { error: "This club filled up while processing your request. Please try again." },
+          { status: 409 }
+        );
+      }
+
+      const err = error as Error & { status?: number; rotations?: string[] };
+      if (err.message === "SESSION_NOT_FOUND") {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+      if (err.message === "SIGNUPS_CLOSED") {
+        return NextResponse.json(
+          { error: "Signups for this flex day are closed" },
+          { status: 403 }
+        );
+      }
+      if (err.message === "CAPACITY_FULL") {
+        return NextResponse.json(
+          { error: "This club is full" },
+          { status: 409 }
+        );
+      }
+      if (err.message === "ROTATION_CONFLICT") {
+        return NextResponse.json(
+          {
+            error: "You are already signed up for a club in this rotation",
+            conflicts: err.rotations,
+          },
+          { status: 409 }
+        );
+      }
+      // Unique constraint = already signed up for this exact session
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        return NextResponse.json(
+          { error: "You are already signed up for this session" },
+          { status: 409 }
+        );
+      }
+      throw error;
     }
-    // Unique constraint = already signed up for this exact session
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return NextResponse.json(
-        { error: "You are already signed up for this session" },
-        { status: 409 }
-      );
-    }
-    throw error;
   }
+
+  // Unreachable: the loop above always returns or throws.
+  throw new Error("Unreachable");
 }
 
 export async function GET() {

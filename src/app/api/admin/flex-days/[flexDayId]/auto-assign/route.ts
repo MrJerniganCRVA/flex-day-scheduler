@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { RotationSlot } from "@prisma/client";
 
 const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
@@ -255,16 +256,151 @@ export async function POST(
   const rows = assignments as { studentId: string; clubSessionId: string }[];
 
   if (rows.length === 0) {
-    return NextResponse.json({ signupsCreated: 0, studentsAffected: 0 });
+    return NextResponse.json({ signupsCreated: 0, studentsAffected: 0, skipped: [] });
   }
 
-  const result = await prisma.signup.createMany({
-    data: rows,
-    skipDuplicates: true,
-  });
+  type SkipReason =
+    | "invalid_session"
+    | "invalid_student"
+    | "capacity_full"
+    | "rotation_conflict"
+    | "already_signed_up";
+  type Skipped = { studentId: string; clubSessionId: string; reason: SkipReason };
 
-  return NextResponse.json({
-    signupsCreated: result.count,
-    studentsAffected: new Set(rows.map((r) => r.studentId)).size,
-  });
+  // The dry-run (GET) proposals can go stale between admin review and commit
+  // (students self-signing up, capacity filling), so re-validate every row
+  // against live data here rather than trusting the client-submitted list.
+  // Serializable isolation prevents this from racing a concurrent /api/signups
+  // call the same way the regular signup endpoint is protected.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          const sessions = await tx.clubSession.findMany({
+            where: { flexDayId, id: { in: rows.map((r) => r.clubSessionId) } },
+            select: {
+              id: true,
+              rotations: true,
+              capacityOverride: true,
+              club: { select: { maxCapacity: true } },
+              _count: { select: { signups: true } },
+            },
+          });
+          const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
+          const studentIds = [...new Set(rows.map((r) => r.studentId))];
+          const validStudents = await tx.user.findMany({
+            where: { id: { in: studentIds }, role: "STUDENT" },
+            select: { id: true },
+          });
+          const validStudentIds = new Set(validStudents.map((s) => s.id));
+
+          // Rotations each student already occupies on this flex day, so we
+          // don't double-book a student into a rotation they're already in.
+          const existingSignups = await tx.signup.findMany({
+            where: { studentId: { in: studentIds }, clubSession: { flexDayId } },
+            select: {
+              studentId: true,
+              clubSession: { select: { rotations: true } },
+            },
+          });
+          const occupiedRotations = new Map<string, Set<RotationSlot>>();
+          for (const s of existingSignups) {
+            const set = occupiedRotations.get(s.studentId) ?? new Set<RotationSlot>();
+            for (const r of s.clubSession.rotations as RotationSlot[]) set.add(r);
+            occupiedRotations.set(s.studentId, set);
+          }
+
+          // Running enrolled counts, seeded from the DB and updated as rows are accepted.
+          const enrolledCount = new Map(sessions.map((s) => [s.id, s._count.signups]));
+
+          const accepted: { studentId: string; clubSessionId: string }[] = [];
+          const skipped: Skipped[] = [];
+
+          for (const row of rows) {
+            const targetSession = sessionById.get(row.clubSessionId);
+            if (!targetSession) {
+              skipped.push({ ...row, reason: "invalid_session" });
+              continue;
+            }
+            if (!validStudentIds.has(row.studentId)) {
+              skipped.push({ ...row, reason: "invalid_student" });
+              continue;
+            }
+
+            const capacity =
+              targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
+            const currentCount = enrolledCount.get(row.clubSessionId) ?? 0;
+            if (currentCount >= capacity) {
+              skipped.push({ ...row, reason: "capacity_full" });
+              continue;
+            }
+
+            const studentOccupied =
+              occupiedRotations.get(row.studentId) ?? new Set<RotationSlot>();
+            const hasConflict = (targetSession.rotations as RotationSlot[]).some((r) =>
+              studentOccupied.has(r)
+            );
+            if (hasConflict) {
+              skipped.push({ ...row, reason: "rotation_conflict" });
+              continue;
+            }
+
+            accepted.push(row);
+            enrolledCount.set(row.clubSessionId, currentCount + 1);
+            for (const r of targetSession.rotations as RotationSlot[]) studentOccupied.add(r);
+            occupiedRotations.set(row.studentId, studentOccupied);
+          }
+
+          let signupsCreated = 0;
+          const affectedStudentIds = new Set<string>();
+          for (const row of accepted) {
+            try {
+              await tx.signup.create({ data: row });
+              signupsCreated++;
+              affectedStudentIds.add(row.studentId);
+            } catch (err) {
+              if (
+                err instanceof Prisma.PrismaClientKnownRequestError &&
+                err.code === "P2002"
+              ) {
+                skipped.push({ ...row, reason: "already_signed_up" });
+              } else {
+                throw err;
+              }
+            }
+          }
+
+          return {
+            signupsCreated,
+            studentsAffected: affectedStudentIds.size,
+            skipped,
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+
+      return NextResponse.json(result);
+    } catch (error) {
+      const isSerializationConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (isSerializationConflict && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      if (isSerializationConflict) {
+        return NextResponse.json(
+          {
+            error:
+              "Enrollment changed while committing these assignments. Please re-run the dry run and try again.",
+          },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+  }
+
+  // Unreachable: the loop above always returns or throws.
+  throw new Error("Unreachable");
 }

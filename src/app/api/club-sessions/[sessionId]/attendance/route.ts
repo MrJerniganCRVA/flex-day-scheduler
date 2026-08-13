@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { bulkAttendanceSchema } from "@/lib/validations";
+import { getSchoolWeekWindow } from "@/lib/flex-day-utils";
 
 export async function PUT(
   req: NextRequest,
@@ -45,19 +46,7 @@ export async function PUT(
   }
 
   // Allow attendance recording any time during the week of the session (Mon–Sun)
-  const flexDayDate = clubSession.flexDay.date;
-  const flexLocal = new Date(
-    flexDayDate.getUTCFullYear(),
-    flexDayDate.getUTCMonth(),
-    flexDayDate.getUTCDate()
-  );
-  const dow = flexLocal.getDay(); // 0=Sun … 6=Sat
-  const weekStart = new Date(flexLocal);
-  weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
+  const { weekStart, weekEnd } = getSchoolWeekWindow(clubSession.flexDay.date);
   const now = new Date();
   if (now < weekStart || now > weekEnd) {
     return NextResponse.json(

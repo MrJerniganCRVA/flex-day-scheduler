@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { updateUserRoleSchema } from "@/lib/validations";
 
 export async function PUT(
@@ -50,7 +51,28 @@ export async function DELETE(
     );
   }
 
-  await prisma.user.delete({ where: { id: userId } });
+  try {
+    await prisma.user.delete({ where: { id: userId } });
+  } catch (error) {
+    // Club.owner is onDelete: Restrict — a teacher who still owns clubs
+    // can't be deleted without silently destroying that club's history.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      const clubCount = await prisma.club.count({ where: { ownerId: userId } });
+      return NextResponse.json(
+        {
+          error:
+            clubCount > 0
+              ? `This teacher still owns ${clubCount} club${clubCount === 1 ? "" : "s"}. Reassign ownership before removing them.`
+              : "This user can't be removed because other records still reference them.",
+        },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   return new NextResponse(null, { status: 204 });
 }
