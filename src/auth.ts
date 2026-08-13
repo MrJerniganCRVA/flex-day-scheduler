@@ -3,6 +3,19 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 
+// Some platforms (e.g. Railway's RAILWAY_PUBLIC_DOMAIN) expose the deployment
+// hostname without a URL scheme. If that bare hostname ends up pasted into
+// AUTH_URL/NEXTAUTH_URL, Auth.js's internal URL parsing throws on every
+// request. trustHost below means these vars aren't required behind a
+// reverse proxy, but normalize them defensively so a missing "https://"
+// can't take the whole app down.
+for (const key of ["AUTH_URL", "NEXTAUTH_URL"] as const) {
+  const value = process.env[key];
+  if (value && !/^https?:\/\//i.test(value)) {
+    process.env[key] = `https://${value}`;
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   adapter: PrismaAdapter(prisma),
