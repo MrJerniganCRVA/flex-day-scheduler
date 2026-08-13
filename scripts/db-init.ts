@@ -16,9 +16,16 @@ import { PrismaPg } from "@prisma/adapter-pg";
  *     _prisma_migrations doesn't exist, but the schema is already in place.
  *     → Baseline every migration as applied so deploy sees nothing to do.
  *
- *  B) A previous `migrate deploy` started a migration but failed (P3009):
- *     _prisma_migrations exists with rows where finished_at IS NULL.
- *     → Resolve each failed migration as applied, then let deploy continue.
+ *  B) A previous `migrate deploy` started a migration but never finished
+ *     (P3009): _prisma_migrations exists with rows where finished_at IS NULL.
+ *     → Resolve each as rolled back, so `migrate deploy` retries its real SQL
+ *       next. Resolving as "applied" instead would be wrong whenever the
+ *       migration's SQL genuinely failed (e.g. it altered a table that
+ *       doesn't exist yet) rather than merely failing to record success —
+ *       that silently marks a no-op migration "done" and permanently strands
+ *       the schema short of what it adds. Retrying is always safe here: if
+ *       the SQL truly already succeeded, the retry fails loudly (e.g.
+ *       "column already exists") instead of corrupting history silently.
  */
 async function ensureMigrationsReady() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -54,7 +61,8 @@ async function ensureMigrationsReady() {
       }
       // Fresh database with no tables — let migrate deploy handle it from scratch.
     } else {
-      // Migrations table exists. Resolve any entries that started but never finished.
+      // Migrations table exists. Resolve any entries that started but never
+      // finished as rolled back, so `migrate deploy` retries their real SQL.
       const { rows: failed } = await client.query<{ migration_name: string }>(`
         SELECT migration_name FROM _prisma_migrations
         WHERE finished_at IS NULL AND rolled_back_at IS NULL
@@ -62,8 +70,8 @@ async function ensureMigrationsReady() {
       `);
 
       for (const { migration_name } of failed) {
-        console.log(`Resolving failed migration as applied: ${migration_name}`);
-        execSync(`prisma migrate resolve --applied "${migration_name}"`, { stdio: "inherit" });
+        console.log(`Resolving incomplete migration as rolled back: ${migration_name}`);
+        execSync(`prisma migrate resolve --rolled-back "${migration_name}"`, { stdio: "inherit" });
       }
     }
   } finally {
