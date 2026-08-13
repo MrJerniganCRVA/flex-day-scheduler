@@ -5,7 +5,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import Link from "next/link";
 import CancelButton from "@/components/signups/CancelButton";
-import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
+import { getSignupDeadline, isPastSignupDeadline, SCHOOL_TIMEZONE } from "@/lib/flex-day-utils";
 
 export default async function MySignupsPage() {
   const session = await auth();
@@ -124,9 +124,19 @@ export default async function MySignupsPage() {
                       ) : (
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           Cancel by{" "}
-                          {deadline.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}{" "}
+                          {deadline.toLocaleDateString("en-US", {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            timeZone: SCHOOL_TIMEZONE,
+                          })}{" "}
                           at{" "}
-                          {deadline.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          {deadline.toLocaleTimeString("en-US", {
+                            hour: "numeric",
+                            minute: "2-digit",
+                            timeZone: SCHOOL_TIMEZONE,
+                            timeZoneName: "short",
+                          })}
                         </span>
                       )}
                     </td>
