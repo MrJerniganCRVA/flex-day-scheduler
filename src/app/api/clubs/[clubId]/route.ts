@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSchema } from "@/lib/validations";
 import { deleteCalendar } from "@/lib/google-calendar";
+import { getDefaultRoomConflictIds } from "@/lib/scheduling";
 
 async function checkClubAccess(clubId: string, userId: string, role: string) {
   const club = await prisma.club.findUnique({ where: { id: clubId } });
@@ -71,11 +72,15 @@ export async function PUT(
   // Need to check both current and updated values
   const { defaultRoomId: newRoomId, maxCapacity: newMaxCapacity } = parsed.data;
 
-  if (newRoomId !== undefined || newMaxCapacity !== undefined) {
-    // Determine final values after update
-    const finalRoomId = newRoomId !== undefined ? newRoomId : club.defaultRoomId;
-    const finalMaxCapacity = newMaxCapacity !== undefined ? newMaxCapacity : club.maxCapacity;
+  // Determine final values after update
+  const finalRoomId = newRoomId !== undefined ? newRoomId : club.defaultRoomId;
+  const finalMaxCapacity = newMaxCapacity !== undefined ? newMaxCapacity : club.maxCapacity;
+  const finalRotations =
+    parsed.data.defaultRotations !== undefined
+      ? parsed.data.defaultRotations
+      : club.defaultRotations;
 
+  if (newRoomId !== undefined || newMaxCapacity !== undefined) {
     // If there's a room, validate capacity constraint
     if (finalRoomId && finalMaxCapacity) {
       const room = await prisma.room.findUnique({
@@ -98,6 +103,26 @@ export async function PUT(
           { status: 400 }
         );
       }
+    }
+  }
+
+  // If the room or rotations changed, validate the resolved room isn't
+  // already claimed by another club during one of these rotations
+  if (
+    finalRoomId &&
+    (newRoomId !== undefined || parsed.data.defaultRotations !== undefined)
+  ) {
+    const conflictIds = await getDefaultRoomConflictIds({
+      rotations: finalRotations,
+      excludeClubId: clubId,
+    });
+    if (conflictIds.has(finalRoomId)) {
+      return NextResponse.json(
+        {
+          error: "Selected room is already another club's default room during one of these rotations",
+        },
+        { status: 409 }
+      );
     }
   }
 

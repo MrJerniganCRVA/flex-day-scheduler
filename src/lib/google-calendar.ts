@@ -92,6 +92,7 @@ export async function createEventForSession(params: {
   flexDayDate: Date;
   rotations: RotationSlot[];
   attendeeEmails?: string[];
+  sendUpdates?: "all" | "none";
 }): Promise<string> {
   const calendar = getCalendarClient();
   const tz = process.env.SCHOOL_TIMEZONE ?? "America/New_York";
@@ -110,7 +111,7 @@ export async function createEventForSession(params: {
 
   const response = await calendar.events.insert({
     calendarId: params.calendarId,
-    sendUpdates: "none",
+    sendUpdates: params.sendUpdates ?? "none",
     requestBody: {
       summary: `${params.clubName} (${rotationLabel})`,
       location: params.location ?? undefined,

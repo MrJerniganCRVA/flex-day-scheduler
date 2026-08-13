@@ -26,6 +26,7 @@ export default async function AdminEditClubPage({
         defaultRotations: true,
         ownerId: true,
         allowRandomAssignment: true,
+        linkedRotations: true,
       },
     }),
     prisma.user.findMany({
@@ -57,6 +58,7 @@ export default async function AdminEditClubPage({
           defaultRoomId: club.defaultRoomId,
           defaultRotations: club.defaultRotations,
           allowRandomAssignment: club.allowRandomAssignment,
+          linkedRotations: club.linkedRotations,
         }}
         teachers={teachers}
         defaultOwnerId={club.ownerId}

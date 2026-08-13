@@ -85,6 +85,7 @@ export default async function ClubDetailPage({
               key={cs.id}
               clubId={clubId}
               sessionId={cs.id}
+              flexDayId={cs.flexDay.id}
               flexDayDate={cs.flexDay.date.toISOString()}
               flexDayLabel={cs.flexDay.label}
               rotations={cs.rotations}

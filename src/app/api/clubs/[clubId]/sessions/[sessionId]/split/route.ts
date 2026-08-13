@@ -17,8 +17,18 @@ export async function POST(
   const original = await prisma.clubSession.findUnique({
     where: { id: sessionId },
     include: {
-      signups: { select: { studentId: true } },
-      rotationCoverage: true,
+      signups: {
+        select: {
+          studentId: true,
+          student: { select: { email: true } },
+        },
+      },
+      rotationCoverage: {
+        include: {
+          primaryTeacher: { select: { email: true } },
+          secondaryTeacher: { select: { email: true } },
+        },
+      },
       club: {
         select: {
           id: true,
@@ -26,6 +36,7 @@ export async function POST(
           name: true,
           googleCalendarId: true,
           defaultRoom: { select: { name: true } },
+          owner: { select: { email: true } },
         },
       },
       flexDay: { select: { date: true } },
@@ -44,15 +55,33 @@ export async function POST(
     );
   }
 
+  const club = original.club;
+  const rotationCoverage = original.rotationCoverage;
+  const rotations = original.rotations;
   const studentIds = original.signups.map((s) => s.studentId);
+  const studentEmails = original.signups
+    .map((s) => s.student.email)
+    .filter((email): email is string => Boolean(email));
   const location =
-    original.roomOverride?.name ?? original.club?.defaultRoom?.name ?? null;
+    original.roomOverride?.name ?? club?.defaultRoom?.name ?? null;
+
+  // Per-rotation coverage teacher emails, falling back to the club owner —
+  // used only when the original session was already finalized/invited.
+  function attendeeEmailsForRotation(rotation: (typeof rotations)[number]) {
+    const coverage = rotationCoverage.find((rc) => rc.rotation === rotation);
+    const emails = new Set<string>();
+    const primaryEmail = coverage?.primaryTeacher?.email ?? club?.owner.email;
+    if (primaryEmail) emails.add(primaryEmail);
+    if (coverage?.secondaryTeacher?.email) emails.add(coverage.secondaryTeacher.email);
+    for (const email of studentEmails) emails.add(email);
+    return [...emails];
+  }
 
   // Run all DB mutations atomically: create new sessions + migrate data + delete original
   const newSessions = await prisma.$transaction(async (tx) => {
-    const created: { id: string; rotation: typeof original.rotations[number] }[] = [];
+    const created: { id: string; rotation: (typeof rotations)[number] }[] = [];
 
-    for (const rotation of original.rotations) {
+    for (const rotation of rotations) {
       const newSession = await tx.clubSession.create({
         data: {
           flexDayId: original.flexDayId,
@@ -62,7 +91,7 @@ export async function POST(
         },
       });
 
-      const coverage = original.rotationCoverage.find(
+      const coverage = rotationCoverage.find(
         (rc) => rc.rotation === rotation
       );
       if (coverage) {
@@ -95,8 +124,10 @@ export async function POST(
     return created;
   });
 
-  // Fire calendar events non-blocking after the transaction commits
-  if (original.club?.googleCalendarId) {
+  // Only create calendar events for the split-off sessions if the original
+  // session had already been finalized/invited — otherwise leave the new
+  // sessions eventless, consistent with every other not-yet-finalized session.
+  if (original.club?.googleCalendarId && original.googleEventId) {
     for (const { id: newSessionId, rotation } of newSessions) {
       createEventForSession({
         calendarId: original.club.googleCalendarId!,
@@ -104,6 +135,8 @@ export async function POST(
         location,
         flexDayDate: original.flexDay.date,
         rotations: [rotation],
+        attendeeEmails: attendeeEmailsForRotation(rotation),
+        sendUpdates: "all",
       })
         .then((eventId) =>
           prisma.clubSession.update({

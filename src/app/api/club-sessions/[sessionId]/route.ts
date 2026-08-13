@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionPerDaySchema } from "@/lib/validations";
 import { deleteEvent } from "@/lib/google-calendar";
+import { getOccupiedRoomIds } from "@/lib/scheduling";
 
 async function resolveOwnerAndSession(sessionId: string, userId: string, userRole: string) {
   const clubSession = await prisma.clubSession.findUnique({
@@ -66,6 +67,28 @@ export async function PATCH(
     });
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+  }
+
+  // Prevent double-booking a room during an overlapping rotation on this flex day
+  const finalRoomId =
+    "roomOverrideId" in parsed.data
+      ? (parsed.data.roomOverrideId ?? clubSession.club?.defaultRoom?.id ?? null)
+      : (clubSession.roomOverrideId ?? clubSession.club?.defaultRoom?.id ?? null);
+  const finalRotations = parsed.data.rotations ?? clubSession.rotations;
+  if (finalRoomId) {
+    const occupiedRoomIds = await getOccupiedRoomIds({
+      flexDayId: clubSession.flexDayId,
+      rotations: finalRotations,
+      excludeSessionId: sessionId,
+    });
+    if (occupiedRoomIds.has(finalRoomId)) {
+      return NextResponse.json(
+        {
+          error: "Selected room is already in use during one of these rotations on this flex day",
+        },
+        { status: 409 }
+      );
     }
   }
 

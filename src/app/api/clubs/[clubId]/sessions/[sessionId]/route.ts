@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionSchema } from "@/lib/validations";
 import { deleteEvent, updateEventForSession } from "@/lib/google-calendar";
+import { getOccupiedRoomIds } from "@/lib/scheduling";
 
 export async function GET(
   _req: NextRequest,
@@ -59,6 +60,7 @@ export async function PUT(
       ownerId: true,
       maxCapacity: true,
       googleCalendarId: true,
+      defaultRoomId: true,
       defaultRoom: { select: { name: true } },
     },
   });
@@ -81,7 +83,7 @@ export async function PUT(
   // Fetch the existing session to get flexDayId, googleEventId, and room for calendar sync
   const existingSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
-    select: { flexDayId: true, googleEventId: true, roomOverrideId: true },
+    select: { flexDayId: true, googleEventId: true, roomOverrideId: true, rotations: true },
   });
   if (!existingSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -123,6 +125,28 @@ export async function PUT(
           error: `Room capacity (${room.capacity}) is less than the club's max capacity (${club.maxCapacity} for ${room.name})`,
         },
         { status: 400 }
+      );
+    }
+  }
+
+  // Prevent double-booking a room during an overlapping rotation on this flex day
+  const finalRoomId =
+    "roomOverrideId" in parsed.data
+      ? (parsed.data.roomOverrideId ?? club.defaultRoomId ?? null)
+      : (existingSession.roomOverrideId ?? club.defaultRoomId ?? null);
+  const finalRotations = parsed.data.rotations ?? existingSession.rotations;
+  if (finalRoomId) {
+    const occupiedRoomIds = await getOccupiedRoomIds({
+      flexDayId: existingSession.flexDayId,
+      rotations: finalRotations,
+      excludeSessionId: sessionId,
+    });
+    if (occupiedRoomIds.has(finalRoomId)) {
+      return NextResponse.json(
+        {
+          error: "Selected room is already in use during one of these rotations on this flex day",
+        },
+        { status: 409 }
       );
     }
   }
