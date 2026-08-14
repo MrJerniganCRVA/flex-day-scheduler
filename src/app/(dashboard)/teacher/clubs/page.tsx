@@ -10,7 +10,12 @@ export default async function TeacherClubsPage() {
   const where =
     session.user.role === "ADMIN"
       ? undefined
-      : { ownerId: session.user.id };
+      : {
+          OR: [
+            { ownerId: session.user.id },
+            { cosponsors: { some: { id: session.user.id } } },
+          ],
+        };
 
   const clubs = await prisma.club.findMany({
     where,

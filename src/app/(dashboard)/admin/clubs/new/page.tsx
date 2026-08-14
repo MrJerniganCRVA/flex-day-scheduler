@@ -18,6 +18,7 @@ export default async function AdminNewClubPage() {
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Create a New Club</h1>
       <ClubForm
         teachers={teachers}
+        isAdmin
         returnBasePath="/admin/clubs"
       />
     </div>

@@ -43,6 +43,10 @@ interface Props {
   defaultRoomName?: string | null;
   signups: Signup[];
   siblingSessionOptions: SiblingSession[];
+  /** Show the date/flex-day-label header. Set false when nested inside a FlexDaySessionGroup, which renders the day header once for all its sessions. */
+  showDayHeader?: boolean;
+  /** Drop the outer bordered card in favor of a lighter inset, for nesting inside a shared container. */
+  bare?: boolean;
 }
 
 const selectClass =
@@ -63,6 +67,8 @@ export default function SessionCard({
   defaultRoomName,
   signups,
   siblingSessionOptions,
+  showDayHeader = true,
+  bare = false,
 }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -192,24 +198,38 @@ export default function SessionCard({
   const displayCapacity = initialCapacityOverride ?? maxCapacity;
   const showLinkSection = rotations.length === 1 && siblingSessionOptions.length > 0;
 
+  // A single-rotation session with siblings is one independent block of an
+  // unlinked club — color its pill differently from a plain/linked session.
+  const isIndependentMember =
+    initialRotations.length === 1 && siblingSessionOptions.length > 0;
+  const pillClass = isIndependentMember
+    ? "inline-block rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300"
+    : "inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300";
+
+  const outerClass = bare
+    ? `pt-4 first:pt-0 border-t first:border-t-0 ${
+        absent ? "border-amber-200 dark:border-amber-800" : "border-gray-100 dark:border-gray-700/50"
+      }`
+    : `rounded-xl bg-white dark:bg-gray-900 border p-5 ${
+        absent ? "border-amber-300 dark:border-amber-700" : "border-gray-200 dark:border-gray-700"
+      }`;
+
   return (
-    <div
-      className={`rounded-xl bg-white dark:bg-gray-900 border p-5 ${
-        absent
-          ? "border-amber-300 dark:border-amber-700"
-          : "border-gray-200 dark:border-gray-700"
-      }`}
-    >
+    <div className={outerClass}>
       {editing ? (
         /* ── Edit mode ─────────────────────────────────────────── */
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            <div>
-              <div className="font-semibold text-gray-900 dark:text-white">{dateLabel}</div>
-              {flexDayLabel && (
-                <div className="text-xs text-gray-400 dark:text-gray-500">{flexDayLabel}</div>
-              )}
-            </div>
+            {showDayHeader ? (
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-white">{dateLabel}</div>
+                {flexDayLabel && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500">{flexDayLabel}</div>
+                )}
+              </div>
+            ) : (
+              <div />
+            )}
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {enrollmentCount}/{displayCapacity} enrolled
             </span>
@@ -367,29 +387,26 @@ export default function SessionCard({
         <>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="flex items-center gap-2">
+              {showDayHeader && (
                 <span className="font-semibold text-gray-900 dark:text-white">{dateLabel}</span>
-                {absent && (
-                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
-                    Absent
-                  </span>
-                )}
-              </div>
-              {flexDayLabel && (
+              )}
+              {showDayHeader && flexDayLabel && (
                 <div className="text-xs text-gray-400 dark:text-gray-500">{flexDayLabel}</div>
               )}
-              <div className="mt-1 flex flex-wrap gap-1">
+              <div className="mt-1 flex flex-wrap items-center gap-1">
                 {initialRotations.map((r) => (
-                  <span
-                    key={r}
-                    className="inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
-                  >
+                  <span key={r} className={pillClass}>
                     {ROTATION_LABELS[r]}
                   </span>
                 ))}
                 {initialRotations.length > 1 && (
                   <span className="inline-block rounded-full bg-violet-100 dark:bg-violet-950/50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
                     Linked
+                  </span>
+                )}
+                {absent && (
+                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
+                    Absent
                   </span>
                 )}
               </div>

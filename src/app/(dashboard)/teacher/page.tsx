@@ -19,7 +19,14 @@ export default async function TeacherDashboard() {
     orderBy: { date: "asc" },
     include: {
       clubSessions: {
-        where: { club: { ownerId: session.user.id } },
+        where: {
+          club: {
+            OR: [
+              { ownerId: session.user.id },
+              { cosponsors: { some: { id: session.user.id } } },
+            ],
+          },
+        },
         include: {
           club: {
             select: { id: true, name: true, maxCapacity: true },

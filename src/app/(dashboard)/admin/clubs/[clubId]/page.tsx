@@ -6,6 +6,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
+import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 
 export default async function AdminClubDetailPage({
   params,
@@ -21,6 +22,7 @@ export default async function AdminClubDetailPage({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true, email: true } },
+      cosponsors: { select: { id: true, name: true, email: true } },
       clubSessions: {
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
@@ -37,6 +39,8 @@ export default async function AdminClubDetailPage({
   });
 
   if (!club) notFound();
+
+  const dayGroups = groupSessionsByFlexDay(club.clubSessions);
 
   return (
     <div>
@@ -60,8 +64,16 @@ export default async function AdminClubDetailPage({
               <span className="text-gray-600 dark:text-gray-300 font-medium">{club.owner.name}</span>{" "}
               <span className="text-gray-400 dark:text-gray-500">({club.owner.email})</span>
             </span>
+            {club.cosponsors.length > 0 && (
+              <span>
+                Cosponsors:{" "}
+                <span className="text-gray-600 dark:text-gray-300 font-medium">
+                  {club.cosponsors.map((c) => c.name).join(", ")}
+                </span>
+              </span>
+            )}
             <span>Capacity: {club.maxCapacity}</span>
-            
+
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Calendar: Connected</span>
             ) : (
@@ -100,59 +112,78 @@ export default async function AdminClubDetailPage({
         </div>
       ) : (
         <div className="space-y-4">
-          {club.clubSessions.map((cs) => (
+          {dayGroups.map((daySessions) => (
             <div
-              key={cs.id}
+              key={daySessions[0].flexDay.id}
               className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-5"
             >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-semibold text-gray-900 dark:text-white">
-                    {new Date(cs.flexDay.date).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                      timeZone: "UTC",
-                    })}
+              <div className="mb-1">
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  {new Date(daySessions[0].flexDay.date).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                    timeZone: "UTC",
+                  })}
+                </span>
+                {daySessions[0].flexDay.label && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500">
+                    {daySessions[0].flexDay.label}
                   </div>
-                  {cs.flexDay.label && (
-                    <div className="text-xs text-gray-400 dark:text-gray-500">{cs.flexDay.label}</div>
-                  )}
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {cs.rotations.map((r: RotationSlot) => (
-                      <span
-                        key={r}
-                        className="inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
-                      >
-                        {ROTATION_LABELS[r]}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {cs._count.signups}/{club.maxCapacity} enrolled
-                  </span>
-                  <DeleteSessionButton clubId={clubId} sessionId={cs.id} />
-                </div>
+                )}
               </div>
 
-              {cs.signups.length > 0 && (
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
-                    View roster ({cs.signups.length})
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {cs.signups.map((signup) => (
-                      <li key={signup.id} className="text-xs text-gray-600 dark:text-gray-300 flex gap-2">
-                        <span>{signup.student.name}</span>
-                        <span className="text-gray-400 dark:text-gray-500">{signup.student.email}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
+              {daySessions.map((cs) => {
+                const isIndependentMember = cs.rotations.length === 1 && daySessions.length > 1;
+                const pillClass = isIndependentMember
+                  ? "inline-block rounded-full bg-teal-100 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:text-teal-300"
+                  : "inline-block rounded-full bg-indigo-100 dark:bg-indigo-950/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300";
+
+                return (
+                  <div
+                    key={cs.id}
+                    className="pt-4 first:pt-0 border-t first:border-t-0 border-gray-100 dark:border-gray-700/50 mt-3 first:mt-1"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex flex-wrap gap-1">
+                        {cs.rotations.map((r: RotationSlot) => (
+                          <span key={r} className={pillClass}>
+                            {ROTATION_LABELS[r]}
+                          </span>
+                        ))}
+                        {cs.rotations.length > 1 && (
+                          <span className="inline-block rounded-full bg-violet-100 dark:bg-violet-950/50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+                            Linked
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          {cs._count.signups}/{club.maxCapacity} enrolled
+                        </span>
+                        <DeleteSessionButton clubId={clubId} sessionId={cs.id} />
+                      </div>
+                    </div>
+
+                    {cs.signups.length > 0 && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                          View roster ({cs.signups.length})
+                        </summary>
+                        <ul className="mt-2 space-y-1">
+                          {cs.signups.map((signup) => (
+                            <li key={signup.id} className="text-xs text-gray-600 dark:text-gray-300 flex gap-2">
+                              <span>{signup.student.name}</span>
+                              <span className="text-gray-400 dark:text-gray-500">{signup.student.email}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>

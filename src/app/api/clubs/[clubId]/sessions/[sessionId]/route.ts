@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { updateClubSessionSchema } from "@/lib/validations";
 import { deleteEvent, updateEventForSession } from "@/lib/google-calendar";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
+import { isClubManager } from "@/lib/auth-helpers";
 
 export async function GET(
   _req: NextRequest,
@@ -53,7 +54,7 @@ export async function PUT(
 
   const { clubId, sessionId } = await params;
 
-  // Verify access: owner or admin
+  // Verify access: owner, cosponsor, or admin
   const club = await prisma.club.findUnique({
     where: { id: clubId },
     select: {
@@ -62,12 +63,13 @@ export async function PUT(
       googleCalendarId: true,
       defaultRoomId: true,
       defaultRoom: { select: { name: true } },
+      cosponsors: { select: { id: true } },
     },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -216,11 +218,14 @@ export async function DELETE(
 
   const { clubId, sessionId } = await params;
 
-  const club = await prisma.club.findUnique({ where: { id: clubId } });
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    include: { cosponsors: { select: { id: true } } },
+  });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -27,9 +27,12 @@ interface Props {
     defaultRoomId?: string | null;
     allowRandomAssignment?: boolean;
     linkedRotations?: boolean;
+    cosponsorIds?: string[];
   };
-  /** Admin only: list of assignable teachers */
+  /** Candidate teachers for the Cosponsors list (and, for admins, ownership reassignment) */
   teachers?: Teacher[];
+  /** Admin only: shows the owner-reassignment dropdown and submits ownerId */
+  isAdmin?: boolean;
   /** Admin only: pre-selected owner id */
   defaultOwnerId?: string;
   /** Base path to redirect after save, e.g. "/admin/clubs" */
@@ -40,13 +43,18 @@ export default function ClubForm({
   clubId,
   defaultValues,
   teachers,
+  isAdmin = false,
   defaultOwnerId,
   returnBasePath = "/teacher/clubs",
 }: Props) {
   const router = useRouter();
   const isEdit = !!clubId;
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    description: string;
+    maxCapacity: number | "";
+  }>({
     name: defaultValues?.name ?? "",
     description: defaultValues?.description ?? "",
     maxCapacity: defaultValues?.maxCapacity ?? 20,
@@ -58,10 +66,15 @@ export default function ClubForm({
     defaultValues?.defaultRotations ?? []
   );
   const [linkedRotations, setLinkedRotations] = useState(
-    defaultValues?.linkedRotations ?? true
+    defaultValues?.linkedRotations ?? false
   );
   const [defaultRoomId, setDefaultRoomId] = useState(defaultValues?.defaultRoomId ?? "");
-  const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
+  const [ownerId, setOwnerId] = useState(
+    isAdmin ? (defaultOwnerId ?? teachers?.[0]?.id ?? "") : ""
+  );
+  const [cosponsorIds, setCosponsorIds] = useState<string[]>(
+    defaultValues?.cosponsorIds ?? []
+  );
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -94,8 +107,12 @@ export default function ClubForm({
     if (defaultRoomId && rooms.length > 0) {
       const selectedRoom = rooms.find((r) => r.id === defaultRoomId);
       if (selectedRoom) {
-        // Auto-populate only if current capacity exceeds room capacity or is default
-        if (form.maxCapacity === 20 || form.maxCapacity > selectedRoom.capacity) {
+        // Auto-populate only if capacity is blank/default or exceeds the room
+        if (
+          form.maxCapacity === "" ||
+          form.maxCapacity === 20 ||
+          form.maxCapacity > selectedRoom.capacity
+        ) {
           setForm((prev) => ({ ...prev, maxCapacity: selectedRoom.capacity }));
         }
       }
@@ -107,10 +124,16 @@ export default function ClubForm({
       const next = prev.includes(rotation)
         ? prev.filter((r) => r !== rotation)
         : [...prev, rotation];
-      // Reset to linked when dropping back to fewer than 2 rotations
-      if (next.length < 2) setLinkedRotations(true);
+      // Reset to the default (independent) when dropping back to fewer than 2 rotations
+      if (next.length < 2) setLinkedRotations(false);
       return next;
     });
+  }
+
+  function toggleCosponsor(id: string) {
+    setCosponsorIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -132,7 +155,8 @@ export default function ClubForm({
         defaultRoomId: defaultRoomId || undefined,
         allowRandomAssignment,
         linkedRotations,
-        ...(teachers && ownerId ? { ownerId } : {}),
+        cosponsorIds,
+        ...(isAdmin && ownerId ? { ownerId } : {}),
       }),
     });
 
@@ -151,6 +175,8 @@ export default function ClubForm({
 
   const inputClass =
     "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500";
+
+  const cosponsorCandidates = (teachers ?? []).filter((t) => t.id !== ownerId);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -179,74 +205,6 @@ export default function ClubForm({
           placeholder="Brief description of the club activity…"
           className={`${inputClass} resize-none`}
         />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Max Capacity <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="number"
-          required
-          min={1}
-          max={rooms.find((r) => r.id === defaultRoomId)?.capacity || 1000}
-          value={form.maxCapacity}
-          onChange={(e) =>
-            setForm({ ...form, maxCapacity: Number(e.target.value) })
-          }
-          className={inputClass}
-        />
-        {defaultRoomId && rooms.find((r) => r.id === defaultRoomId) && (
-          <>
-            {form.maxCapacity > (rooms.find((r) => r.id === defaultRoomId)?.capacity || 0) && (
-              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                ⚠️ Capacity cannot exceed room limit ({rooms.find((r) => r.id === defaultRoomId)?.capacity})
-              </p>
-            )}
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              Room capacity: {rooms.find((r) => r.id === defaultRoomId)?.capacity}. You can set a lower limit if needed.
-            </p>
-          </>
-        )}
-        {!defaultRoomId && (
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Select a room to auto-populate capacity, or set manually (1-1000)
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-          Default Room{" "}
-          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
-        </label>
-        {loadingRooms ? (
-          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
-            Loading rooms...
-          </div>
-        ) : rooms.length === 0 ? (
-          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
-            No rooms available. Ask an admin to add rooms first.
-          </div>
-        ) : (
-          <>
-            <select
-              value={defaultRoomId}
-              onChange={(e) => setDefaultRoomId(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">-- No default room --</option>
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name} (capacity: {room.capacity})
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              This room will be used for all sessions unless overridden
-            </p>
-          </>
-        )}
       </div>
 
       <div>
@@ -292,23 +250,6 @@ export default function ClubForm({
               <input
                 type="radio"
                 name="linkedRotations"
-                checked={linkedRotations}
-                onChange={() => setLinkedRotations(true)}
-                className="mt-0.5 accent-indigo-600"
-              />
-              <span>
-                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                  Linked block
-                </span>
-                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  One signup covers all selected rotations. Students commit to the full block.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="radio"
-                name="linkedRotations"
                 checked={!linkedRotations}
                 onChange={() => setLinkedRotations(false)}
                 className="mt-0.5 accent-indigo-600"
@@ -322,11 +263,158 @@ export default function ClubForm({
                 </span>
               </span>
             </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="linkedRotations"
+                checked={linkedRotations}
+                onChange={() => setLinkedRotations(true)}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  Linked block
+                </span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Students must commit to all Flex Rotations you have chosen for this club.
+                </span>
+              </span>
+            </label>
           </div>
         )}
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Default Room/Area{" "}
+          <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+        </label>
+        {loadingRooms ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            Loading rooms...
+          </div>
+        ) : rooms.length === 0 ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500 py-2">
+            No rooms available. Ask an admin to add rooms first.
+          </div>
+        ) : (
+          <>
+            <select
+              value={defaultRoomId}
+              onChange={(e) => setDefaultRoomId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">-- No default room --</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name} (capacity: {room.capacity})
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              This room will be used for all sessions unless overridden
+            </p>
+          </>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+          Max Capacity <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="number"
+          required
+          min={1}
+          max={rooms.find((r) => r.id === defaultRoomId)?.capacity || 1000}
+          value={form.maxCapacity}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              maxCapacity: e.target.value === "" ? "" : Number(e.target.value),
+            })
+          }
+          className={inputClass}
+        />
+        {defaultRoomId && rooms.find((r) => r.id === defaultRoomId) && (
+          <>
+            {form.maxCapacity !== "" &&
+              form.maxCapacity > (rooms.find((r) => r.id === defaultRoomId)?.capacity || 0) && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  ⚠️ Capacity cannot exceed room limit ({rooms.find((r) => r.id === defaultRoomId)?.capacity})
+                </p>
+              )}
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              Room capacity: {rooms.find((r) => r.id === defaultRoomId)?.capacity}. You can set a lower limit if needed.
+            </p>
+          </>
+        )}
+        {!defaultRoomId && (
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Select a room to auto-populate capacity, or set manually (1-1000)
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={allowRandomAssignment}
+            onChange={(e) => setAllowRandomAssignment(e.target.checked)}
+            className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+          />
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              Random Assignment
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              When the admin runs auto-assignment for a Flex Day, any students
+              who haven&apos;t signed up anywhere may be randomly placed into
+              this club to fill its open seats. Only uncheck this box if you
+              have a legitimate reason to not have students be randomly
+              assigned to your club (ex. Bible Study, Prism Paradise, etc).
+            </div>
+          </div>
+        </label>
+      </div>
+
       {teachers && teachers.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+            Cosponsors{" "}
+            <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Other teachers who co-manage this club. Cosponsors can edit the
+            club, schedule and edit sessions, and mark attendance — the same
+            as the primary owner.
+          </p>
+          {cosponsorCandidates.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500">
+              No other teachers available.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {cosponsorCandidates.map((t) => (
+                <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cosponsorIds.includes(t.id)}
+                    onChange={() => toggleCosponsor(t.id)}
+                    className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-200">
+                    {t.name} ({t.email})
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && teachers && teachers.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
             Assigned Teacher <span className="text-red-500">*</span>
@@ -344,27 +432,6 @@ export default function ClubForm({
           </select>
         </div>
       )}
-
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={allowRandomAssignment}
-            onChange={(e) => setAllowRandomAssignment(e.target.checked)}
-            className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
-          />
-          <div>
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              Random Assignment
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Only uncheck this box if you have a legitimate reason to not have
-              students be randomly assigned to your club (ex. Bible Study,
-              Prism Paradise, etc).
-            </div>
-          </div>
-        </label>
-      </div>
 
       {error && (
         <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">

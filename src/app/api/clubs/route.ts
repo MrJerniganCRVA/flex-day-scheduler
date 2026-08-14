@@ -13,7 +13,12 @@ export async function GET() {
 
   const where =
     session.user.role === "TEACHER"
-      ? { ownerId: session.user.id }
+      ? {
+          OR: [
+            { ownerId: session.user.id },
+            { cosponsors: { some: { id: session.user.id } } },
+          ],
+        }
       : undefined;
 
   const clubs = await prisma.club.findMany({
@@ -83,15 +88,25 @@ export async function POST(request: NextRequest) {
   }
 
   // Admin can assign a club to a specific teacher; everyone else owns their own club
-  const { ownerId: requestedOwnerId, ...clubData } = parsed.data;
+  const { ownerId: requestedOwnerId, cosponsorIds, ...clubData } = parsed.data;
   const ownerId =
     session.user.role === "ADMIN" && requestedOwnerId
       ? requestedOwnerId
       : session.user.id;
 
+  // Strip the resolved owner out of cosponsors so a club never lists its
+  // own owner as a cosponsor too.
+  const filteredCosponsorIds = cosponsorIds?.filter((id) => id !== ownerId);
+
   // Create the club record first
   const club = await prisma.club.create({
-    data: { ...clubData, ownerId },
+    data: {
+      ...clubData,
+      ownerId,
+      ...(filteredCosponsorIds?.length
+        ? { cosponsors: { connect: filteredCosponsorIds.map((id) => ({ id })) } }
+        : {}),
+    },
   });
 
   // Attempt to create a Google Calendar for this club (non-blocking). The

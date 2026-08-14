@@ -68,13 +68,14 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts        Account[]
-  sessions        Session[]
-  clubsOwned      Club[]                    @relation("ClubOwner")
-  signups         Signup[]
-  rotCovPrimary   SessionRotationCoverage[] @relation("RotCovPrimary")
-  rotCovSecondary SessionRotationCoverage[] @relation("RotCovSecondary")
-  oneOffSessions  ClubSession[]             @relation("OneOffOwner")
+  accounts         Account[]
+  sessions         Session[]
+  clubsOwned       Club[]                    @relation("ClubOwner")
+  cosponsoredClubs Club[]                    @relation("ClubCosponsor")
+  signups          Signup[]
+  rotCovPrimary    SessionRotationCoverage[] @relation("RotCovPrimary")
+  rotCovSecondary  SessionRotationCoverage[] @relation("RotCovSecondary")
+  oneOffSessions   ClubSession[]             @relation("OneOffOwner")
 
   @@index([email])
 }
@@ -124,6 +125,7 @@ model Club {
   updatedAt             DateTime       @updatedAt
 
   owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  cosponsors   User[]        @relation("ClubCosponsor")
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
 
