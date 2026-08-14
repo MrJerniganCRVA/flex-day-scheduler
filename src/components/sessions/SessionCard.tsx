@@ -31,6 +31,7 @@ interface Room {
 interface Props {
   clubId: string;
   sessionId: string;
+  flexDayId: string;
   flexDayDate: string;
   flexDayLabel: string | null;
   rotations: RotationSlot[];
@@ -50,6 +51,7 @@ const selectClass =
 export default function SessionCard({
   clubId,
   sessionId,
+  flexDayId,
   flexDayDate,
   flexDayLabel,
   rotations: initialRotations,
@@ -83,15 +85,21 @@ export default function SessionCard({
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linkConflicts, setLinkConflicts] = useState<ConflictDetail[]>([]);
 
+  // Re-fetches whenever the edited rotations change so the room list reflects
+  // which rooms are actually free during those periods on this flex day
   useEffect(() => {
-    if (!editing || rooms.length > 0) return;
+    if (!editing) return;
     setLoadingRooms(true);
-    fetch("/api/rooms")
+    const params = new URLSearchParams();
+    params.set("flexDayId", flexDayId);
+    params.set("excludeSessionId", sessionId);
+    for (const rotation of rotations) params.append("rotations", rotation);
+    fetch(`/api/rooms?${params.toString()}`)
       .then((r) => r.ok ? r.json() : [])
       .then((data: Room[]) => setRooms(data))
       .catch(() => {})
       .finally(() => setLoadingRooms(false));
-  }, [editing]);
+  }, [editing, flexDayId, sessionId, rotations]);
 
   function cancelEdit() {
     setRotations(initialRotations);

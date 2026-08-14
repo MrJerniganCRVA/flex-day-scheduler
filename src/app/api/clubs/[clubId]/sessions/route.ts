@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSessionSchema } from "@/lib/validations";
-import { createEventForSession } from "@/lib/google-calendar";
+import { getOccupiedRoomIds } from "@/lib/scheduling";
 
 export async function GET(
   _req: NextRequest,
@@ -52,7 +52,7 @@ export async function POST(
   // Verify access: owner or admin
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    include: { defaultRoom: { select: { name: true } } },
+    select: { ownerId: true, defaultRoomId: true },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
@@ -72,7 +72,10 @@ export async function POST(
 
   const { flexDayId, rotations, roomOverrideId } = parsed.data;
 
-  const flexDay = await prisma.flexDay.findUnique({ where: { id: flexDayId } });
+  const flexDay = await prisma.flexDay.findUnique({
+    where: { id: flexDayId },
+    select: { id: true },
+  });
   if (!flexDay) {
     return NextResponse.json({ error: "Flex Day not found" }, { status: 404 });
   }
@@ -95,7 +98,22 @@ export async function POST(
     );
   }
 
-  // Create the session
+  // Prevent double-booking a room during an overlapping rotation on this flex day
+  const resolvedRoomId = roomOverrideId ?? club.defaultRoomId ?? null;
+  if (resolvedRoomId) {
+    const occupiedRoomIds = await getOccupiedRoomIds({ flexDayId, rotations });
+    if (occupiedRoomIds.has(resolvedRoomId)) {
+      return NextResponse.json(
+        {
+          error: "Selected room is already in use during one of these rotations on this flex day",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  // Create the session. No calendar event is created here — that happens
+  // when an admin finalizes this specific Flex Day.
   const clubSession = await prisma.clubSession.create({
     data: { clubId, flexDayId, rotations, roomOverrideId },
     include: {
@@ -103,38 +121,6 @@ export async function POST(
       club: { select: { name: true } },
     },
   });
-
-  // Resolve the room name: session override takes priority, then club default
-  let roomName: string | null = null;
-  if (roomOverrideId) {
-    const overrideRoom = await prisma.room.findUnique({
-      where: { id: roomOverrideId },
-      select: { name: true },
-    });
-    roomName = overrideRoom?.name ?? null;
-  } else {
-    roomName = club.defaultRoom?.name ?? null;
-  }
-
-  // Create Google Calendar event (non-blocking)
-  if (club.googleCalendarId) {
-    createEventForSession({
-      calendarId: club.googleCalendarId,
-      clubName: club.name,
-      location: roomName,
-      flexDayDate: flexDay.date,
-      rotations,
-    })
-      .then(async (eventId) => {
-        await prisma.clubSession.update({
-          where: { id: clubSession.id },
-          data: { googleEventId: eventId },
-        });
-      })
-      .catch((err) =>
-        console.error("Failed to create Google Calendar event:", err)
-      );
-  }
 
   return NextResponse.json(clubSession, { status: 201 });
 }

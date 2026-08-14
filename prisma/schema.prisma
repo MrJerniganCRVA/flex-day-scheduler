@@ -115,9 +115,11 @@ model Club {
   maxCapacity           Int
   defaultRoomId         String?
   defaultRotations      RotationSlot[]
+  linkedRotations       Boolean        @default(true)
   googleCalendarId      String?        @unique
   ownerId               String
   allowRandomAssignment Boolean        @default(true)
+  calendarSharedAt      DateTime?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 

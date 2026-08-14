@@ -26,6 +26,7 @@ interface Props {
     defaultRotations?: RotationSlot[];
     defaultRoomId?: string | null;
     allowRandomAssignment?: boolean;
+    linkedRotations?: boolean;
   };
   /** Admin only: list of assignable teachers */
   teachers?: Teacher[];
@@ -56,6 +57,9 @@ export default function ClubForm({
   const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
     defaultValues?.defaultRotations ?? []
   );
+  const [linkedRotations, setLinkedRotations] = useState(
+    defaultValues?.linkedRotations ?? true
+  );
   const [defaultRoomId, setDefaultRoomId] = useState(defaultValues?.defaultRoomId ?? "");
   const [ownerId, setOwnerId] = useState(defaultOwnerId ?? teachers?.[0]?.id ?? "");
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -63,12 +67,15 @@ export default function ClubForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch available rooms
+  // Fetch available rooms — re-runs whenever the selected rotations change so
+  // the list reflects which rooms are actually free during those periods
   useEffect(() => {
     async function fetchRooms() {
       try {
-        const url = clubId ? `/api/rooms?excludeClubId=${clubId}` : "/api/rooms";
-        const res = await fetch(url);
+        const params = new URLSearchParams();
+        if (clubId) params.set("excludeClubId", clubId);
+        for (const rotation of defaultRotations) params.append("rotations", rotation);
+        const res = await fetch(`/api/rooms?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           setRooms(data);
@@ -80,7 +87,7 @@ export default function ClubForm({
       }
     }
     fetchRooms();
-  }, []);
+  }, [clubId, defaultRotations]);
 
   // Auto-populate capacity when room changes
   useEffect(() => {
@@ -96,11 +103,14 @@ export default function ClubForm({
   }, [defaultRoomId, rooms]);
 
   function toggleRotation(rotation: RotationSlot) {
-    setDefaultRotations((prev) =>
-      prev.includes(rotation)
+    setDefaultRotations((prev) => {
+      const next = prev.includes(rotation)
         ? prev.filter((r) => r !== rotation)
-        : [...prev, rotation]
-    );
+        : [...prev, rotation];
+      // Reset to linked when dropping back to fewer than 2 rotations
+      if (next.length < 2) setLinkedRotations(true);
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -121,6 +131,7 @@ export default function ClubForm({
         defaultRotations,
         defaultRoomId: defaultRoomId || undefined,
         allowRandomAssignment,
+        linkedRotations,
         ...(teachers && ownerId ? { ownerId } : {}),
       }),
     });
@@ -270,6 +281,49 @@ export default function ClubForm({
             Please select at least one rotation
           </p>
         )}
+
+        {/* Signup mode toggle — shown only when 2+ rotations are selected */}
+        {defaultRotations.length >= 2 && (
+          <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              How should students sign up?
+            </p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="linkedRotations"
+                checked={linkedRotations}
+                onChange={() => setLinkedRotations(true)}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  Linked block
+                </span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  One signup covers all selected rotations. Students commit to the full block.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="radio"
+                name="linkedRotations"
+                checked={!linkedRotations}
+                onChange={() => setLinkedRotations(false)}
+                className="mt-0.5 accent-indigo-600"
+              />
+              <span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                  Independent per rotation
+                </span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Creates separate sessions on every flex day. Students can sign up for just one rotation.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
       </div>
 
       {teachers && teachers.length > 0 && (
@@ -301,12 +355,12 @@ export default function ClubForm({
           />
           <div>
             <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              Allow random assignment
+              Random Assignment
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              When an admin runs auto-assign, students may be randomly placed in
-              this club. Uncheck for clubs that should never receive randomly
-              assigned students (e.g. religious or opt-in-only clubs).
+              Only uncheck this box if you have a legitimate reason to not have
+              students be randomly assigned to your club (ex. Bible Study,
+              Prism Paradise, etc).
             </div>
           </div>
         </label>

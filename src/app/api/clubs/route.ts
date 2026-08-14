@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSchema } from "@/lib/validations";
-import { createCalendarForClub, createEventForSession, shareCalendarWithTeacher } from "@/lib/google-calendar";
+import { createCalendarForClub } from "@/lib/google-calendar";
+import { createAutoScheduledSessions, getDefaultRoomConflictIds } from "@/lib/scheduling";
 
 export async function GET() {
   const session = await auth();
@@ -67,6 +68,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const conflictIds = await getDefaultRoomConflictIds({
+      rotations: parsed.data.defaultRotations,
+    });
+    if (conflictIds.has(parsed.data.defaultRoomId)) {
+      return NextResponse.json(
+        {
+          error: `${room.name} is already another club's default room during one of these rotations`,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   // Admin can assign a club to a specific teacher; everyone else owns their own club
@@ -76,18 +89,15 @@ export async function POST(request: NextRequest) {
       ? requestedOwnerId
       : session.user.id;
 
-  // Fetch owner email for calendar sharing (needed whether teacher or admin-assigned)
-  const owner = await prisma.user.findUnique({
-    where: { id: ownerId },
-    select: { email: true },
-  });
-
   // Create the club record first
   const club = await prisma.club.create({
     data: { ...clubData, ownerId },
   });
 
-  // Attempt to create a Google Calendar for this club (non-blocking)
+  // Attempt to create a Google Calendar for this club (non-blocking). The
+  // calendar itself is created eagerly, but it is NOT shared with the
+  // teacher and no events/invites go out yet — that only happens when an
+  // admin finalizes the specific Flex Day this club is scheduled on.
   try {
     const calendarId = await createCalendarForClub(parsed.data.name);
     await prisma.club.update({
@@ -95,14 +105,6 @@ export async function POST(request: NextRequest) {
       data: { googleCalendarId: calendarId },
     });
     club.googleCalendarId = calendarId;
-
-    // Share the calendar with the teacher so it appears in their Google Calendar
-    // and they can edit events directly — no domain-wide delegation required
-    if (owner?.email) {
-      shareCalendarWithTeacher(calendarId, owner.email).catch((err) =>
-        console.error("Failed to share calendar with teacher:", club.id, err)
-      );
-    }
   } catch (err) {
     console.error("Google Calendar creation failed for club:", club.id, err);
   }
@@ -117,47 +119,12 @@ export async function POST(request: NextRequest) {
         date: { gte: today },
         isActive: true,
       },
-      select: { id: true, date: true },
+      select: { id: true },
     });
 
-    const sessionPromises = futureFlexDays.map((fd) =>
-      prisma.clubSession.create({
-        data: {
-          flexDayId: fd.id,
-          clubId: club.id,
-          rotations: clubData.defaultRotations,
-        },
-      })
+    await Promise.all(
+      futureFlexDays.map((fd) => createAutoScheduledSessions(club, fd.id))
     );
-
-    const createdSessions = await Promise.all(sessionPromises);
-
-    // Create Google Calendar events for each auto-scheduled session (non-blocking)
-    if (club.googleCalendarId) {
-      for (let i = 0; i < futureFlexDays.length; i++) {
-        const fd = futureFlexDays[i];
-        const createdSession = createdSessions[i];
-        createEventForSession({
-          calendarId: club.googleCalendarId,
-          clubName: club.name,
-          location: null,
-          flexDayDate: fd.date,
-          rotations: clubData.defaultRotations,
-        })
-          .then((eventId) =>
-            prisma.clubSession.update({
-              where: { id: createdSession.id },
-              data: { googleEventId: eventId },
-            })
-          )
-          .catch((err) =>
-            console.error(
-              `Failed to create calendar event for auto-scheduled session ${createdSession.id}:`,
-              err
-            )
-          );
-      }
-    }
   }
 
   return NextResponse.json(club, { status: 201 });

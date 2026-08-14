@@ -53,11 +53,15 @@ export default function SessionForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch available rooms
+  // Fetch available rooms — scoped to this flex day + selected rotations so
+  // the list reflects which rooms are actually free during those periods
   useEffect(() => {
     async function fetchRooms() {
       try {
-        const res = await fetch("/api/rooms");
+        const params = new URLSearchParams();
+        if (flexDayId) params.set("flexDayId", flexDayId);
+        for (const rotation of rotations) params.append("rotations", rotation);
+        const res = await fetch(`/api/rooms?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           setRooms(data);
@@ -69,7 +73,7 @@ export default function SessionForm({
       }
     }
     fetchRooms();
-  }, []);
+  }, [flexDayId, rotations]);
 
   // When club changes, reset flex day to first available for that club
   useEffect(() => {
