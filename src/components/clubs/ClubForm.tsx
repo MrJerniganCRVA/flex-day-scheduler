@@ -27,9 +27,9 @@ interface Props {
     defaultRoomId?: string | null;
     allowRandomAssignment?: boolean;
     linkedRotations?: boolean;
-    cosponsorIds?: string[];
+    cosponsorId?: string | null;
   };
-  /** Candidate teachers for the Cosponsors list (and, for admins, ownership reassignment) */
+  /** Candidate teachers for the Cosponsor dropdown (and, for admins, ownership reassignment) */
   teachers?: Teacher[];
   /** Admin only: shows the owner-reassignment dropdown and submits ownerId */
   isAdmin?: boolean;
@@ -72,9 +72,13 @@ export default function ClubForm({
   const [ownerId, setOwnerId] = useState(
     isAdmin ? (defaultOwnerId ?? teachers?.[0]?.id ?? "") : ""
   );
-  const [cosponsorIds, setCosponsorIds] = useState<string[]>(
-    defaultValues?.cosponsorIds ?? []
-  );
+  const [cosponsorId, setCosponsorId] = useState(defaultValues?.cosponsorId ?? "");
+
+  // Clear a stale cosponsor selection if admin reassigns the owner to that same person
+  useEffect(() => {
+    if (cosponsorId && cosponsorId === ownerId) setCosponsorId("");
+  }, [ownerId, cosponsorId]);
+
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -130,12 +134,6 @@ export default function ClubForm({
     });
   }
 
-  function toggleCosponsor(id: string) {
-    setCosponsorIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -155,7 +153,7 @@ export default function ClubForm({
         defaultRoomId: defaultRoomId || undefined,
         allowRandomAssignment,
         linkedRotations,
-        cosponsorIds,
+        cosponsorId: cosponsorId || null,
         ...(isAdmin && ownerId ? { ownerId } : {}),
       }),
     });
@@ -381,12 +379,12 @@ export default function ClubForm({
 
       {teachers && teachers.length > 0 && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-            Cosponsors{" "}
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+            Cosponsor{" "}
             <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
           </label>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            Other teachers who co-manage this club. Cosponsors can edit the
+            Another teacher who co-manages this club. A cosponsor can edit the
             club, schedule and edit sessions, and mark attendance — the same
             as the primary owner.
           </p>
@@ -395,21 +393,18 @@ export default function ClubForm({
               No other teachers available.
             </p>
           ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <select
+              value={cosponsorId}
+              onChange={(e) => setCosponsorId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">No Cosponsor</option>
               {cosponsorCandidates.map((t) => (
-                <label key={t.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={cosponsorIds.includes(t.id)}
-                    onChange={() => toggleCosponsor(t.id)}
-                    className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-200">
-                    {t.name} ({t.email})
-                  </span>
-                </label>
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.email})
+                </option>
               ))}
-            </div>
+            </select>
           )}
         </div>
       )}

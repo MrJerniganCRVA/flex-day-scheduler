@@ -44,7 +44,7 @@ export async function POST(
             id: true,
             ownerId: true,
             googleCalendarId: true,
-            cosponsors: { select: { id: true } },
+            cosponsorId: true,
           },
         },
       },

@@ -29,7 +29,7 @@ export async function PUT(
     where: { id: sessionId },
     select: {
       flexDay: { select: { date: true } },
-      club: { select: { ownerId: true, cosponsors: { select: { id: true } } } },
+      club: { select: { ownerId: true, cosponsorId: true } },
       oneOffOwnerId: true,
     },
   });

@@ -27,7 +27,7 @@ export default async function AdminEditClubPage({
         ownerId: true,
         allowRandomAssignment: true,
         linkedRotations: true,
-        cosponsors: { select: { id: true } },
+        cosponsorId: true,
       },
     }),
     prisma.user.findMany({
@@ -60,7 +60,7 @@ export default async function AdminEditClubPage({
           defaultRotations: club.defaultRotations,
           allowRandomAssignment: club.allowRandomAssignment,
           linkedRotations: club.linkedRotations,
-          cosponsorIds: club.cosponsors.map((c) => c.id),
+          cosponsorId: club.cosponsorId,
         }}
         teachers={teachers}
         isAdmin
