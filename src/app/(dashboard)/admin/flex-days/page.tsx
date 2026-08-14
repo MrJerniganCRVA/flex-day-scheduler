@@ -16,23 +16,29 @@ export default async function AdminFlexDaysPage({
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const flexDays = await prisma.flexDay.findMany({
-    where: showPast ? undefined : { date: { gte: today } },
-    include: {
-      _count: { select: { clubSessions: true } },
-      clubSessions: {
-        include: {
-          club: { select: { maxCapacity: true } },
-          _count: { select: { signups: true } },
+  const [flexDays, totalStudents] = await Promise.all([
+    prisma.flexDay.findMany({
+      where: showPast ? undefined : { date: { gte: today } },
+      include: {
+        _count: { select: { clubSessions: true } },
+        clubSessions: {
+          include: {
+            club: { select: { maxCapacity: true } },
+            _count: { select: { signups: true } },
+            signups: { select: { studentId: true } },
+          },
         },
       },
-    },
-    orderBy: { date: "asc" },
-  });
+      orderBy: { date: "asc" },
+    }),
+    prisma.user.count({ where: { role: "STUDENT" } }),
+  ]);
 
   const flexDaysWithStats = flexDays.map((fd) => {
+    // Capacity override takes priority over the club's default, matching
+    // every other capacity calculation in the app.
     const totalCapacity = fd.clubSessions.reduce(
-      (sum, cs) => sum + (cs.club?.maxCapacity ?? cs.capacityOverride ?? 0),
+      (sum, cs) => sum + (cs.capacityOverride ?? cs.club?.maxCapacity ?? 0),
       0
     );
     const totalSignups = fd.clubSessions.reduce(
@@ -41,7 +47,12 @@ export default async function AdminFlexDaysPage({
     );
     const pct =
       totalCapacity > 0 ? Math.round((totalSignups / totalCapacity) * 100) : 0;
-    return { ...fd, totalCapacity, totalSignups, pct };
+    // Distinct students with at least one signup that day — a student can
+    // have up to 3 Signup rows (one per rotation), so this isn't totalSignups.
+    const signedUpStudents = new Set(
+      fd.clubSessions.flatMap((cs) => cs.signups.map((s) => s.studentId))
+    ).size;
+    return { ...fd, totalCapacity, totalSignups, pct, signedUpStudents };
   });
 
   return (
@@ -110,7 +121,7 @@ export default async function AdminFlexDaysPage({
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{fd._count.clubSessions}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                    {fd.totalSignups}/{fd.totalCapacity}
+                    {fd.signedUpStudents}/{totalStudents}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
