@@ -8,10 +8,7 @@ import { isClubManager } from "@/lib/auth-helpers";
 import type { Role } from "@prisma/client";
 
 async function checkClubAccess(clubId: string, userId: string, role: Role) {
-  const club = await prisma.club.findUnique({
-    where: { id: clubId },
-    include: { cosponsors: { select: { id: true } } },
-  });
+  const club = await prisma.club.findUnique({ where: { id: clubId } });
   if (!club) return null;
   if (!isClubManager(club, userId, role)) return null;
   return club;
@@ -132,7 +129,7 @@ export async function PUT(
   }
 
   // Only admin can reassign ownership; strip ownerId from non-admin updates
-  const { ownerId: newOwnerId, cosponsorIds, ...updateData } = parsed.data;
+  const { ownerId: newOwnerId, cosponsorId, ...updateData } = parsed.data;
   const finalOwnerId =
     session.user.role === "ADMIN" && newOwnerId ? newOwnerId : club.ownerId;
   const finalData: Parameters<typeof prisma.club.update>[0]["data"] = {
@@ -140,11 +137,10 @@ export async function PUT(
     ...(session.user.role === "ADMIN" && newOwnerId ? { ownerId: newOwnerId } : {}),
   };
 
-  // Any club manager can edit cosponsors. Strip the resolved owner out so a
-  // club never lists its own owner as a cosponsor too.
-  if (cosponsorIds !== undefined) {
-    const filteredCosponsorIds = cosponsorIds.filter((id) => id !== finalOwnerId);
-    finalData.cosponsors = { set: filteredCosponsorIds.map((id) => ({ id })) };
+  // Any club manager can edit the cosponsor. Null it out if it matches the
+  // resolved owner so a club never lists its own owner as its cosponsor too.
+  if (cosponsorId !== undefined) {
+    finalData.cosponsorId = cosponsorId && cosponsorId !== finalOwnerId ? cosponsorId : null;
   }
 
   const updated = await prisma.club.update({

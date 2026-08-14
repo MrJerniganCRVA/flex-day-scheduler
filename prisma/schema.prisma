@@ -119,17 +119,19 @@ model Club {
   linkedRotations       Boolean        @default(true)
   googleCalendarId      String?        @unique
   ownerId               String
+  cosponsorId           String?
   allowRandomAssignment Boolean        @default(true)
   calendarSharedAt      DateTime?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
   owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  cosponsors   User[]        @relation("ClubCosponsor")
+  cosponsor    User?         @relation("ClubCosponsor", fields: [cosponsorId], references: [id], onDelete: SetNull)
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
 
   @@index([ownerId])
+  @@index([cosponsorId])
   @@index([defaultRoomId])
 }
 

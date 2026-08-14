@@ -22,7 +22,7 @@ export default async function AdminClubDetailPage({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true, email: true } },
-      cosponsors: { select: { id: true, name: true, email: true } },
+      cosponsor: { select: { id: true, name: true, email: true } },
       clubSessions: {
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
@@ -64,11 +64,11 @@ export default async function AdminClubDetailPage({
               <span className="text-gray-600 dark:text-gray-300 font-medium">{club.owner.name}</span>{" "}
               <span className="text-gray-400 dark:text-gray-500">({club.owner.email})</span>
             </span>
-            {club.cosponsors.length > 0 && (
+            {club.cosponsor && (
               <span>
-                Cosponsors:{" "}
+                Cosponsor:{" "}
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {club.cosponsors.map((c) => c.name).join(", ")}
+                  {club.cosponsor.name}
                 </span>
               </span>
             )}

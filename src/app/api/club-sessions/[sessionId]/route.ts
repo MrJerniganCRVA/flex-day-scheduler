@@ -16,7 +16,7 @@ async function resolveOwnerAndSession(sessionId: string, userId: string, userRol
           ownerId: true,
           googleCalendarId: true,
           defaultRoom: { select: { id: true, capacity: true } },
-          cosponsors: { select: { id: true } },
+          cosponsorId: true,
         },
       },
     },

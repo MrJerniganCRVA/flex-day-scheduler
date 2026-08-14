@@ -63,7 +63,7 @@ export async function PUT(
       googleCalendarId: true,
       defaultRoomId: true,
       defaultRoom: { select: { name: true } },
-      cosponsors: { select: { id: true } },
+      cosponsorId: true,
     },
   });
   if (!club) {
@@ -218,10 +218,7 @@ export async function DELETE(
 
   const { clubId, sessionId } = await params;
 
-  const club = await prisma.club.findUnique({
-    where: { id: clubId },
-    include: { cosponsors: { select: { id: true } } },
-  });
+  const club = await prisma.club.findUnique({ where: { id: clubId } });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }

@@ -13,7 +13,7 @@ export default async function TeacherClubsPage() {
       : {
           OR: [
             { ownerId: session.user.id },
-            { cosponsors: { some: { id: session.user.id } } },
+            { cosponsorId: session.user.id },
           ],
         };
 

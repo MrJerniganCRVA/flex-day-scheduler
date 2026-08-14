@@ -23,7 +23,7 @@ export default async function TeacherDashboard() {
           club: {
             OR: [
               { ownerId: session.user.id },
-              { cosponsors: { some: { id: session.user.id } } },
+              { cosponsorId: session.user.id },
             ],
           },
         },

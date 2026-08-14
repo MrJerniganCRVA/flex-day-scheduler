@@ -18,7 +18,7 @@ export async function GET(
 
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    select: { ownerId: true, cosponsors: { select: { id: true } } },
+    select: { ownerId: true, cosponsorId: true },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
@@ -53,7 +53,7 @@ export async function POST(
   // Verify access: owner, cosponsor, or admin
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    select: { ownerId: true, defaultRoomId: true, cosponsors: { select: { id: true } } },
+    select: { ownerId: true, defaultRoomId: true, cosponsorId: true },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });

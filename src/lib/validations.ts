@@ -22,7 +22,7 @@ export const createClubSchema = z.object({
   ownerId: z.string().cuid().optional(), // admin only — ignored for teachers
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
-  cosponsorIds: z.array(z.string().cuid()).optional(),
+  cosponsorId: z.string().cuid().nullable().optional(),
 });
 
 export const updateClubSchema = z.object({
@@ -37,7 +37,7 @@ export const updateClubSchema = z.object({
   ownerId: z.string().cuid().optional(), // admin can reassign club ownership
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
-  cosponsorIds: z.array(z.string().cuid()).optional(),
+  cosponsorId: z.string().cuid().nullable().optional(),
 });
 
 export const createClubSessionSchema = z.object({

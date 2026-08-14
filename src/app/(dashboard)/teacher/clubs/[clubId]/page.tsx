@@ -23,7 +23,7 @@ export default async function ClubDetailPage({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true } },
-      cosponsors: { select: { id: true, name: true } },
+      cosponsor: { select: { id: true, name: true } },
       defaultRoom: { select: { id: true, name: true } },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
@@ -59,9 +59,7 @@ export default async function ClubDetailPage({
           <div className="flex gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>Capacity: {club.maxCapacity}</span>
             <span>Owner: {club.owner.name}</span>
-            {club.cosponsors.length > 0 && (
-              <span>Cosponsors: {club.cosponsors.map((c) => c.name).join(", ")}</span>
-            )}
+            {club.cosponsor && <span>Cosponsor: {club.cosponsor.name}</span>}
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
             ) : (

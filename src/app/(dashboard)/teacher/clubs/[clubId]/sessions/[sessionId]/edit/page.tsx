@@ -18,10 +18,7 @@ export default async function EditSessionPage({
   const { return: returnPath } = await searchParams;
 
   // Verify access
-  const club = await prisma.club.findUnique({
-    where: { id: clubId },
-    include: { cosponsors: { select: { id: true } } },
-  });
+  const club = await prisma.club.findUnique({ where: { id: clubId } });
   if (!club) notFound();
   if (!isClubManager(club, session.user.id, session.user.role)) {
     redirect("/unauthorized");
