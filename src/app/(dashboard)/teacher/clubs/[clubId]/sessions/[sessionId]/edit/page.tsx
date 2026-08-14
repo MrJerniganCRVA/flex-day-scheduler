@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import SessionEditForm from "@/components/sessions/SessionEditForm";
+import { isClubManager } from "@/lib/auth-helpers";
 
 export default async function EditSessionPage({
   params,
@@ -17,9 +18,12 @@ export default async function EditSessionPage({
   const { return: returnPath } = await searchParams;
 
   // Verify access
-  const club = await prisma.club.findUnique({ where: { id: clubId } });
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    include: { cosponsors: { select: { id: true } } },
+  });
   if (!club) notFound();
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     redirect("/unauthorized");
   }
 

@@ -34,3 +34,17 @@ export async function requireRole(...roles: Role[]) {
 export function isTeacherOrAdmin(role: Role): boolean {
   return role === "TEACHER" || role === "ADMIN";
 }
+
+/**
+ * Whether a user can manage a club: admins always can, otherwise the club's
+ * owner or any of its cosponsors (both have full co-owner permissions).
+ */
+export function isClubManager(
+  club: { ownerId: string; cosponsors?: { id: string }[] },
+  userId: string,
+  role: Role
+): boolean {
+  if (role === "ADMIN") return true;
+  if (club.ownerId === userId) return true;
+  return club.cosponsors?.some((c) => c.id === userId) ?? false;
+}

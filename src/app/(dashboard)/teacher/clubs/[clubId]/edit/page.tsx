@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import ClubForm from "@/components/clubs/ClubForm";
+import { isClubManager } from "@/lib/auth-helpers";
 
 export default async function EditClubPage({
   params,
@@ -25,13 +26,21 @@ export default async function EditClubPage({
       ownerId: true,
       allowRandomAssignment: true,
       linkedRotations: true,
+      cosponsors: { select: { id: true } },
     },
   });
 
   if (!club) notFound();
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     redirect("/unauthorized");
   }
+
+  // Exclude the club's owner — they can't also be listed as their own cosponsor
+  const teachers = await prisma.user.findMany({
+    where: { role: { in: ["TEACHER", "ADMIN"] }, id: { not: club.ownerId } },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div className="max-w-xl">
@@ -46,7 +55,9 @@ export default async function EditClubPage({
           defaultRotations: club.defaultRotations,
           allowRandomAssignment: club.allowRandomAssignment,
           linkedRotations: club.linkedRotations,
+          cosponsorIds: club.cosponsors.map((c) => c.id),
         }}
+        teachers={teachers}
       />
     </div>
   );

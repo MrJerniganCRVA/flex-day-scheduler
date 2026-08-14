@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { bulkAttendanceSchema } from "@/lib/validations";
 import { getSchoolWeekWindow } from "@/lib/flex-day-utils";
+import { isClubManager } from "@/lib/auth-helpers";
 
 export async function PUT(
   req: NextRequest,
@@ -28,7 +29,7 @@ export async function PUT(
     where: { id: sessionId },
     select: {
       flexDay: { select: { date: true } },
-      club: { select: { ownerId: true } },
+      club: { select: { ownerId: true, cosponsors: { select: { id: true } } } },
       oneOffOwnerId: true,
     },
   });
@@ -37,11 +38,12 @@ export async function PUT(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const isAdmin = session.user.role === "ADMIN";
-  const isOwner =
-    clubSession.club?.ownerId === session.user.id ||
-    clubSession.oneOffOwnerId === session.user.id;
-  if (!isAdmin && !isOwner) {
+  const canManage =
+    (clubSession.club &&
+      isClubManager(clubSession.club, session.user.id, session.user.role)) ||
+    clubSession.oneOffOwnerId === session.user.id ||
+    session.user.role === "ADMIN";
+  if (!canManage) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

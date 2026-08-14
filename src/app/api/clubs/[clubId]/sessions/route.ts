@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSessionSchema } from "@/lib/validations";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
+import { isClubManager } from "@/lib/auth-helpers";
 
 export async function GET(
   _req: NextRequest,
@@ -17,12 +18,12 @@ export async function GET(
 
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    select: { ownerId: true },
+    select: { ownerId: true, cosponsors: { select: { id: true } } },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -49,15 +50,15 @@ export async function POST(
 
   const { clubId } = await params;
 
-  // Verify access: owner or admin
+  // Verify access: owner, cosponsor, or admin
   const club = await prisma.club.findUnique({
     where: { id: clubId },
-    select: { ownerId: true, defaultRoomId: true },
+    select: { ownerId: true, defaultRoomId: true, cosponsors: { select: { id: true } } },
   });
   if (!club) {
     return NextResponse.json({ error: "Club not found" }, { status: 404 });
   }
-  if (session.user.role !== "ADMIN" && club.ownerId !== session.user.id) {
+  if (!isClubManager(club, session.user.id, session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

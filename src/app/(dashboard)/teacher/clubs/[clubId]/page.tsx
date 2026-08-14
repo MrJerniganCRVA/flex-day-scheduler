@@ -2,7 +2,9 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
-import SessionCard from "@/components/sessions/SessionCard";
+import FlexDaySessionGroup from "@/components/sessions/FlexDaySessionGroup";
+import { isClubManager } from "@/lib/auth-helpers";
+import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 
 export default async function ClubDetailPage({
   params,
@@ -21,6 +23,7 @@ export default async function ClubDetailPage({
     where: { id: clubId },
     include: {
       owner: { select: { id: true, name: true } },
+      cosponsors: { select: { id: true, name: true } },
       defaultRoom: { select: { id: true, name: true } },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
@@ -40,8 +43,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const canManage =
-    session.user.role === "ADMIN" || club.owner.id === session.user.id;
+  const canManage = isClubManager(club, session.user.id, session.user.role);
   if (!canManage) redirect("/unauthorized");
 
   const sessions = club.clubSessions;
@@ -57,6 +59,9 @@ export default async function ClubDetailPage({
           <div className="flex gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>Capacity: {club.maxCapacity}</span>
             <span>Owner: {club.owner.name}</span>
+            {club.cosponsors.length > 0 && (
+              <span>Cosponsors: {club.cosponsors.map((c) => c.name).join(", ")}</span>
+            )}
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
             ) : (
@@ -80,25 +85,27 @@ export default async function ClubDetailPage({
         </div>
       ) : (
         <div className="space-y-4">
-          {sessions.map((cs) => (
-            <SessionCard
-              key={cs.id}
+          {groupSessionsByFlexDay(sessions).map((daySessions) => (
+            <FlexDaySessionGroup
+              key={daySessions[0].flexDay.id}
               clubId={clubId}
-              sessionId={cs.id}
-              flexDayId={cs.flexDay.id}
-              flexDayDate={cs.flexDay.date.toISOString()}
-              flexDayLabel={cs.flexDay.label}
-              rotations={cs.rotations}
-              enrollmentCount={cs._count.signups}
-              maxCapacity={club.maxCapacity}
-              capacityOverride={cs.capacityOverride}
-              teacherAbsent={cs.teacherAbsent}
-              roomOverrideId={cs.roomOverrideId}
-              defaultRoomName={club.defaultRoom?.name ?? null}
-              signups={cs.signups}
-              siblingSessionOptions={sessions
-                .filter((s) => s.flexDay.id === cs.flexDay.id && s.id !== cs.id)
-                .map((s) => ({ id: s.id, rotations: s.rotations }))}
+              sessions={daySessions.map((cs) => ({
+                sessionId: cs.id,
+                flexDayId: cs.flexDay.id,
+                flexDayDate: cs.flexDay.date.toISOString(),
+                flexDayLabel: cs.flexDay.label,
+                rotations: cs.rotations,
+                enrollmentCount: cs._count.signups,
+                maxCapacity: club.maxCapacity,
+                capacityOverride: cs.capacityOverride,
+                teacherAbsent: cs.teacherAbsent,
+                roomOverrideId: cs.roomOverrideId,
+                defaultRoomName: club.defaultRoom?.name ?? null,
+                signups: cs.signups,
+                siblingSessionOptions: sessions
+                  .filter((s) => s.flexDay.id === cs.flexDay.id && s.id !== cs.id)
+                  .map((s) => ({ id: s.id, rotations: s.rotations })),
+              }))}
             />
           ))}
         </div>

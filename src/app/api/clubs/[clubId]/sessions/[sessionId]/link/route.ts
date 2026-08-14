@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { deleteEvent } from "@/lib/google-calendar";
+import { isClubManager } from "@/lib/auth-helpers";
 import { z } from "zod";
 import type { RotationSlot } from "@prisma/client";
 
@@ -43,6 +44,7 @@ export async function POST(
             id: true,
             ownerId: true,
             googleCalendarId: true,
+            cosponsors: { select: { id: true } },
           },
         },
       },
@@ -65,8 +67,8 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  // Auth: admin or club owner
-  if (session.user.role !== "ADMIN" && target.club!.ownerId !== session.user.id) {
+  // Auth: admin, club owner, or cosponsor
+  if (!isClubManager(target.club!, session.user.id, session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -4,8 +4,10 @@ import prisma from "@/lib/prisma";
 import { updateClubSessionPerDaySchema } from "@/lib/validations";
 import { deleteEvent } from "@/lib/google-calendar";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
+import { isClubManager } from "@/lib/auth-helpers";
+import type { Role } from "@prisma/client";
 
-async function resolveOwnerAndSession(sessionId: string, userId: string, userRole: string) {
+async function resolveOwnerAndSession(sessionId: string, userId: string, userRole: Role) {
   const clubSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
     include: {
@@ -14,17 +16,19 @@ async function resolveOwnerAndSession(sessionId: string, userId: string, userRol
           ownerId: true,
           googleCalendarId: true,
           defaultRoom: { select: { id: true, capacity: true } },
+          cosponsors: { select: { id: true } },
         },
       },
     },
   });
   if (!clubSession) return { error: "Session not found", status: 404, clubSession: null };
 
-  const isAdmin = userRole === "ADMIN";
-  const isClubOwner = clubSession.club?.ownerId === userId;
   const isOneOffOwner = clubSession.oneOffOwnerId === userId;
+  const canManageClub = clubSession.club
+    ? isClubManager(clubSession.club, userId, userRole)
+    : userRole === "ADMIN";
 
-  if (!isAdmin && !isClubOwner && !isOneOffOwner) {
+  if (!canManageClub && !isOneOffOwner) {
     return { error: "Forbidden", status: 403, clubSession: null };
   }
 
