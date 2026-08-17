@@ -25,7 +25,8 @@ import type { RotationSlot } from "@prisma/client";
  */
 
 export type CoverageClubRef = {
-  ownerId: string;
+  /** Null for a club with no owner — see the note on Club.ownerId in the schema. */
+  ownerId: string | null;
   cosponsorId?: string | null;
 };
 
@@ -33,6 +34,12 @@ export type CoverageRow = {
   rotation: RotationSlot;
   primaryTeacherId: string | null;
   secondaryTeacherId: string | null;
+};
+
+/** A teacher who won't attend, for one rotation of one session. */
+export type AbsenceRow = {
+  teacherId: string;
+  rotation: RotationSlot;
 };
 
 export type ResolvedCoverage = {
@@ -44,17 +51,32 @@ export type ResolvedCoverage = {
  * Effective T1/T2 for one rotation of one session.
  *
  * `club` is null for one-off sessions — they have no owner or cosponsor to fall
- * back to, so only an explicit assignment counts.
+ * back to, so only an explicit assignment counts. A club with no owner behaves
+ * the same way for T1.
+ *
+ * Absences are subtracted *after* the fallbacks, which is the whole reason they
+ * are stored explicitly: the absent teacher is frequently the club's owner, so
+ * removing their coverage row would achieve nothing — the fallback would name
+ * them again. An absent teacher resolves to null, which the admin Coverage page
+ * already surfaces as needing cover.
  */
 export function resolveSessionCoverage(
   club: CoverageClubRef | null | undefined,
   rows: CoverageRow[],
-  rotation: RotationSlot
+  rotation: RotationSlot,
+  absences: AbsenceRow[] = []
 ): ResolvedCoverage {
   const row = rows.find((r) => r.rotation === rotation);
+  const absent = new Set(
+    absences.filter((a) => a.rotation === rotation).map((a) => a.teacherId)
+  );
+
+  const primary = row?.primaryTeacherId ?? club?.ownerId ?? null;
+  const secondary = row?.secondaryTeacherId ?? club?.cosponsorId ?? null;
+
   return {
-    primaryTeacherId: row?.primaryTeacherId ?? club?.ownerId ?? null,
-    secondaryTeacherId: row?.secondaryTeacherId ?? club?.cosponsorId ?? null,
+    primaryTeacherId: primary && !absent.has(primary) ? primary : null,
+    secondaryTeacherId: secondary && !absent.has(secondary) ? secondary : null,
   };
 }
 
@@ -68,17 +90,43 @@ export function resolveSessionCoverage(
 export function resolveSessionTeacherIds(
   club: CoverageClubRef | null | undefined,
   rows: CoverageRow[],
-  rotations: RotationSlot[]
+  rotations: RotationSlot[],
+  absences: AbsenceRow[] = []
 ): Set<string> {
   const ids = new Set<string>();
   for (const rotation of rotations) {
     const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
       club,
       rows,
-      rotation
+      rotation,
+      absences
     );
     if (primaryTeacherId) ids.add(primaryTeacherId);
     if (secondaryTeacherId) ids.add(secondaryTeacherId);
   }
   return ids;
+}
+
+/**
+ * Rotations of this session where `teacherId` is expected to be present.
+ *
+ * Used by the teacher dashboard to detect double-booking: a teacher expected in
+ * the same rotation by two different sessions cannot attend both.
+ */
+export function rotationsExpectingTeacher(
+  club: CoverageClubRef | null | undefined,
+  rows: CoverageRow[],
+  rotations: RotationSlot[],
+  absences: AbsenceRow[],
+  teacherId: string
+): RotationSlot[] {
+  return rotations.filter((rotation) => {
+    const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
+      club,
+      rows,
+      rotation,
+      absences
+    );
+    return primaryTeacherId === teacherId || secondaryTeacherId === teacherId;
+  });
 }

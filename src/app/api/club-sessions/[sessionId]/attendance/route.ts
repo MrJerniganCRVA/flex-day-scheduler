@@ -3,7 +3,8 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { bulkAttendanceSchema } from "@/lib/validations";
 import { getSchoolWeekWindow } from "@/lib/flex-day-utils";
-import { isClubManager } from "@/lib/auth-helpers";
+import { canRecordAttendance } from "@/lib/auth-helpers";
+import { resolveSessionTeacherIds } from "@/lib/coverage";
 
 export async function PUT(
   req: NextRequest,
@@ -28,9 +29,18 @@ export async function PUT(
   const clubSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
     select: {
+      rotations: true,
       flexDay: { select: { date: true } },
       club: { select: { ownerId: true, cosponsorId: true } },
       oneOffOwnerId: true,
+      rotationCoverage: {
+        select: {
+          rotation: true,
+          primaryTeacherId: true,
+          secondaryTeacherId: true,
+        },
+      },
+      teacherAbsences: { select: { teacherId: true, rotation: true } },
     },
   });
 
@@ -38,12 +48,24 @@ export async function PUT(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const canManage =
-    (clubSession.club &&
-      isClubManager(clubSession.club, session.user.id, session.user.role)) ||
-    clubSession.oneOffOwnerId === session.user.id ||
-    session.user.role === "ADMIN";
-  if (!canManage) {
+  // Whoever is actually in the room takes the register. A substitute assigned to
+  // cover a club they don't own previously couldn't record attendance for the
+  // session they were covering — and for a club with no owner, the assigned
+  // coverage teacher is the only person who can.
+  const coverageTeacherIds = resolveSessionTeacherIds(
+    clubSession.club,
+    clubSession.rotationCoverage,
+    clubSession.rotations,
+    clubSession.teacherAbsences
+  );
+  if (
+    !canRecordAttendance(
+      clubSession,
+      coverageTeacherIds,
+      session.user.id,
+      session.user.role
+    )
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

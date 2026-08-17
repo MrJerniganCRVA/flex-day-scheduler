@@ -87,21 +87,37 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Admin can assign a club to a specific teacher; everyone else owns their own club
-  const { ownerId: requestedOwnerId, cosponsorId, ...clubData } = parsed.data;
+  // Admin can assign a club to a specific teacher, or pass an explicit null to
+  // create a club with no permanent teacher (run by a rotation, managed by
+  // admins). Everyone else owns the clubs they create.
+  const { ownerId: requestedOwnerId, cosponsorId, teacherIds, ...clubData } =
+    parsed.data;
   const ownerId =
-    session.user.role === "ADMIN" && requestedOwnerId
-      ? requestedOwnerId
+    session.user.role === "ADMIN"
+      ? (requestedOwnerId ?? null)
       : session.user.id;
 
   // Null the cosponsor out if it matches the resolved owner so a club never
   // lists its own owner as its cosponsor too.
-  const finalCosponsorId = cosponsorId && cosponsorId !== ownerId ? cosponsorId : null;
+  const finalCosponsorId =
+    cosponsorId && cosponsorId !== ownerId ? cosponsorId : null;
 
   // Create the club record first
   const club = await prisma.club.create({
     data: { ...clubData, ownerId, cosponsorId: finalCosponsorId },
   });
+
+  // Teacher pool: who rotates through this club. Grants no edit rights.
+  if (teacherIds && teacherIds.length > 0) {
+    const eligible = await prisma.user.findMany({
+      where: { id: { in: teacherIds }, role: { in: ["TEACHER", "ADMIN"] } },
+      select: { id: true },
+    });
+    await prisma.clubTeacher.createMany({
+      data: eligible.map((t) => ({ clubId: club.id, teacherId: t.id })),
+      skipDuplicates: true,
+    });
+  }
 
   // Attempt to create a Google Calendar for this club (non-blocking). The
   // calendar itself is created eagerly, but it is NOT shared with the

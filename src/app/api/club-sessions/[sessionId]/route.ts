@@ -129,7 +129,6 @@ export async function PATCH(
   if (parsed.data.rotations !== undefined) updateData.rotations = parsed.data.rotations;
   if ("roomOverrideId" in parsed.data) updateData.roomOverrideId = parsed.data.roomOverrideId ?? null;
   if ("capacityOverride" in parsed.data) updateData.capacityOverride = parsed.data.capacityOverride ?? null;
-  if (parsed.data.teacherAbsent !== undefined) updateData.teacherAbsent = parsed.data.teacherAbsent;
 
   const updated = await prisma.clubSession.update({
     where: { id: sessionId },
@@ -139,7 +138,6 @@ export async function PATCH(
       rotations: true,
       roomOverrideId: true,
       capacityOverride: true,
-      teacherAbsent: true,
     },
   });
 

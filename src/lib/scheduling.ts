@@ -1,5 +1,18 @@
 import prisma from "@/lib/prisma";
 import type { RotationSlot } from "@prisma/client";
+import {
+  desiredSessionShapes,
+  planReconcile,
+  type ReconcileReport,
+  type ReconcileSkip,
+} from "@/lib/reconcile";
+
+export {
+  desiredSessionShapes,
+  planReconcile,
+  type ReconcileReport,
+  type ReconcileSkip,
+};
 
 /**
  * Room ids occupied by another ClubSession on the given flex day whose
@@ -96,4 +109,84 @@ export async function createAutoScheduledSessions(
       })
     )
   );
+}
+
+/**
+ * Bring a club's sessions on all future flex days into line with its current
+ * default rotations.
+ *
+ * Sessions were previously only ever generated at creation time — when a flex day
+ * was added, or when a club was created. Editing a club's rotations afterwards
+ * changed the Club row and nothing else, so a club whose sessions already existed
+ * stayed frozen in its original shape forever. This is the missing third entry
+ * point.
+ *
+ * Past flex days are never touched: their sessions are history.
+ */
+export async function reconcileFutureSessions(club: {
+  id: string;
+  defaultRotations: RotationSlot[];
+  linkedRotations: boolean;
+}): Promise<ReconcileReport> {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const flexDays = await prisma.flexDay.findMany({
+    where: { date: { gte: today }, isActive: true },
+    select: {
+      id: true,
+      date: true,
+      isFinalized: true,
+      clubSessions: {
+        where: { clubId: club.id },
+        select: {
+          id: true,
+          rotations: true,
+          googleEventId: true,
+          _count: { select: { signups: true } },
+        },
+      },
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const desired = desiredSessionShapes(club);
+
+  const report: ReconcileReport = {
+    created: 0,
+    deleted: 0,
+    flexDaysTouched: 0,
+    skipped: [],
+  };
+
+  for (const flexDay of flexDays) {
+    const { toCreate, toDelete, skipped } = planReconcile({
+      existing: flexDay.clubSessions,
+      desired,
+      flexDayFinalized: flexDay.isFinalized,
+      flexDayDate: flexDay.date,
+    });
+
+    report.skipped.push(...skipped);
+    if (toCreate.length === 0 && toDelete.length === 0) continue;
+
+    // One transaction per flex day: a failure part-way through leaves earlier
+    // days correct rather than rolling back the whole sweep.
+    await prisma.$transaction(async (tx) => {
+      if (toDelete.length > 0) {
+        await tx.clubSession.deleteMany({ where: { id: { in: toDelete } } });
+      }
+      for (const rotations of toCreate) {
+        await tx.clubSession.create({
+          data: { flexDayId: flexDay.id, clubId: club.id, rotations },
+        });
+      }
+    });
+
+    report.created += toCreate.length;
+    report.deleted += toDelete.length;
+    report.flexDaysTouched += 1;
+  }
+
+  return report;
 }

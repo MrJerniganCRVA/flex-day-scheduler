@@ -160,13 +160,23 @@ export default function SessionCard({
     router.refresh();
   }
 
+  /**
+   * Mark the signed-in teacher absent from this session, or undo it.
+   *
+   * This used to flip a single `teacherAbsent` boolean on the session, which
+   * couldn't record *who* was out — meaningless once a session can have an owner,
+   * a cosponsor, and per-rotation coverage. It now writes per-teacher absence
+   * rows for the acting teacher, across every rotation this session covers.
+   *
+   * The club still runs either way; the rotation simply shows as needing cover.
+   */
   async function handleToggleAbsent() {
     setMarkingAbsent(true);
     const newAbsent = !absent;
-    const res = await fetch(`/api/club-sessions/${sessionId}`, {
-      method: "PATCH",
+    const res = await fetch(`/api/club-sessions/${sessionId}/absence`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teacherAbsent: newAbsent }),
+      body: JSON.stringify({ absent: newAbsent }),
     });
     setMarkingAbsent(false);
     if (res.ok) {

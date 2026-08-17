@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveSessionCoverage,
   resolveSessionTeacherIds,
+  rotationsExpectingTeacher,
   type CoverageRow,
 } from "./coverage";
 
@@ -106,5 +107,110 @@ describe("resolveSessionTeacherIds", () => {
 
   it("is empty for a one-off session with no assigned coverage", () => {
     expect(resolveSessionTeacherIds(null, [], ["FLEX_1"]).size).toBe(0);
+  });
+
+  it("excludes an absent teacher, so they aren't invited", () => {
+    const ids = resolveSessionTeacherIds(club, [], ["FLEX_1"], [
+      { teacherId: "owner", rotation: "FLEX_1" },
+    ]);
+    expect([...ids]).toEqual(["cosponsor"]);
+  });
+});
+
+describe("resolveSessionCoverage with absences", () => {
+  it("clears an absent owner from T1 even though they are the default", () => {
+    // This is the reason absences are stored rather than derived: deleting a
+    // coverage row wouldn't remove the owner, the fallback would re-add them.
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_1", [
+        { teacherId: "owner", rotation: "FLEX_1" },
+      ])
+    ).toEqual({ primaryTeacherId: null, secondaryTeacherId: "cosponsor" });
+  });
+
+  it("clears an absent cosponsor from T2", () => {
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_1", [
+        { teacherId: "cosponsor", rotation: "FLEX_1" },
+      ])
+    ).toEqual({ primaryTeacherId: "owner", secondaryTeacherId: null });
+  });
+
+  it("clears an explicitly assigned teacher who is marked absent", () => {
+    // An explicit assignment does not override an absence — the person still
+    // isn't in the room.
+    expect(
+      resolveSessionCoverage(
+        club,
+        [row("FLEX_1", "sub1", null)],
+        "FLEX_1",
+        [{ teacherId: "sub1", rotation: "FLEX_1" }]
+      )
+    ).toEqual({ primaryTeacherId: null, secondaryTeacherId: "cosponsor" });
+  });
+
+  it("only applies an absence to the rotation it names", () => {
+    const absences = [{ teacherId: "owner", rotation: "FLEX_1" as const }];
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_1", absences).primaryTeacherId
+    ).toBeNull();
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_2", absences).primaryTeacherId
+    ).toBe("owner");
+  });
+
+  it("resolves T1 to null for a club with no owner", () => {
+    expect(
+      resolveSessionCoverage({ ownerId: null, cosponsorId: null }, [], "FLEX_1")
+    ).toEqual({ primaryTeacherId: null, secondaryTeacherId: null });
+  });
+
+  it("still honors an explicit assignment on a club with no owner", () => {
+    expect(
+      resolveSessionCoverage(
+        { ownerId: null, cosponsorId: null },
+        [row("FLEX_1", "rotating", null)],
+        "FLEX_1"
+      ).primaryTeacherId
+    ).toBe("rotating");
+  });
+});
+
+describe("rotationsExpectingTeacher", () => {
+  it("lists the rotations where a teacher is the resolved default", () => {
+    expect(
+      rotationsExpectingTeacher(club, [], ["FLEX_1", "FLEX_2"], [], "owner")
+    ).toEqual(["FLEX_1", "FLEX_2"]);
+  });
+
+  it("omits rotations the teacher is absent from", () => {
+    expect(
+      rotationsExpectingTeacher(
+        club,
+        [],
+        ["FLEX_1", "FLEX_2"],
+        [{ teacherId: "owner", rotation: "FLEX_1" }],
+        "owner"
+      )
+    ).toEqual(["FLEX_2"]);
+  });
+
+  it("includes a teacher assigned explicitly but unrelated to the club", () => {
+    // The case that previously left a substitute unable to see their own session.
+    expect(
+      rotationsExpectingTeacher(
+        club,
+        [row("FLEX_2", "sub1", null)],
+        ["FLEX_1", "FLEX_2"],
+        [],
+        "sub1"
+      )
+    ).toEqual(["FLEX_2"]);
+  });
+
+  it("is empty for a teacher with no connection to the session", () => {
+    expect(
+      rotationsExpectingTeacher(club, [], ["FLEX_1"], [], "stranger")
+    ).toEqual([]);
   });
 });

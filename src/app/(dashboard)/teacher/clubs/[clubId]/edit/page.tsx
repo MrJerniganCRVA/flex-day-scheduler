@@ -27,6 +27,7 @@ export default async function EditClubPage({
       allowRandomAssignment: true,
       linkedRotations: true,
       cosponsorId: true,
+      teachers: { select: { teacherId: true } },
     },
   });
 
@@ -35,9 +36,13 @@ export default async function EditClubPage({
     redirect("/unauthorized");
   }
 
-  // Exclude the club's owner — they can't also be listed as their own cosponsor
+  // Exclude the club's owner — they can't also be listed as their own cosponsor.
+  // A club with no owner excludes nobody.
   const teachers = await prisma.user.findMany({
-    where: { role: { in: ["TEACHER", "ADMIN"] }, id: { not: club.ownerId } },
+    where: {
+      role: { in: ["TEACHER", "ADMIN"] },
+      ...(club.ownerId ? { id: { not: club.ownerId } } : {}),
+    },
     select: { id: true, name: true, email: true },
     orderBy: { name: "asc" },
   });
@@ -56,6 +61,7 @@ export default async function EditClubPage({
           allowRandomAssignment: club.allowRandomAssignment,
           linkedRotations: club.linkedRotations,
           cosponsorId: club.cosponsorId,
+          teacherIds: club.teachers.map((t) => t.teacherId),
         }}
         teachers={teachers}
       />

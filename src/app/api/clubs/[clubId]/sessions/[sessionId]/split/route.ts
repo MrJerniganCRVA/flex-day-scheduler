@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createEventForSession, deleteEvent } from "@/lib/google-calendar";
+import { resolveSessionTeacherIds } from "@/lib/coverage";
 
 export async function POST(
   _req: NextRequest,
@@ -25,18 +26,21 @@ export async function POST(
       },
       rotationCoverage: {
         include: {
-          primaryTeacher: { select: { email: true } },
-          secondaryTeacher: { select: { email: true } },
+          primaryTeacher: { select: { id: true, email: true } },
+          secondaryTeacher: { select: { id: true, email: true } },
         },
       },
+      teacherAbsences: { select: { teacherId: true, rotation: true } },
       club: {
         select: {
           id: true,
           ownerId: true,
+          cosponsorId: true,
           name: true,
           googleCalendarId: true,
           defaultRoom: { select: { name: true } },
-          owner: { select: { email: true } },
+          owner: { select: { id: true, email: true } },
+          cosponsor: { select: { id: true, email: true } },
         },
       },
       flexDay: { select: { date: true } },
@@ -57,7 +61,25 @@ export async function POST(
 
   const club = original.club;
   const rotationCoverage = original.rotationCoverage;
+  const teacherAbsences = original.teacherAbsences;
   const rotations = original.rotations;
+
+  // Teacher id -> email, for turning resolved coverage back into attendees.
+  const teacherEmailById = new Map<string, string>();
+  if (club?.ownerId && club.owner?.email) {
+    teacherEmailById.set(club.ownerId, club.owner.email);
+  }
+  if (club?.cosponsorId && club.cosponsor?.email) {
+    teacherEmailById.set(club.cosponsorId, club.cosponsor.email);
+  }
+  for (const rc of rotationCoverage) {
+    if (rc.primaryTeacher?.id && rc.primaryTeacher.email) {
+      teacherEmailById.set(rc.primaryTeacher.id, rc.primaryTeacher.email);
+    }
+    if (rc.secondaryTeacher?.id && rc.secondaryTeacher.email) {
+      teacherEmailById.set(rc.secondaryTeacher.id, rc.secondaryTeacher.email);
+    }
+  }
   const studentIds = original.signups.map((s) => s.studentId);
   const studentEmails = original.signups
     .map((s) => s.student.email)
@@ -65,14 +87,24 @@ export async function POST(
   const location =
     original.roomOverride?.name ?? club?.defaultRoom?.name ?? null;
 
-  // Per-rotation coverage teacher emails, falling back to the club owner —
-  // used only when the original session was already finalized/invited.
+  // Per-rotation attendees for the split-off sessions, used only when the
+  // original session was already finalized/invited.
+  //
+  // Routed through the shared resolver rather than hand-rolling the fallback:
+  // the previous version fell back to the club owner only, so splitting a
+  // session dropped its cosponsor from the resulting calendar events.
   function attendeeEmailsForRotation(rotation: (typeof rotations)[number]) {
-    const coverage = rotationCoverage.find((rc) => rc.rotation === rotation);
+    const teacherIds = resolveSessionTeacherIds(
+      club,
+      rotationCoverage,
+      [rotation],
+      teacherAbsences
+    );
     const emails = new Set<string>();
-    const primaryEmail = coverage?.primaryTeacher?.email ?? club?.owner.email;
-    if (primaryEmail) emails.add(primaryEmail);
-    if (coverage?.secondaryTeacher?.email) emails.add(coverage.secondaryTeacher.email);
+    for (const id of teacherIds) {
+      const email = teacherEmailById.get(id);
+      if (email) emails.add(email);
+    }
     for (const email of studentEmails) emails.add(email);
     return [...emails];
   }

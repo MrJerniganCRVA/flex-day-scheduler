@@ -28,12 +28,41 @@ export function isTeacherOrAdmin(role: Role): boolean {
  * demotion had no equivalent protection.)
  */
 export function isClubManager(
-  club: { ownerId: string; cosponsorId?: string | null },
+  club: { ownerId: string | null; cosponsorId?: string | null },
   userId: string,
   role: Role
 ): boolean {
   if (role === "ADMIN") return true;
   if (role === "STUDENT") return false;
-  if (club.ownerId === userId) return true;
+  if (club.ownerId !== null && club.ownerId === userId) return true;
   return club.cosponsorId === userId;
+}
+
+/**
+ * Whether a user may record attendance for a session.
+ *
+ * Broader than `isClubManager` on purpose: whoever is actually standing in the
+ * room takes the register. A substitute assigned to cover a club they don't own
+ * previously could not record attendance for the session they were covering —
+ * and for a club with no owner at all, the assigned coverage teacher is the only
+ * person who can.
+ *
+ * `coverageTeacherIds` should come from `resolveSessionTeacherIds` in
+ * src/lib/coverage.ts, so implicit owner/cosponsor defaults and absences are
+ * already accounted for.
+ */
+export function canRecordAttendance(
+  session: {
+    club: { ownerId: string | null; cosponsorId?: string | null } | null;
+    oneOffOwnerId?: string | null;
+  },
+  coverageTeacherIds: Set<string>,
+  userId: string,
+  role: Role
+): boolean {
+  if (role === "ADMIN") return true;
+  if (role === "STUDENT") return false;
+  if (session.oneOffOwnerId === userId) return true;
+  if (coverageTeacherIds.has(userId)) return true;
+  return session.club ? isClubManager(session.club, userId, role) : false;
 }

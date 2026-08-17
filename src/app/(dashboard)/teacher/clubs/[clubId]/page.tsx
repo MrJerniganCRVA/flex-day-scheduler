@@ -30,6 +30,7 @@ export default async function ClubDetailPage({
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
           _count: { select: { signups: true } },
+          teacherAbsences: { select: { teacherId: true } },
           signups: {
             include: {
               student: { select: { id: true, name: true, email: true } },
@@ -58,7 +59,7 @@ export default async function ClubDetailPage({
           )}
           <div className="flex gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>Capacity: {club.maxCapacity}</span>
-            <span>Owner: {club.owner.name}</span>
+            <span>Owner: {club.owner?.name ?? "None (admin-managed)"}</span>
             {club.cosponsor && <span>Cosponsor: {club.cosponsor.name}</span>}
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
@@ -96,7 +97,11 @@ export default async function ClubDetailPage({
                 enrollmentCount: cs._count.signups,
                 maxCapacity: club.maxCapacity,
                 capacityOverride: cs.capacityOverride,
-                teacherAbsent: cs.teacherAbsent,
+                // Whether *this* teacher has stepped back from the session, not
+                // whether the session lacks a teacher generally.
+                teacherAbsent: cs.teacherAbsences.some(
+                  (a) => a.teacherId === session.user.id
+                ),
                 roomOverrideId: cs.roomOverrideId,
                 defaultRoomName: club.defaultRoom?.name ?? null,
                 signups: cs.signups,

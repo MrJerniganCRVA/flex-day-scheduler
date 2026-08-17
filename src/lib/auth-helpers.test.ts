@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isClubManager, isTeacherOrAdmin } from "./auth-helpers";
+import {
+  canRecordAttendance,
+  isClubManager,
+  isTeacherOrAdmin,
+} from "./auth-helpers";
 
 /**
  * isClubManager gates every club-scoped mutation in the app, so its edges are
@@ -50,6 +54,108 @@ describe("isClubManager", () => {
     expect(isClubManager({ ownerId: "someone" }, "admin-user", "ADMIN")).toBe(
       true
     );
+  });
+});
+
+describe("isClubManager with no owner", () => {
+  it("rejects a teacher unconnected to an ownerless club", () => {
+    expect(
+      isClubManager({ ownerId: null, cosponsorId: null }, "anyone", "TEACHER")
+    ).toBe(false);
+  });
+
+  it("still allows the cosponsor of an ownerless club", () => {
+    expect(
+      isClubManager({ ownerId: null, cosponsorId: "co" }, "co", "TEACHER")
+    ).toBe(true);
+  });
+
+  it("allows an admin to manage an ownerless club", () => {
+    expect(
+      isClubManager({ ownerId: null, cosponsorId: null }, "admin", "ADMIN")
+    ).toBe(true);
+  });
+
+  it("does not treat a null owner as matching a null-ish user id", () => {
+    // Guards against `club.ownerId === userId` accidentally passing when both
+    // sides are absent.
+    expect(
+      isClubManager({ ownerId: null }, "" as unknown as string, "TEACHER")
+    ).toBe(false);
+  });
+});
+
+describe("canRecordAttendance", () => {
+  const clubSession = {
+    club: { ownerId: "owner", cosponsorId: "cosponsor" },
+    oneOffOwnerId: null,
+  };
+  const noCoverage = new Set<string>();
+
+  it("allows a coverage teacher who does not manage the club", () => {
+    // The gap this closes: a substitute assigned to cover someone else's club
+    // could not record attendance for the session they were standing in.
+    expect(
+      canRecordAttendance(
+        clubSession,
+        new Set(["sub1"]),
+        "sub1",
+        "TEACHER"
+      )
+    ).toBe(true);
+  });
+
+  it("allows the club owner even with no coverage rows", () => {
+    expect(
+      canRecordAttendance(clubSession, noCoverage, "owner", "TEACHER")
+    ).toBe(true);
+  });
+
+  it("allows the cosponsor", () => {
+    expect(
+      canRecordAttendance(clubSession, noCoverage, "cosponsor", "TEACHER")
+    ).toBe(true);
+  });
+
+  it("allows any admin", () => {
+    expect(
+      canRecordAttendance(clubSession, noCoverage, "someone", "ADMIN")
+    ).toBe(true);
+  });
+
+  it("allows the creator of a one-off session", () => {
+    expect(
+      canRecordAttendance(
+        { club: null, oneOffOwnerId: "creator" },
+        noCoverage,
+        "creator",
+        "TEACHER"
+      )
+    ).toBe(true);
+  });
+
+  it("rejects an unrelated teacher", () => {
+    expect(
+      canRecordAttendance(clubSession, noCoverage, "stranger", "TEACHER")
+    ).toBe(false);
+  });
+
+  it("rejects a student, even one named in coverage", () => {
+    expect(
+      canRecordAttendance(clubSession, new Set(["pupil"]), "pupil", "STUDENT")
+    ).toBe(false);
+  });
+
+  it("allows the assigned teacher of an ownerless club", () => {
+    // For a club with no owner, coverage is the only route to attendance.
+    expect(
+      canRecordAttendance(
+        { club: { ownerId: null, cosponsorId: null }, oneOffOwnerId: null },
+        new Set(["rotating"]),
+        "rotating",
+        "TEACHER"
+      )
+    ).toBe(true);
   });
 });
 
