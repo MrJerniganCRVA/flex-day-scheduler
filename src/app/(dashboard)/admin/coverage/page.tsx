@@ -23,7 +23,9 @@ export default async function AdminCoveragePage() {
               id: true,
               name: true,
               ownerId: true,
+              cosponsorId: true,
               owner: { select: { name: true } },
+              cosponsor: { select: { name: true } },
             },
           },
           _count: { select: { signups: true } },
@@ -71,6 +73,12 @@ export default async function AdminCoveragePage() {
     name: cs.club!.name,
     ownerId: cs.club!.ownerId,
     ownerName: cs.club!.owner.name ?? cs.club!.ownerId,
+    // A club's cosponsor is its default second teacher. Without this the
+    // cosponsor never appeared as T2, showed as fully free (so they could be
+    // double-booked into another club in the same rotation), and never received
+    // the calendar invite for a club they co-run.
+    cosponsorId: cs.club!.cosponsorId,
+    cosponsorName: cs.club!.cosponsor?.name ?? null,
     rotations: cs.rotations,
     studentCount: cs._count.signups,
     coverage: Object.fromEntries(

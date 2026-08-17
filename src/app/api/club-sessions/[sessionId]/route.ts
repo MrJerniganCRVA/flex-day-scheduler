@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionPerDaySchema } from "@/lib/validations";
-import { deleteEvent } from "@/lib/google-calendar";
+import { deleteEvent, getOneOffCalendarId } from "@/lib/google-calendar";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
 import type { Role } from "@prisma/client";
@@ -166,10 +166,20 @@ export async function DELETE(
     return NextResponse.json({ error }, { status });
   }
 
+  // Resolve the host calendar before deleting: club sessions live on their
+  // club's calendar, one-off sessions on the shared one-off calendar. Guarding
+  // only on `club.googleCalendarId` would leak every deleted one-off's event.
+  let calendarId: string | null = null;
+  if (clubSession.googleEventId) {
+    calendarId = clubSession.club
+      ? clubSession.club.googleCalendarId
+      : await getOneOffCalendarId();
+  }
+
   await prisma.clubSession.delete({ where: { id: sessionId } });
 
-  if (clubSession.club?.googleCalendarId && clubSession.googleEventId) {
-    deleteEvent(clubSession.club.googleCalendarId, clubSession.googleEventId).catch((err) =>
+  if (calendarId && clubSession.googleEventId) {
+    deleteEvent(calendarId, clubSession.googleEventId).catch((err) =>
       console.error("Failed to delete Google Calendar event:", err)
     );
   }

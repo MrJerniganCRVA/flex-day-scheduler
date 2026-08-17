@@ -166,7 +166,12 @@ export default async function AdminFlexDaysPage({
                       >
                         View
                       </Link>
-                      <DeleteFlexDayButton flexDayId={fd.id} />
+                      <DeleteFlexDayButton
+                        flexDayId={fd.id}
+                        sessionCount={fd._count.clubSessions}
+                        studentCount={fd.signedUpStudents}
+                        isFinalized={fd.isFinalized}
+                      />
                     </div>
                   </td>
                 </tr>

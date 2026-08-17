@@ -92,9 +92,17 @@ export default function SessionCard({
   const [linkConflicts, setLinkConflicts] = useState<ConflictDetail[]>([]);
 
   // Re-fetches whenever the edited rotations change so the room list reflects
-  // which rooms are actually free during those periods on this flex day
+  // which rooms are actually free during those periods on this flex day.
+  //
+  // The loading flag is set synchronously here on purpose: this is a
+  // fetch-on-dependency-change, and the flag has to flip before the request
+  // starts or the room <select> briefly shows the previous rotation's rooms as
+  // if they were current. Satisfying the lint rule properly would mean adopting
+  // a data-fetching library or moving the query server-side — both larger
+  // changes than this component warrants.
   useEffect(() => {
     if (!editing) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see note above
     setLoadingRooms(true);
     const params = new URLSearchParams();
     params.set("flexDayId", flexDayId);

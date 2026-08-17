@@ -18,6 +18,12 @@ enum RotationSlot {
   FLEX_3
 }
 
+enum SignupAuditAction {
+  ADD
+  MOVE
+  REMOVE
+}
+
 // ─── NextAuth required models ─────────────────────────────────────────────────
 
 model Account {
@@ -58,6 +64,24 @@ model VerificationToken {
 
 // ─── Application models ───────────────────────────────────────────────────────
 
+/// Single-row table for app-owned state that has no natural parent record.
+/// The `id` is pinned to "singleton" (enforced by a CHECK constraint in the
+/// migration) so callers can upsert against a known key without first
+/// querying for a row that may not exist yet.
+model AppConfig {
+  id String @id @default("singleton")
+
+  /// Google Calendar that hosts events for one-off sessions. One-off sessions
+  /// have no club, so they have no club calendar to live on. Created lazily on
+  /// the first finalize that needs it and never ACL-shared with anyone — the
+  /// owning teacher is added as an event attendee instead, which is all that's
+  /// needed to put it on their personal calendar.
+  oneOffCalendarId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -76,6 +100,8 @@ model User {
   rotCovPrimary    SessionRotationCoverage[] @relation("RotCovPrimary")
   rotCovSecondary  SessionRotationCoverage[] @relation("RotCovSecondary")
   oneOffSessions   ClubSession[]             @relation("OneOffOwner")
+  auditsPerformed  SignupAudit[]             @relation("SignupAuditActor")
+  auditsAbout      SignupAudit[]             @relation("SignupAuditStudent")
 
   @@index([email])
 }
@@ -191,4 +217,44 @@ model Signup {
   @@unique([studentId, clubSessionId])
   @@index([studentId])
   @@index([clubSessionId])
+}
+
+/// Immutable record of an admin overriding a roster after calendar invites went
+/// out. Deliberately denormalized: session and flex-day rows get deleted in the
+/// normal course of business (deleting a flex day cascades its sessions), and an
+/// audit trail that loses its meaning when the thing it describes is deleted is
+/// not an audit trail. Names and dates are captured at write time; the optional
+/// id columns are for linking while the referenced rows still exist.
+model SignupAudit {
+  id     String            @id @default(cuid())
+  action SignupAuditAction
+
+  /// Free-text justification, required at the API boundary (e.g. "no permission
+  /// slip on file"). This is the field that answers a parent's question.
+  reason String
+
+  actorId    String?
+  actorEmail String
+
+  studentId   String?
+  studentName String
+
+  /// Session moved out of (MOVE/REMOVE) and into (MOVE/ADD). Plain columns, not
+  /// foreign keys — see the note above about sessions being deleted.
+  fromSessionId   String?
+  fromSessionName String?
+  toSessionId     String?
+  toSessionName   String?
+
+  flexDayId   String?
+  flexDayDate DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  actor   User? @relation("SignupAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  student User? @relation("SignupAuditStudent", fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([flexDayId])
+  @@index([studentId])
+  @@index([createdAt])
 }

@@ -192,7 +192,7 @@ export async function PUT(
     updateEventForSession({
       calendarId: club.googleCalendarId,
       eventId: existingSession.googleEventId,
-      clubName: updatedSession.club!.name,
+      title: updatedSession.club!.name,
       location,
       flexDayDate: updatedSession.flexDay.date,
       rotations: updatedSession.rotations,

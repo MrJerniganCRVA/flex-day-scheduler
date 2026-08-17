@@ -1,15 +1,20 @@
 import { google, calendar_v3 } from "googleapis";
 import { JWT } from "google-auth-library";
 import { RotationSlot } from "@prisma/client";
+import { env } from "@/lib/env";
+import prisma from "@/lib/prisma";
+
+/** Pinned primary key of the AppConfig single-row table. */
+const SINGLETON_ID = "singleton";
 
 function getAuthClient(): JWT {
-  const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
+  const privateKey = env().GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(
     /\\n/g,
     "\n"
   );
 
   return new google.auth.JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    email: env().GOOGLE_SERVICE_ACCOUNT_EMAIL,
     key: privateKey,
     scopes: ["https://www.googleapis.com/auth/calendar"],
   });
@@ -24,19 +29,11 @@ function getRotationTime(rotation: RotationSlot): {
   start: string;
   end: string;
 } {
+  const cfg = env();
   const times: Record<RotationSlot, { start: string; end: string }> = {
-    FLEX_1: {
-      start: process.env.FLEX_1_START ?? "09:00",
-      end: process.env.FLEX_1_END ?? "09:50",
-    },
-    FLEX_2: {
-      start: process.env.FLEX_2_START ?? "10:00",
-      end: process.env.FLEX_2_END ?? "10:50",
-    },
-    FLEX_3: {
-      start: process.env.FLEX_3_START ?? "11:00",
-      end: process.env.FLEX_3_END ?? "11:50",
-    },
+    FLEX_1: { start: cfg.FLEX_1_START, end: cfg.FLEX_1_END },
+    FLEX_2: { start: cfg.FLEX_2_START, end: cfg.FLEX_2_END },
+    FLEX_3: { start: cfg.FLEX_3_START, end: cfg.FLEX_3_END },
   };
   return times[rotation];
 }
@@ -51,7 +48,7 @@ export async function createCalendarForClub(clubName: string): Promise<string> {
     requestBody: {
       summary: clubName,
       description: `Club calendar for ${clubName}`,
-      timeZone: process.env.SCHOOL_TIMEZONE ?? "America/New_York",
+      timeZone: env().SCHOOL_TIMEZONE,
     },
   });
   return response.data.id!;
@@ -80,14 +77,73 @@ export async function shareCalendarWithTeacher(
 }
 
 /**
+ * Google Calendar that hosts events for one-off sessions.
+ *
+ * One-off sessions have no club, so they have no club calendar to live on —
+ * which is why they previously received no invites at all. A single app-owned
+ * calendar hosts all of them. It is deliberately NOT ACL-shared with anyone:
+ * the owning teacher is added as an *attendee* of their own event, which puts
+ * it on their personal calendar with the roster visible, and avoids an ACL that
+ * would grow with every teacher who ever creates a one-off (and would let any
+ * of them delete another's event).
+ *
+ * The id is stored in the AppConfig singleton rather than an env var so a
+ * missing value can't silently regress to the old no-invite behavior — if the
+ * row is empty we create the calendar and persist it.
+ */
+
+/**
+ * Read the stored one-off calendar id without creating one. Deletion paths use
+ * this: if no calendar has ever been provisioned there is no event to remove,
+ * and creating a calendar in order to delete from it would be absurd.
+ */
+export async function getOneOffCalendarId(): Promise<string | null> {
+  const row = await prisma.appConfig.findUnique({
+    where: { id: SINGLETON_ID },
+    select: { oneOffCalendarId: true },
+  });
+  return row?.oneOffCalendarId ?? null;
+}
+
+export async function getOrCreateOneOffCalendarId(): Promise<string> {
+  const fromDb = await getOneOffCalendarId();
+  if (fromDb) return fromDb;
+
+  const calendar = getCalendarClient();
+  const response = await calendar.calendars.insert({
+    requestBody: {
+      summary: "Flex Day — One-Off Sessions",
+      description:
+        "Hosts calendar events for one-off Flex Day sessions (sessions not tied to a club). Managed automatically by the Flex Day Scheduler.",
+      timeZone: env().SCHOOL_TIMEZONE,
+    },
+  });
+  const calendarId = response.data.id;
+  if (!calendarId) {
+    throw new Error("Google Calendar API returned no id for the one-off calendar");
+  }
+
+  await prisma.appConfig.upsert({
+    where: { id: SINGLETON_ID },
+    create: { id: SINGLETON_ID, oneOffCalendarId: calendarId },
+    update: { oneOffCalendarId: calendarId },
+  });
+
+  return calendarId;
+}
+
+/**
  * Create a calendar event for a club session on a flex day.
  * If the session spans multiple rotations, the event spans from the start
  * of the first rotation to the end of the last rotation.
  * Returns the event ID to store in ClubSession.googleEventId.
+ *
+ * `title` is the club's name for club sessions and the session's own title for
+ * one-off sessions — a student sees the name they signed up for either way.
  */
 export async function createEventForSession(params: {
   calendarId: string;
-  clubName: string;
+  title: string;
   location: string | null | undefined;
   flexDayDate: Date;
   rotations: RotationSlot[];
@@ -95,7 +151,7 @@ export async function createEventForSession(params: {
   sendUpdates?: "all" | "none";
 }): Promise<string> {
   const calendar = getCalendarClient();
-  const tz = process.env.SCHOOL_TIMEZONE ?? "America/New_York";
+  const tz = env().SCHOOL_TIMEZONE;
   const dateStr = params.flexDayDate.toISOString().split("T")[0];
 
   const sortedRotations = [...params.rotations].sort();
@@ -113,7 +169,7 @@ export async function createEventForSession(params: {
     calendarId: params.calendarId,
     sendUpdates: params.sendUpdates ?? "none",
     requestBody: {
-      summary: `${params.clubName} (${rotationLabel})`,
+      summary: `${params.title} (${rotationLabel})`,
       location: params.location ?? undefined,
       start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
       end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
@@ -132,13 +188,13 @@ export async function createEventForSession(params: {
 export async function updateEventForSession(params: {
   calendarId: string;
   eventId: string;
-  clubName: string;
+  title: string;
   location: string | null | undefined;
   flexDayDate: Date;
   rotations: RotationSlot[];
 }): Promise<void> {
   const calendar = getCalendarClient();
-  const tz = process.env.SCHOOL_TIMEZONE ?? "America/New_York";
+  const tz = env().SCHOOL_TIMEZONE;
   const dateStr = params.flexDayDate.toISOString().split("T")[0];
 
   const sortedRotations = [...params.rotations].sort();
@@ -157,7 +213,7 @@ export async function updateEventForSession(params: {
     eventId: params.eventId,
     sendUpdates: "none",
     requestBody: {
-      summary: `${params.clubName} (${rotationLabel})`,
+      summary: `${params.title} (${rotationLabel})`,
       location: params.location ?? undefined,
       start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
       end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
@@ -188,11 +244,18 @@ export async function syncEventAttendees(params: {
 
 /**
  * Add a student as an attendee to a club session's calendar event.
+ *
+ * `sendUpdates` defaults to "none" for background/bulk callers. The admin roster
+ * override passes "all" so the affected student actually receives the new
+ * invite. Note that Google — not this code — decides exactly who gets mail for
+ * an attendee-list change; it targets the changed attendees, but that behavior
+ * is the API's, not a guarantee we can make here.
  */
 export async function addAttendeeToEvent(params: {
   calendarId: string;
   eventId: string;
   studentEmail: string;
+  sendUpdates?: "all" | "none";
 }): Promise<void> {
   const calendar = getCalendarClient();
   const existing = await calendar.events.get({
@@ -209,17 +272,19 @@ export async function addAttendeeToEvent(params: {
     requestBody: {
       attendees: [...currentAttendees, { email: params.studentEmail }],
     },
-    sendUpdates: "none",
+    sendUpdates: params.sendUpdates ?? "none",
   });
 }
 
 /**
  * Remove a student from a club session's calendar event.
+ * See `addAttendeeToEvent` for the `sendUpdates` semantics.
  */
 export async function removeAttendeeFromEvent(params: {
   calendarId: string;
   eventId: string;
   studentEmail: string;
+  sendUpdates?: "all" | "none";
 }): Promise<void> {
   const calendar = getCalendarClient();
   const existing = await calendar.events.get({
@@ -235,7 +300,7 @@ export async function removeAttendeeFromEvent(params: {
     calendarId: params.calendarId,
     eventId: params.eventId,
     requestBody: { attendees: filtered },
-    sendUpdates: "none",
+    sendUpdates: params.sendUpdates ?? "none",
   });
 }
 

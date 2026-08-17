@@ -1,7 +1,14 @@
+import { env } from "@/lib/env";
+
 /** IANA timezone the school operates in. All signup deadlines and attendance
  * windows are wall-clock times in this zone, independent of where the server
- * process happens to run. */
-export const SCHOOL_TIMEZONE = process.env.SCHOOL_TIMEZONE ?? "America/New_York";
+ * process happens to run.
+ *
+ * Resolved through a function rather than a module-level const so the env
+ * validation stays lazy — see the note in src/lib/env.ts. */
+export function schoolTimeZone(): string {
+  return env().SCHOOL_TIMEZONE;
+}
 
 /**
  * Convert a wall-clock date/time in `timeZone` to the equivalent UTC Date.
@@ -50,8 +57,12 @@ function zonedTimeToUtc(
 /**
  * Calculate the signup deadline for a given flex day.
  * Deadline is Friday before the flex day at 2:56 PM school-local time.
+ *
+ * `timeZone` defaults to the configured school timezone; it is a parameter so
+ * the DST behavior can be tested against fixed zones without env setup.
  */
-export function getSignupDeadline(flexDayDate: Date): Date {
+export function getSignupDeadline(flexDayDate: Date, timeZone?: string): Date {
+  const tz = timeZone ?? schoolTimeZone();
   const flexDay = new Date(flexDayDate);
 
   // Day-of-week / day-offset arithmetic operates purely on the calendar date
@@ -79,7 +90,7 @@ export function getSignupDeadline(flexDayDate: Date): Date {
   const deadlineDate = new Date(Date.UTC(year, month, day - daysBack));
 
   // The deadline is a wall-clock time in the school's timezone — resolve it
-  // against SCHOOL_TIMEZONE so it lands at 2:56 PM there regardless of what
+  // against that zone so it lands at 2:56 PM there regardless of what
   // timezone the server process itself runs in.
   return zonedTimeToUtc(
     deadlineDate.getUTCFullYear(),
@@ -87,7 +98,7 @@ export function getSignupDeadline(flexDayDate: Date): Date {
     deadlineDate.getUTCDate(),
     14,
     56,
-    SCHOOL_TIMEZONE
+    tz
   );
 }
 
@@ -95,10 +106,14 @@ export function getSignupDeadline(flexDayDate: Date): Date {
  * Monday 00:00:00.000 through Sunday 23:59:59.999, school-timezone wall
  * clock, of the week containing `flexDayDate` — as UTC instants.
  */
-export function getSchoolWeekWindow(flexDayDate: Date): {
+export function getSchoolWeekWindow(
+  flexDayDate: Date,
+  timeZone?: string
+): {
   weekStart: Date;
   weekEnd: Date;
 } {
+  const tz = timeZone ?? schoolTimeZone();
   const year = flexDayDate.getUTCFullYear();
   const month = flexDayDate.getUTCMonth();
   const day = flexDayDate.getUTCDate();
@@ -114,7 +129,7 @@ export function getSchoolWeekWindow(flexDayDate: Date): {
     monday.getUTCDate(),
     0,
     0,
-    SCHOOL_TIMEZONE
+    tz
   );
   const sundayStartOfLastMinute = zonedTimeToUtc(
     sunday.getUTCFullYear(),
@@ -122,7 +137,7 @@ export function getSchoolWeekWindow(flexDayDate: Date): {
     sunday.getUTCDate(),
     23,
     59,
-    SCHOOL_TIMEZONE
+    tz
   );
   const weekEnd = new Date(sundayStartOfLastMinute.getTime() + 59_999);
 
@@ -132,7 +147,10 @@ export function getSchoolWeekWindow(flexDayDate: Date): {
 /**
  * Check if the current time is past the signup deadline for a flex day.
  */
-export function isPastSignupDeadline(flexDayDate: Date): boolean {
-  const deadline = getSignupDeadline(flexDayDate);
+export function isPastSignupDeadline(
+  flexDayDate: Date,
+  timeZone?: string
+): boolean {
+  const deadline = getSignupDeadline(flexDayDate, timeZone);
   return new Date() > deadline;
 }

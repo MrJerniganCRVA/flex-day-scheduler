@@ -5,6 +5,9 @@ import { join } from "path";
 import { Pool } from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+// Relative rather than "@/lib/env" — scripts/ is outside the tsconfig include
+// that defines the alias. env.ts depends only on zod, so this stays cheap.
+import { assertEnv } from "../src/lib/env";
 
 /**
  * Before running `migrate deploy`, bring the _prisma_migrations table into a
@@ -81,15 +84,25 @@ async function ensureMigrationsReady() {
 }
 
 async function init() {
-  // 1. Ensure migration history is clean before deploying.
+  // 1. Fail the boot on misconfiguration, before touching the database or
+  //    starting the server. Every one of these values used to have a silent
+  //    fallback: a typo'd ALLOWED_EMAIL_DOMAIN rejected every login, and missing
+  //    FLEX_* times sent real invites at the placeholder bell times from
+  //    .env.example. A container that won't start is far easier to diagnose than
+  //    a schedule that is quietly an hour wrong.
+  console.log("Validating environment configuration...");
+  assertEnv();
+  console.log("Environment OK.");
+
+  // 2. Ensure migration history is clean before deploying.
   await ensureMigrationsReady();
 
-  // 2. Apply any pending migrations (never drops data).
+  // 3. Apply any pending migrations (never drops data).
   console.log("Applying database migrations...");
   execSync("prisma migrate deploy", { stdio: "inherit" });
   console.log("Migrations applied.");
 
-  // 3. Seed admin user (idempotent — safe on every deploy).
+  // 4. Seed admin user (idempotent — safe on every deploy).
   const adminEmail = process.env.SEED_ADMIN_EMAIL;
   if (!adminEmail) {
     console.log("SEED_ADMIN_EMAIL not set — skipping admin seed.");

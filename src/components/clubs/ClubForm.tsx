@@ -386,7 +386,9 @@ export default function ClubForm({
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
             Another teacher who co-manages this club. A cosponsor can edit the
             club, schedule and edit sessions, and mark attendance — the same
-            as the primary owner.
+            as the primary owner. They are also the club&apos;s default second
+            teacher (T2) for coverage, so they receive the calendar invite for
+            each session unless an admin assigns someone else.
           </p>
           {cosponsorCandidates.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">

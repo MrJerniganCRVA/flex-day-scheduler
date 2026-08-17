@@ -6,6 +6,8 @@ import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
+import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
+import { schoolTimeZone } from "@/lib/flex-day-utils";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -35,6 +37,7 @@ export default async function AdminFlexDayDetailPage({
               attended: true,
               student: { select: { id: true, name: true, email: true } },
             },
+            orderBy: { student: { name: "asc" } },
           },
           _count: { select: { signups: true } },
         },
@@ -49,9 +52,37 @@ export default async function AdminFlexDayDetailPage({
     0
   );
 
+  const sessionLabel = (cs: (typeof flexDay.clubSessions)[number]) =>
+    cs.title ?? cs.club?.name ?? "Session";
+
+  // Candidate destinations for a roster move: any other session on this day,
+  // labelled with its rotations so the admin can see what they're choosing.
+  // Capacity and rotation conflicts are enforced server-side; listing a session
+  // here doesn't promise the move will succeed.
+  const moveTargets = flexDay.clubSessions.map((cs) => ({
+    sessionId: cs.id,
+    label: `${sessionLabel(cs)} — ${cs.rotations
+      .map((r) => ROTATION_LABELS[r])
+      .join(", ")} (${cs._count.signups}/${
+      cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"
+    })`,
+  }));
+
+  // Roster overrides made after invites went out, newest first.
+  const auditEntries = flexDay.isFinalized
+    ? await prisma.signupAudit.findMany({
+        where: { flexDayId: flexDay.id },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      })
+    : [];
+
   const tabs = [
     { key: "sessions", label: "Sessions" },
     { key: "auto-assign", label: "Auto-assign" },
+    ...(auditEntries.length > 0
+      ? [{ key: "changes", label: `Changes (${auditEntries.length})` }]
+      : []),
   ];
 
   return (
@@ -165,7 +196,7 @@ export default async function AdminFlexDayDetailPage({
                                 {cs.signups.map((s) => (
                                   <li
                                     key={s.id}
-                                    className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"
+                                    className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"
                                   >
                                     <span
                                       className={
@@ -183,6 +214,19 @@ export default async function AdminFlexDayDetailPage({
                                           : "–"}
                                     </span>
                                     {s.student.name}
+                                    {/* Overrides are only offered once invites
+                                        have gone out — before that, students
+                                        manage their own signups. */}
+                                    {flexDay.isFinalized && (
+                                      <RosterOverrideControls
+                                        signupId={s.id}
+                                        studentName={s.student.name}
+                                        currentSessionLabel={sessionLabel(cs)}
+                                        otherSessions={moveTargets.filter(
+                                          (t) => t.sessionId !== cs.id
+                                        )}
+                                      />
+                                    )}
                                   </li>
                                 ))}
                               </ul>
@@ -201,6 +245,67 @@ export default async function AdminFlexDayDetailPage({
 
       {/* Auto-assign tab */}
       {tab === "auto-assign" && <AutoAssignTab flexDayId={flexDayId} />}
+
+      {/* Changes tab — roster overrides made after invites were sent. */}
+      {tab === "changes" && (
+        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Roster changes after invites
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Every override recorded for this Flex Day, newest first.
+            </p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <tr>
+                <th className="px-4 py-2 text-left">When</th>
+                <th className="px-4 py-2 text-left">Student</th>
+                <th className="px-4 py-2 text-left">Change</th>
+                <th className="px-4 py-2 text-left">Reason</th>
+                <th className="px-4 py-2 text-left">By</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+              {auditEntries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                    {entry.createdAt.toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: schoolTimeZone(),
+                    })}
+                  </td>
+                  <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">
+                    {entry.studentName}
+                  </td>
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {entry.action === "MOVE" ? (
+                      <>
+                        {entry.fromSessionName} <span aria-hidden>→</span>{" "}
+                        {entry.toSessionName}
+                      </>
+                    ) : entry.action === "REMOVE" ? (
+                      <>Removed from {entry.fromSessionName}</>
+                    ) : (
+                      <>Added to {entry.toSessionName}</>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                    {entry.reason}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+                    {entry.actorEmail}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

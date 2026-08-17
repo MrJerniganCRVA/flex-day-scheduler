@@ -47,7 +47,10 @@ export default function RoleSelect({
       });
       if (!res.ok) {
         setRole(currentRole);
-        setError("Failed to update role.");
+        // Surface the server's reason — the last-admin and self-demotion guards
+        // return an explanation that's useless if replaced with "Failed".
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to update role.");
         return;
       }
       startTransition(() => router.refresh());
