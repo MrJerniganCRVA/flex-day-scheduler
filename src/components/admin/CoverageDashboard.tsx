@@ -25,6 +25,9 @@ export type CoverageClub = {
   name: string;
   ownerId: string;
   ownerName: string;
+  /** Default second teacher — the club's cosponsor, if it has one. */
+  cosponsorId: string | null;
+  cosponsorName: string | null;
   rotations: RotationSlot[];
   studentCount: number;
   coverage: Partial<
@@ -67,6 +70,12 @@ export default function CoverageDashboard({
   teachers: CoverageTeacher[];
   flexDayLabel: string;
 }) {
+  // Effective coverage: an explicit assignment always wins, otherwise the club's
+  // owner is T1 and its cosponsor is T2. Derived rather than stored, so changing
+  // a club's cosponsor takes effect immediately on every session — materializing
+  // it into SessionRotationCoverage would go stale on the next change.
+  // Kept in sync with resolveSessionCoverage() in src/lib/coverage.ts, which
+  // finalize uses to build the same roster for the calendar invite.
   const [assignments, setAssignments] = useState<Assignments>(() =>
     Object.fromEntries(
       clubs.map((c) => [
@@ -76,7 +85,7 @@ export default function CoverageDashboard({
             r,
             {
               t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId,
-              t2: c.coverage[r]?.secondaryTeacherId ?? null,
+              t2: c.coverage[r]?.secondaryTeacherId ?? c.cosponsorId ?? null,
             },
           ])
         ),
@@ -553,6 +562,14 @@ function ClubCard({
               : null
           }
           required={false}
+          // Clearing T2 on a club that has a cosponsor falls back to the
+          // cosponsor rather than leaving the slot empty, so say so — labelling
+          // it "None" would promise something the fallback doesn't deliver.
+          emptyLabel={
+            club.cosponsorName
+              ? `Cosponsor (${club.cosponsorName})`
+              : "None"
+          }
           onChange={(v) => onAssign("t2", v)}
         />
       </div>
@@ -566,6 +583,7 @@ function TeacherDropdown({
   options,
   currentTeacher,
   required,
+  emptyLabel = "None",
   onChange,
 }: {
   label: string;
@@ -573,6 +591,8 @@ function TeacherDropdown({
   options: CoverageTeacher[];
   currentTeacher: CoverageTeacher | null;
   required: boolean;
+  /** Text for the empty selection — describes what clearing actually does. */
+  emptyLabel?: string;
   onChange: (value: string | null) => void;
 }) {
   const isAssigned = value !== null;
@@ -598,7 +618,7 @@ function TeacherDropdown({
           onChange(e.target.value === "" ? null : e.target.value)
         }
       >
-        <option value="">None</option>
+        <option value="">{emptyLabel}</option>
         {extraOption && (
           <option key={extraOption.id} value={extraOption.id}>
             {extraOption.name}
