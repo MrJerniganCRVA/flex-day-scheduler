@@ -111,10 +111,75 @@ Admins can promote any user to ADMIN (or change roles) from the admin panel. The
 | Script | Description |
 |---|---|
 | `npm run dev` | Start development server |
-| `npm start` | Run migrations then start production server |
+| `npm start` | Validate env, run migrations, then start production server |
 | `npm run build` | Build for production |
 | `npm run lint` | Run ESLint |
+| `npm run typecheck` | Type-check without emitting |
+| `npm test` | Run the unit test suite (no database required) |
+| `npm run test:watch` | Run tests in watch mode |
 | `npm run db:migrate` | Apply pending Prisma migrations |
 | `npm run db:push` | Push schema changes without migrations (dev only) |
 | `npm run db:seed` | Seed first admin user |
 | `npm run db:studio` | Open Prisma Studio |
+
+## Environment Validation
+
+Every variable in the table above except `AUTH_URL`/`NEXTAUTH_URL` and
+`SEED_ADMIN_EMAIL` is **required**, and is validated by `src/lib/env.ts` before
+the server starts (`npm start` runs `assertEnv()` via `scripts/db-init.ts`). A
+misconfigured deploy fails at boot with every problem listed at once, rather than
+starting up and behaving subtly incorrectly.
+
+Validation catches the mistakes that used to be silent:
+
+- `ALLOWED_EMAIL_DOMAIN` written as `@school.org` instead of `school.org` — the
+  leading `@` made the domain check reject **every** login.
+- Missing `FLEX_*` bell times — these fell back to the placeholder 09:00/10:00/11:00
+  values from `.env.example`, so real calendar invites went out at the wrong times.
+- A `FLEX_*_END` earlier than its `FLEX_*_START`, or an unresolvable
+  `SCHOOL_TIMEZONE`.
+
+Validation is lazy at import, so `npm run build` does not need runtime secrets.
+
+## Calendars
+
+Each club gets its own Google Calendar, created when the club is created and
+shared with its owning teacher the first time one of its Flex Days is finalized.
+
+**One-off sessions** have no club, so they have no club calendar. They live on a
+single app-owned calendar ("Flex Day — One-Off Sessions"), created automatically
+the first time it's needed and recorded in the `AppConfig` table. It is not
+shared with anyone — the session's creator is added as an event *attendee*, which
+is what puts it on their personal calendar. Event titles use the session's own
+title, so no club name appears on a one-off invite.
+
+If a club's calendar could not be created (a Calendar API outage, bad service
+account credentials), the club still works for signups but **cannot send
+invites**. The admin Clubs page flags such clubs and offers "Retry calendar
+setup". Finalizing a Flex Day reports any session it had to skip for this reason
+rather than reporting success.
+
+## Changing a Roster After Invites Are Sent
+
+Once a Flex Day is finalized, students are past their signup deadline and cannot
+change anything themselves. Admins can still make exceptions — a student turning
+up without a required permission slip, for example — from the Flex Day's roster
+list: expand a session's roster and use **Move** or **Remove** beside a student.
+
+These overrides bypass the deadline but still enforce room capacity and rotation
+conflicts. Each one requires a reason, is recorded in the **Changes** tab for
+that Flex Day, and updates the calendar for the affected student only — other
+students on the session are not re-notified.
+
+## Testing
+
+```bash
+npm test
+```
+
+Unit tests only — no database, no browser, no network, no secrets. They cover the
+logic where a silent error is most expensive: the DST-aware signup deadline math
+(`src/lib/flex-day-utils.ts`), the participation statistics behind the admin
+dashboard, coverage resolution, environment validation, and the club
+authorization predicate. CI (`.github/workflows/ci.yml`) runs lint, typecheck,
+tests, and `prisma validate` on every push.

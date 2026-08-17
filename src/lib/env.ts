@@ -24,6 +24,8 @@ import { z } from "zod";
 
 const TIME_24H = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+const REQUIRED = (name: string) => `${name} is required`;
+
 function isResolvableTimeZone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -41,29 +43,38 @@ function toMinutes(hhmm: string): number {
 
 const timeField = (name: string) =>
   z
-    .string()
-    .min(1, `${name} is required (24h "HH:MM", e.g. "09:00")`)
+    .string({ error: `${name} is required (24h "HH:MM", e.g. "09:00")` })
+    .min(1)
     .regex(TIME_24H, `${name} must be 24-hour "HH:MM" (e.g. "09:00", "14:30")`);
 
 const envSchema = z
   .object({
-    DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+    DATABASE_URL: z.string({ error: REQUIRED("DATABASE_URL") }).min(1),
 
     AUTH_SECRET: z
-      .string()
-      .min(1, "AUTH_SECRET is required — generate with: openssl rand -base64 32"),
+      .string({
+        error:
+          "AUTH_SECRET is required — generate one with: openssl rand -base64 32",
+      })
+      .min(1),
 
-    AUTH_GOOGLE_ID: z.string().min(1, "AUTH_GOOGLE_ID is required"),
-    AUTH_GOOGLE_SECRET: z.string().min(1, "AUTH_GOOGLE_SECRET is required"),
+    AUTH_GOOGLE_ID: z.string({ error: REQUIRED("AUTH_GOOGLE_ID") }).min(1),
+    AUTH_GOOGLE_SECRET: z.string({ error: REQUIRED("AUTH_GOOGLE_SECRET") }).min(1),
 
     GOOGLE_SERVICE_ACCOUNT_EMAIL: z
-      .string()
-      .min(1, "GOOGLE_SERVICE_ACCOUNT_EMAIL is required for Calendar invites")
+      .string({
+        error:
+          "GOOGLE_SERVICE_ACCOUNT_EMAIL is required — without it no calendar invites can be sent",
+      })
+      .min(1)
       .email("GOOGLE_SERVICE_ACCOUNT_EMAIL must be an email address"),
 
     GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z
-      .string()
-      .min(1, "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY is required for Calendar invites")
+      .string({
+        error:
+          "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY is required — without it no calendar invites can be sent",
+      })
+      .min(1)
       .refine(
         (v) => v.includes("PRIVATE KEY"),
         'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY does not look like a PEM key — it should contain "-----BEGIN ... PRIVATE KEY-----" (with literal newlines replaced by \\n)'
@@ -72,8 +83,11 @@ const envSchema = z
     // A leading "@" here is the silent-lockout trap: the sign-in check builds
     // `@${domain}`, so "@school.org" becomes "@@school.org" and matches nobody.
     ALLOWED_EMAIL_DOMAIN: z
-      .string()
-      .min(1, "ALLOWED_EMAIL_DOMAIN is required (e.g. \"school.org\")")
+      .string({
+        error:
+          'ALLOWED_EMAIL_DOMAIN is required (e.g. "school.org") — nobody can sign in without it',
+      })
+      .min(1)
       .refine(
         (v) => !v.startsWith("@"),
         'ALLOWED_EMAIL_DOMAIN must not start with "@" — use "school.org", not "@school.org". A leading @ silently rejects every login.'
@@ -84,8 +98,11 @@ const envSchema = z
       ),
 
     SCHOOL_TIMEZONE: z
-      .string()
-      .min(1, "SCHOOL_TIMEZONE is required (IANA name, e.g. \"America/New_York\")")
+      .string({
+        error:
+          'SCHOOL_TIMEZONE is required (IANA name, e.g. "America/New_York") — it sets every signup deadline',
+      })
+      .min(1)
       .refine(
         isResolvableTimeZone,
         'SCHOOL_TIMEZONE must be a valid IANA timezone name (e.g. "America/New_York")'

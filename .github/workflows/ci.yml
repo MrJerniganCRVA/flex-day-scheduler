@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # `npm ci` runs the postinstall hook, which is `prisma generate` — the
+      # generated client is needed before anything typechecks.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Unit tests only: no database and no network. The suite deliberately
+      # passes timezones and config explicitly so it needs no secrets.
+      - name: Test
+        run: npm test
+
+      # Catches a schema.prisma that no longer matches its migration history —
+      # cheap here, and expensive to discover at container start in production,
+      # where db-init.ts applies migrations before the server boots.
+      - name: Validate Prisma schema
+        run: npx prisma validate
