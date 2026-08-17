@@ -42,6 +42,7 @@ export default async function AdminFlexDayDetailPage({
               rotation: true,
               primaryTeacherId: true,
               secondaryTeacherId: true,
+              secondaryCleared: true,
             },
           },
           teacherAbsences: { select: { teacherId: true, rotation: true } },

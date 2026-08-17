@@ -38,6 +38,7 @@ export async function PUT(
           rotation: true,
           primaryTeacherId: true,
           secondaryTeacherId: true,
+          secondaryCleared: true,
         },
       },
       teacherAbsences: { select: { teacherId: true, rotation: true } },

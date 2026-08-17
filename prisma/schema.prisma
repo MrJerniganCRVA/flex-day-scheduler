@@ -230,6 +230,15 @@ model SessionRotationCoverage {
   primaryTeacherId   String?
   secondaryTeacherId String?
 
+  /// The admin has explicitly decided this rotation needs no second teacher.
+  ///
+  /// Distinct from `secondaryTeacherId = null`, which means "nobody assigned — use
+  /// the club's cosponsor if it has one". The two cannot be told apart from the
+  /// null alone: rows are upserted per field, so setting T1 creates a row whose
+  /// secondary is null purely as a side effect. Without this flag there is no way
+  /// to clear T2 on a club that has a cosponsor — the fallback re-derives them.
+  secondaryCleared Boolean @default(false)
+
   session          ClubSession @relation(fields: [sessionId],          references: [id], onDelete: Cascade)
   primaryTeacher   User?       @relation("RotCovPrimary",   fields: [primaryTeacherId],   references: [id], onDelete: SetNull)
   secondaryTeacher User?       @relation("RotCovSecondary", fields: [secondaryTeacherId], references: [id], onDelete: SetNull)

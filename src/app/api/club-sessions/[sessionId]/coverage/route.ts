@@ -3,15 +3,29 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 
+/**
+ * Three distinct things can be said about T2, so the wire format has to carry
+ * three states. `secondary` keeps its existing meanings and `secondaryCleared`
+ * adds the one that was missing:
+ *
+ *   secondary: "<id>"        assign that teacher
+ *   secondary: null          fall back to the club's cosponsor (unchanged)
+ *   secondaryCleared: true   explicitly nobody — suppress the fallback
+ */
 const patchSchema = z
   .object({
     rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"]),
     primary: z.string().nullable().optional(),
     secondary: z.string().nullable().optional(),
+    secondaryCleared: z.boolean().optional(),
   })
-  .refine((d) => "primary" in d || "secondary" in d, {
-    message: "At least one of primary or secondary must be provided",
-  });
+  .refine(
+    (d) => "primary" in d || "secondary" in d || "secondaryCleared" in d,
+    {
+      message:
+        "At least one of primary, secondary or secondaryCleared must be provided",
+    }
+  );
 
 export async function PATCH(
   req: NextRequest,
@@ -33,7 +47,7 @@ export async function PATCH(
     );
   }
 
-  const { rotation, primary, secondary } = parsed.data;
+  const { rotation, primary, secondary, secondaryCleared } = parsed.data;
 
   // Verify referenced teachers exist and have an appropriate role
   for (const [field, teacherId] of [
@@ -60,14 +74,28 @@ export async function PATCH(
     }
   }
 
-  // Build update data from only the fields present in the request body
+  // Build update data from only the fields present in the request body, so
+  // touching T1 never disturbs T2 (or its cleared flag) and vice versa.
   const updateData: {
     primaryTeacherId?: string | null;
     secondaryTeacherId?: string | null;
+    secondaryCleared?: boolean;
   } = {};
   if ("primary" in parsed.data) updateData.primaryTeacherId = primary ?? null;
-  if ("secondary" in parsed.data)
+
+  if ("secondary" in parsed.data) {
     updateData.secondaryTeacherId = secondary ?? null;
+    // Naming a teacher, or reverting to the cosponsor default, both mean the slot
+    // is no longer deliberately empty.
+    updateData.secondaryCleared = false;
+  }
+
+  // An explicit clear wins over `secondary` in the same request: nobody is
+  // assigned, and the cosponsor fallback stays suppressed.
+  if ("secondaryCleared" in parsed.data) {
+    updateData.secondaryCleared = secondaryCleared;
+    if (secondaryCleared) updateData.secondaryTeacherId = null;
+  }
 
   await prisma.sessionRotationCoverage.upsert({
     where: { sessionId_rotation: { sessionId, rotation } },
@@ -76,6 +104,7 @@ export async function PATCH(
       rotation,
       primaryTeacherId: updateData.primaryTeacherId ?? null,
       secondaryTeacherId: updateData.secondaryTeacherId ?? null,
+      secondaryCleared: updateData.secondaryCleared ?? false,
     },
     update: updateData,
   });

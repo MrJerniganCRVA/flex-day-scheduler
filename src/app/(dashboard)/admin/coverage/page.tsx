@@ -35,6 +35,7 @@ export default async function AdminCoveragePage() {
               rotation: true,
               primaryTeacherId: true,
               secondaryTeacherId: true,
+              secondaryCleared: true,
             },
           },
         },
@@ -91,12 +92,17 @@ export default async function AdminCoveragePage() {
         {
           primaryTeacherId: rc.primaryTeacherId,
           secondaryTeacherId: rc.secondaryTeacherId,
+          secondaryCleared: rc.secondaryCleared,
         },
       ])
     ) as Partial<
       Record<
         RotationSlot,
-        { primaryTeacherId: string | null; secondaryTeacherId: string | null }
+        {
+          primaryTeacherId: string | null;
+          secondaryTeacherId: string | null;
+          secondaryCleared: boolean;
+        }
       >
     >,
   }));

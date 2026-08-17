@@ -54,6 +54,7 @@ export default async function TeacherDashboard() {
               rotation: true,
               primaryTeacherId: true,
               secondaryTeacherId: true,
+              secondaryCleared: true,
             },
           },
           teacherAbsences: { select: { teacherId: true, rotation: true } },

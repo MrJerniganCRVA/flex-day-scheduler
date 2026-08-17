@@ -19,6 +19,13 @@ const SHORT_LABELS: Record<RotationSlot, string> = {
 
 const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
 
+/**
+ * Select value meaning "no second teacher at all", as distinct from "" which means
+ * "use the club's cosponsor". A `<select>` can only hold strings, and the two empty
+ * states have to be distinguishable — a cuid can never collide with this.
+ */
+const CLEARED = "__none__";
+
 export type CoverageClub = {
   sessionId: string;
   clubId: string;
@@ -39,7 +46,11 @@ export type CoverageClub = {
   coverage: Partial<
     Record<
       RotationSlot,
-      { primaryTeacherId: string | null; secondaryTeacherId: string | null }
+      {
+        primaryTeacherId: string | null;
+        secondaryTeacherId: string | null;
+        secondaryCleared: boolean;
+      }
     >
   >;
 };
@@ -49,8 +60,14 @@ export type CoverageTeacher = {
   name: string;
 };
 
-// assignments[sessionId][rotation] = { t1, t2 }
-type Assignment = { t1: string | null; t2: string | null };
+// assignments[sessionId][rotation] = { t1, t2, t2Cleared }
+//
+// t2 and t2Cleared together carry three states, because an empty T2 is ambiguous
+// on a club with a cosponsor:
+//   t2 set                     → that teacher
+//   t2 null, t2Cleared false   → fall back to the club's cosponsor
+//   t2 null, t2Cleared true    → deliberately nobody
+type Assignment = { t1: string | null; t2: string | null; t2Cleared: boolean };
 type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
@@ -60,7 +77,14 @@ function urgencyOf(
   assignment: Assignment | undefined
 ): "needs" | "consider" | "covered" {
   if (!assignment?.t1) return "needs";
-  if (club.studentCount >= HIGH_ENROLLMENT_THRESHOLD && !assignment.t2)
+  // A large session without a second teacher is worth a nudge — unless an admin
+  // has already decided it doesn't need one. Continuing to flag a deliberately
+  // cleared slot would make the signal noise.
+  if (
+    club.studentCount >= HIGH_ENROLLMENT_THRESHOLD &&
+    !assignment.t2 &&
+    !assignment.t2Cleared
+  )
     return "consider";
   return "covered";
 }
@@ -91,7 +115,10 @@ export default function CoverageDashboard({
             r,
             {
               t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId ?? null,
-              t2: c.coverage[r]?.secondaryTeacherId ?? c.cosponsorId ?? null,
+              t2:
+                c.coverage[r]?.secondaryTeacherId ??
+                (c.coverage[r]?.secondaryCleared ? null : c.cosponsorId ?? null),
+              t2Cleared: c.coverage[r]?.secondaryCleared ?? false,
             },
           ])
         ),
@@ -108,6 +135,12 @@ export default function CoverageDashboard({
     )
   );
 
+  /**
+   * `value` for T2 is a teacher id, `null` to fall back to the club's cosponsor,
+   * or the CLEARED sentinel for "no second teacher at all". T1 has no equivalent
+   * third state — an empty T1 means the rotation needs cover, which is a real
+   * problem worth flagging rather than a decision to record.
+   */
   const assign = useCallback(
     async (
       sessionId: string,
@@ -115,13 +148,21 @@ export default function CoverageDashboard({
       slot: "t1" | "t2",
       value: string | null
     ) => {
+      const cleared = slot === "t2" && value === CLEARED;
+      const teacherId = value === CLEARED ? null : value;
+
       setAssignments((prev) => ({
         ...prev,
         [sessionId]: {
           ...prev[sessionId],
           [rotation]: {
-            ...(prev[sessionId]?.[rotation] ?? { t1: null, t2: null }),
-            [slot]: value,
+            ...(prev[sessionId]?.[rotation] ?? {
+              t1: null,
+              t2: null,
+              t2Cleared: false,
+            }),
+            [slot]: teacherId,
+            ...(slot === "t2" ? { t2Cleared: cleared } : {}),
           },
         },
       }));
@@ -132,8 +173,10 @@ export default function CoverageDashboard({
       try {
         const body =
           slot === "t1"
-            ? { rotation, primary: value }
-            : { rotation, secondary: value };
+            ? { rotation, primary: teacherId }
+            : cleared
+              ? { rotation, secondaryCleared: true }
+              : { rotation, secondary: teacherId };
         const res = await fetch(`/api/club-sessions/${sessionId}/coverage`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -310,6 +353,7 @@ export default function CoverageDashboard({
                                 assignments[club.sessionId]?.[rotation] ?? {
                                   t1: null,
                                   t2: null,
+                                  t2Cleared: false,
                                 }
                               }
                               saveStatus={
@@ -343,6 +387,7 @@ export default function CoverageDashboard({
                                 assignments[club.sessionId]?.[rotation] ?? {
                                   t1: null,
                                   t2: null,
+                                  t2Cleared: false,
                                 }
                               }
                               saveStatus={
@@ -376,6 +421,7 @@ export default function CoverageDashboard({
                                 assignments[club.sessionId]?.[rotation] ?? {
                                   t1: null,
                                   t2: null,
+                                  t2Cleared: false,
                                 }
                               }
                               saveStatus={
@@ -581,7 +627,7 @@ function ClubCard({
         />
         <TeacherDropdown
           label="T2"
-          value={assignment.t2}
+          value={assignment.t2Cleared ? CLEARED : assignment.t2}
           options={availableTeachers("t2")}
           currentTeacher={
             assignment.t2
@@ -589,14 +635,13 @@ function ClubCard({
               : null
           }
           required={false}
-          // Clearing T2 on a club that has a cosponsor falls back to the
-          // cosponsor rather than leaving the slot empty, so say so — labelling
-          // it "None" would promise something the fallback doesn't deliver.
-          emptyLabel={
-            club.cosponsorName
-              ? `Cosponsor (${club.cosponsorName})`
-              : "None"
+          // A club with a cosponsor needs both empty states offered: "" falls back
+          // to them, CLEARED means genuinely nobody. With no cosponsor the two are
+          // the same thing, so only one option is shown.
+          defaultLabel={
+            club.cosponsorName ? `Cosponsor (${club.cosponsorName})` : null
           }
+          clearedLabel="None — no second teacher"
           onChange={(v) => onAssign("t2", v)}
         />
       </div>
@@ -610,7 +655,8 @@ function TeacherDropdown({
   options,
   currentTeacher,
   required,
-  emptyLabel = "None",
+  defaultLabel,
+  clearedLabel,
   onChange,
 }: {
   label: string;
@@ -618,19 +664,30 @@ function TeacherDropdown({
   options: CoverageTeacher[];
   currentTeacher: CoverageTeacher | null;
   required: boolean;
-  /** Text for the empty selection — describes what clearing actually does. */
-  emptyLabel?: string;
+  /**
+   * Label for "" — falling back to a club default. Null when there is no default
+   * to fall back to, in which case the option is omitted entirely rather than
+   * offering the admin two choices that do the same thing.
+   */
+  defaultLabel?: string | null;
+  /** Label for the CLEARED sentinel. Omitted for slots with no cleared state. */
+  clearedLabel?: string;
   onChange: (value: string | null) => void;
 }) {
-  const isAssigned = value !== null;
+  const isCleared = value === CLEARED;
+  const isAssigned = value !== null && !isCleared;
+
+  // Opaque backgrounds in dark mode: a translucent fill (previously /40) sits over
+  // the browser's own control surface and washes the text out, which is worst on
+  // exactly these two states since they're the ones scanned most.
   const selectClass = isAssigned
-    ? "bg-green-50 dark:bg-green-950/40 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
+    ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
     : required
-      ? "bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
+      ? "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
       : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-200";
 
   // Always include the currently selected teacher even if they'd be filtered out
-  const inOptions = value && options.some((t) => t.id === value);
+  const inOptions = isAssigned && options.some((t) => t.id === value);
   const extraOption = currentTeacher && !inOptions ? currentTeacher : null;
 
   return (
@@ -645,7 +702,16 @@ function TeacherDropdown({
           onChange(e.target.value === "" ? null : e.target.value)
         }
       >
-        <option value="">{emptyLabel}</option>
+        {/* With no club default, "" and CLEARED mean the same thing, so only the
+            cleared option is offered and it carries the plain "None" label. */}
+        {defaultLabel !== null && defaultLabel !== undefined ? (
+          <>
+            <option value="">{defaultLabel}</option>
+            {clearedLabel && <option value={CLEARED}>{clearedLabel}</option>}
+          </>
+        ) : (
+          <option value="">None</option>
+        )}
         {extraOption && (
           <option key={extraOption.id} value={extraOption.id}>
             {extraOption.name}
