@@ -131,7 +131,7 @@ export async function POST(
     for (const { id: newSessionId, rotation } of newSessions) {
       createEventForSession({
         calendarId: original.club.googleCalendarId!,
-        clubName: original.club.name!,
+        title: original.club.name!,
         location,
         flexDayDate: original.flexDay.date,
         rotations: [rotation],

@@ -1,7 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { createEventForSession, shareCalendarWithTeacher, syncEventAttendees } from "@/lib/google-calendar";
+import {
+  createEventForSession,
+  getOrCreateOneOffCalendarId,
+  shareCalendarWithTeacher,
+  syncEventAttendees,
+} from "@/lib/google-calendar";
+import { resolveSessionTeacherIds } from "@/lib/coverage";
+
+/** Why a session could not be synced, for the admin-facing report. */
+type SkipReason = "club-calendar-missing" | "one-off-calendar-unavailable";
+
+type SentOutcome = { kind: "sent"; sessionId: string; name: string };
+type FailedOutcome = {
+  kind: "failed";
+  sessionId: string;
+  name: string;
+  error: unknown;
+};
+type SkippedOutcome = {
+  kind: "skipped";
+  sessionId: string;
+  name: string;
+  reason: SkipReason;
+};
+type SessionOutcome = SentOutcome | FailedOutcome | SkippedOutcome;
+
+const isSent = (o: SessionOutcome): o is SentOutcome => o.kind === "sent";
+const isFailed = (o: SessionOutcome): o is FailedOutcome => o.kind === "failed";
 
 export async function POST(
   _req: NextRequest,
@@ -25,15 +52,20 @@ export async function POST(
               name: true,
               googleCalendarId: true,
               calendarSharedAt: true,
+              ownerId: true,
+              cosponsorId: true,
               owner: { select: { email: true } },
+              cosponsor: { select: { email: true } },
               defaultRoom: { select: { name: true } },
             },
           },
+          oneOffOwner: { select: { id: true, email: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: {
-            include: {
-              primaryTeacher: { select: { email: true } },
-              secondaryTeacher: { select: { email: true } },
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
             },
           },
           signups: {
@@ -57,16 +89,80 @@ export async function POST(
     );
   }
 
-  // No Google Calendar event exists, and a club's calendar is never shared
-  // with its teacher, until the flex day containing it is finalized here —
-  // this is the moment invites actually go out.
-  const syncableSessions = flexDay.clubSessions.filter((cs) => cs.club?.googleCalendarId);
+  const sessionName = (cs: (typeof flexDay.clubSessions)[number]) =>
+    cs.title ?? cs.club?.name ?? "Session";
+
+  // One-off sessions have no club calendar. Provision the shared host calendar
+  // once, only if this flex day actually contains a one-off. A failure here is
+  // not fatal to the whole finalize — those sessions get reported as skipped.
+  const hasOneOff = flexDay.clubSessions.some((cs) => cs.clubId === null);
+  let oneOffCalendarId: string | null = null;
+  if (hasOneOff) {
+    try {
+      oneOffCalendarId = await getOrCreateOneOffCalendarId();
+    } catch (err) {
+      console.error(
+        "Failed to provision the one-off host calendar — one-off sessions will be reported as skipped:",
+        err
+      );
+    }
+  }
+
+  /** The calendar a session's event belongs on, or null if none is available. */
+  const calendarIdFor = (cs: (typeof flexDay.clubSessions)[number]) =>
+    cs.clubId === null ? oneOffCalendarId : (cs.club?.googleCalendarId ?? null);
+
+  // Teacher emails by id, for turning resolved coverage into attendees.
+  const teacherEmailById = new Map<string, string>();
+  for (const cs of flexDay.clubSessions) {
+    if (cs.club?.ownerId && cs.club.owner.email) {
+      teacherEmailById.set(cs.club.ownerId, cs.club.owner.email);
+    }
+    if (cs.club?.cosponsorId && cs.club.cosponsor?.email) {
+      teacherEmailById.set(cs.club.cosponsorId, cs.club.cosponsor.email);
+    }
+    if (cs.oneOffOwner?.id && cs.oneOffOwner.email) {
+      teacherEmailById.set(cs.oneOffOwner.id, cs.oneOffOwner.email);
+    }
+  }
+  // Explicitly-assigned coverage teachers may be neither owner nor cosponsor of
+  // the club they're covering, so their emails need a separate lookup.
+  const assignedTeacherIds = new Set<string>();
+  for (const cs of flexDay.clubSessions) {
+    for (const rc of cs.rotationCoverage) {
+      if (rc.primaryTeacherId) assignedTeacherIds.add(rc.primaryTeacherId);
+      if (rc.secondaryTeacherId) assignedTeacherIds.add(rc.secondaryTeacherId);
+    }
+  }
+  const missingIds = [...assignedTeacherIds].filter(
+    (id) => !teacherEmailById.has(id)
+  );
+  if (missingIds.length > 0) {
+    const extra = await prisma.user.findMany({
+      where: { id: { in: missingIds } },
+      select: { id: true, email: true },
+    });
+    for (const u of extra) teacherEmailById.set(u.id, u.email);
+  }
+
+  const syncable = flexDay.clubSessions.filter((cs) => calendarIdFor(cs) !== null);
+  const skipped: SkippedOutcome[] = flexDay.clubSessions
+    .filter((cs) => calendarIdFor(cs) === null)
+    .map((cs) => ({
+      kind: "skipped",
+      sessionId: cs.id,
+      name: sessionName(cs),
+      reason:
+        cs.clubId === null
+          ? "one-off-calendar-unavailable"
+          : "club-calendar-missing",
+    }));
 
   // Share each involved club's calendar with its teacher exactly once, the
   // first time any of its sessions is finalized. Treat an "already shared"
   // API error as a non-fatal no-op (covers clubs shared under old behavior).
   const clubsToShare = new Map<string, { calendarId: string; ownerEmail: string | null }>();
-  for (const cs of syncableSessions) {
+  for (const cs of syncable) {
     if (cs.club && cs.club.calendarSharedAt === null && !clubsToShare.has(cs.club.id)) {
       clubsToShare.set(cs.club.id, {
         calendarId: cs.club.googleCalendarId!,
@@ -94,79 +190,101 @@ export async function POST(
     })
   );
 
-  const results = await Promise.allSettled(
-    syncableSessions.map((cs) => {
-      // Collect unique teacher emails across all rotation coverage records.
-      // Fall back to the club owner if no coverage was explicitly assigned.
-      const coverageEmails = new Set<string>();
-      for (const rc of cs.rotationCoverage) {
-        const primaryEmail =
-          rc.primaryTeacher?.email ?? cs.club?.owner.email;
-        if (primaryEmail) coverageEmails.add(primaryEmail);
-        if (rc.secondaryTeacher?.email) {
-          coverageEmails.add(rc.secondaryTeacher.email);
+  // Settle each session independently, but keep each result paired with the
+  // session it came from — indexing a filtered array by position (the previous
+  // approach) attributes failures to the wrong session in the logs.
+  const settled = await Promise.all(
+    syncable.map(async (cs): Promise<SessionOutcome> => {
+      const name = sessionName(cs);
+      try {
+        const calendarId = calendarIdFor(cs)!;
+
+        // Teachers expected in the room: explicit coverage, else the club's
+        // owner/cosponsor. One-off sessions fall back to their creator.
+        const teacherIds = resolveSessionTeacherIds(
+          cs.club,
+          cs.rotationCoverage,
+          cs.rotations
+        );
+        const teacherEmails = new Set<string>();
+        for (const id of teacherIds) {
+          const email = teacherEmailById.get(id);
+          if (email) teacherEmails.add(email);
         }
-      }
-      if (coverageEmails.size === 0) {
-        // No coverage records at all — owner handles the session
-        if (cs.club?.owner.email) coverageEmails.add(cs.club.owner.email);
-      }
+        if (cs.clubId === null && cs.oneOffOwner?.email) {
+          teacherEmails.add(cs.oneOffOwner.email);
+        }
 
-      const attendeeEmails = [
-        ...coverageEmails,
-        ...cs.signups
-          .map((s) => s.student.email)
-          .filter((email): email is string => Boolean(email)),
-      ];
+        const attendeeEmails = [
+          ...teacherEmails,
+          ...cs.signups
+            .map((s) => s.student.email)
+            .filter((email): email is string => Boolean(email)),
+        ];
 
-      if (cs.googleEventId) {
-        // Already has an event (e.g. re-finalize after unfinalize) — sync
-        // the attendee list on it.
-        return syncEventAttendees({
-          calendarId: cs.club!.googleCalendarId!,
-          eventId: cs.googleEventId,
-          attendeeEmails,
-        });
+        if (cs.googleEventId) {
+          // Already has an event (e.g. re-finalize after unfinalize) — sync
+          // the attendee list on it.
+          await syncEventAttendees({
+            calendarId,
+            eventId: cs.googleEventId,
+            attendeeEmails,
+          });
+        } else {
+          // No event yet — create it now, with attendees baked in, so the
+          // invite goes out the moment the event is created.
+          const location = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
+          const eventId = await createEventForSession({
+            calendarId,
+            title: name,
+            location,
+            flexDayDate: flexDay.date,
+            rotations: cs.rotations,
+            attendeeEmails,
+            sendUpdates: "all",
+          });
+          await prisma.clubSession.update({
+            where: { id: cs.id },
+            data: { googleEventId: eventId },
+          });
+        }
+
+        return { kind: "sent", sessionId: cs.id, name };
+      } catch (error) {
+        return { kind: "failed", sessionId: cs.id, name, error };
       }
-
-      // No event yet — create it now, with attendees baked in, so the
-      // invite goes out the moment the event is created.
-      const location = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
-      return createEventForSession({
-        calendarId: cs.club!.googleCalendarId!,
-        clubName: cs.club!.name,
-        location,
-        flexDayDate: flexDay.date,
-        rotations: cs.rotations,
-        attendeeEmails,
-        sendUpdates: "all",
-      }).then((eventId) =>
-        prisma.clubSession.update({
-          where: { id: cs.id },
-          data: { googleEventId: eventId },
-        })
-      );
     })
   );
 
-  const failures = results.filter((r) => r.status === "rejected");
-  if (failures.length > 0) {
-    failures.forEach((f, i) =>
-      console.error(
-        `Failed to send calendar invite for session ${syncableSessions[i].id}:`,
-        (f as PromiseRejectedResult).reason
-      )
+  const sent = settled.filter(isSent);
+  const failed = settled.filter(isFailed);
+
+  for (const f of failed) {
+    console.error(
+      `Failed to send calendar invites for session ${f.sessionId} ("${f.name}"):`,
+      f.error
+    );
+  }
+  for (const s of skipped) {
+    console.error(
+      `Skipped session ${s.sessionId} ("${s.name}") during finalize: ${s.reason}`
     );
   }
 
-  // If every syncable session failed, the calendar invites weren't sent at all.
-  // Refuse to mark as finalized so the admin can retry after fixing the issue.
-  if (syncableSessions.length > 0 && failures.length === syncableSessions.length) {
+  // If nothing at all went out, finalizing would be a lie — the button would go
+  // green while every student received nothing. Refuse, and say why. This also
+  // covers the case where every session was *skipped* rather than failed, which
+  // the previous guard missed because it only compared failures against the
+  // already-filtered syncable list.
+  if (flexDay.clubSessions.length > 0 && sent.length === 0) {
     return NextResponse.json(
       {
         error:
-          "All Google Calendar invites failed to send. The flex day has not been finalized. Check the server logs and try again.",
-        sessionsFailed: failures.length,
+          "No calendar invites could be sent, so the flex day has not been finalized. Check the details below and try again.",
+        sessionsSent: 0,
+        sessionsFailed: failed.length,
+        sessionsSkipped: skipped.length,
+        problems: describeProblems(failed, skipped),
       },
       { status: 500 }
     );
@@ -179,7 +297,28 @@ export async function POST(
 
   return NextResponse.json({
     finalized: true,
-    sessionsUpdated: results.filter((r) => r.status === "fulfilled").length,
-    sessionsFailed: failures.length,
+    sessionsSent: sent.length,
+    sessionsFailed: failed.length,
+    sessionsSkipped: skipped.length,
+    problems: describeProblems(failed, skipped),
   });
+}
+
+/** Admin-readable one-liners for anything that didn't get an invite. */
+function describeProblems(
+  failed: FailedOutcome[],
+  skipped: SkippedOutcome[]
+): string[] {
+  const problems: string[] = [];
+  for (const f of failed) {
+    problems.push(`${f.name}: Google Calendar rejected the request.`);
+  }
+  for (const s of skipped) {
+    problems.push(
+      s.reason === "club-calendar-missing"
+        ? `${s.name}: this club has no Google Calendar yet, so no invites were sent. Use "Retry calendar setup" on the club, then re-send.`
+        : `${s.name}: the shared calendar for one-off sessions could not be reached, so no invites were sent.`
+    );
+  }
+  return problems;
 }

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
+import RetryCalendarButton from "@/components/clubs/RetryCalendarButton";
 
 export default async function AdminClubsPage() {
   const session = await auth();
@@ -16,6 +17,10 @@ export default async function AdminClubsPage() {
     },
     orderBy: { name: "asc" },
   });
+
+  // Clubs with no calendar can't send invites. They're indistinguishable from
+  // healthy clubs everywhere else, so surface it here where it can be fixed.
+  const missingCalendar = clubs.filter((c) => c.googleCalendarId === null);
 
   return (
     <div>
@@ -31,6 +36,21 @@ export default async function AdminClubsPage() {
           + New Club
         </Link>
       </div>
+
+      {missingCalendar.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-4">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+            {missingCalendar.length} club
+            {missingCalendar.length === 1 ? " has" : "s have"} no Google Calendar
+          </p>
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+            Sessions for {missingCalendar.length === 1 ? "this club" : "these clubs"}{" "}
+            cannot send calendar invites — finalizing a Flex Day will skip{" "}
+            {missingCalendar.length === 1 ? "it" : "them"}. Use “Retry calendar
+            setup” below, then re-send invites for any affected Flex Day.
+          </p>
+        </div>
+      )}
 
       {clubs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-12 text-center text-gray-400 dark:text-gray-500">
@@ -65,6 +85,11 @@ export default async function AdminClubsPage() {
                     {club.description && (
                       <div className="text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
                         {club.description}
+                      </div>
+                    )}
+                    {club.googleCalendarId === null && (
+                      <div className="mt-1">
+                        <RetryCalendarButton clubId={club.id} />
                       </div>
                     )}
                   </td>
