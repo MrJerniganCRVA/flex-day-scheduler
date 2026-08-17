@@ -102,6 +102,8 @@ model User {
   oneOffSessions   ClubSession[]             @relation("OneOffOwner")
   auditsPerformed  SignupAudit[]             @relation("SignupAuditActor")
   auditsAbout      SignupAudit[]             @relation("SignupAuditStudent")
+  clubTeacherPools ClubTeacher[]             @relation("ClubTeacherPool")
+  sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
 
   @@index([email])
 }
@@ -136,29 +138,62 @@ model Room {
 }
 
 model Club {
-  id                    String         @id @default(cuid())
-  name                  String
-  description           String?
-  maxCapacity           Int
-  defaultRoomId         String?
-  defaultRotations      RotationSlot[]
-  linkedRotations       Boolean        @default(true)
-  googleCalendarId      String?        @unique
-  ownerId               String
-  cosponsorId           String?
-  allowRandomAssignment Boolean        @default(true)
-  calendarSharedAt      DateTime?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  maxCapacity      Int
+  defaultRoomId    String?
+  defaultRotations RotationSlot[]
+  linkedRotations  Boolean        @default(true)
+  googleCalendarId String?        @unique
 
-  owner        User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  /// Optional. A club may have no owner at all: some clubs are run by a rotation
+  /// of teachers with no single person responsible, and forcing one to be named
+  /// made that teacher read as the club's permanent instructor everywhere.
+  /// Ownership is an administrative role — who may edit the club. Who actually
+  /// stands in the room is answered by SessionRotationCoverage per session, with
+  /// the owner and cosponsor acting only as defaults (see src/lib/coverage.ts).
+  /// A club with no owner is admin-managed.
+  ownerId String?
+
+  cosponsorId           String?
+  allowRandomAssignment Boolean   @default(true)
+  calendarSharedAt      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  /// Restrict, not SetNull: deleting a teacher must not quietly detach their
+  /// clubs. An admin clears or reassigns ownership first, deliberately.
+  owner        User?         @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   cosponsor    User?         @relation("ClubCosponsor", fields: [cosponsorId], references: [id], onDelete: SetNull)
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
+  teachers     ClubTeacher[]
 
   @@index([ownerId])
   @@index([cosponsorId])
   @@index([defaultRoomId])
+}
+
+/// The pool of teachers who rotate through a club.
+///
+/// Deliberately separate from owner/cosponsor, which are *management* roles.
+/// Pool membership means "expect to see this person running this club sometimes";
+/// it grants no permission to edit the club. It exists so a club with four
+/// teachers taking turns can record that fact once, instead of an admin
+/// re-deriving it from scratch on every flex day.
+model ClubTeacher {
+  id        String   @id @default(cuid())
+  clubId    String
+  teacherId String
+  createdAt DateTime @default(now())
+
+  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  teacher User @relation("ClubTeacherPool", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, teacherId])
+  @@index([clubId])
+  @@index([teacherId])
 }
 
 model ClubSession {
@@ -170,7 +205,6 @@ model ClubSession {
   googleEventId    String?
   title            String?
   capacityOverride Int?
-  teacherAbsent    Boolean        @default(false)
   oneOffOwnerId    String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -181,6 +215,7 @@ model ClubSession {
   oneOffOwner      User?                     @relation("OneOffOwner", fields: [oneOffOwnerId], references: [id], onDelete: SetNull)
   signups          Signup[]
   rotationCoverage SessionRotationCoverage[]
+  teacherAbsences  SessionTeacherAbsence[]
 
   @@index([flexDayId])
   @@index([clubId])
@@ -202,6 +237,41 @@ model SessionRotationCoverage {
   @@unique([sessionId, rotation])
   @@index([primaryTeacherId])
   @@index([secondaryTeacherId])
+}
+
+/// A teacher who will not be attending a session they would otherwise be
+/// expected at — typically because they are double-booked and can only be in one
+/// room during that rotation.
+///
+/// This has to be recorded explicitly rather than by clearing a coverage row,
+/// because the teacher is often the club's owner and therefore the *implicit*
+/// default: deleting the row wouldn't remove them, the fallback in
+/// src/lib/coverage.ts would put them straight back. An absence is subtracted
+/// after those fallbacks are applied.
+///
+/// Replaces the old ClubSession.teacherAbsent boolean, which could not say which
+/// teacher was out — an ambiguity that became unworkable once a session could
+/// have an owner, a cosponsor, and per-rotation coverage.
+///
+/// An absence never cancels the session: the club still runs, and the rotation
+/// simply shows as needing coverage to admins.
+model SessionTeacherAbsence {
+  id        String       @id @default(cuid())
+  sessionId String
+  teacherId String
+  /// Required rather than nullable: Postgres treats NULLs as distinct in a
+  /// unique index, so a nullable "all rotations" value would allow duplicate
+  /// rows. A teacher absent from a linked session gets one row per rotation.
+  rotation  RotationSlot
+  reason    String?
+  createdAt DateTime     @default(now())
+
+  session ClubSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teacher User        @relation("SessionAbsence", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, teacherId, rotation])
+  @@index([sessionId])
+  @@index([teacherId])
 }
 
 model Signup {

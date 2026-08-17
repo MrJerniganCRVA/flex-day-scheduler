@@ -68,6 +68,12 @@ export async function POST(
               secondaryTeacherId: true,
             },
           },
+          // A teacher who has stepped back from this session must not be invited
+          // to it, even when they are the club's owner and therefore the implicit
+          // default.
+          teacherAbsences: {
+            select: { teacherId: true, rotation: true },
+          },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -115,7 +121,7 @@ export async function POST(
   // Teacher emails by id, for turning resolved coverage into attendees.
   const teacherEmailById = new Map<string, string>();
   for (const cs of flexDay.clubSessions) {
-    if (cs.club?.ownerId && cs.club.owner.email) {
+    if (cs.club?.ownerId && cs.club.owner?.email) {
       teacherEmailById.set(cs.club.ownerId, cs.club.owner.email);
     }
     if (cs.club?.cosponsorId && cs.club.cosponsor?.email) {
@@ -158,12 +164,23 @@ export async function POST(
           : "club-calendar-missing",
     }));
 
-  // Share each involved club's calendar with its teacher exactly once, the
-  // first time any of its sessions is finalized. Treat an "already shared"
+  // Share each involved club's calendar with its owning teacher exactly once,
+  // the first time any of its sessions is finalized. Treat an "already shared"
   // API error as a non-fatal no-op (covers clubs shared under old behavior).
-  const clubsToShare = new Map<string, { calendarId: string; ownerEmail: string | null }>();
+  //
+  // A club may have no owner at all — nobody to share with — in which case the
+  // share is skipped and `calendarSharedAt` is deliberately left null, so that
+  // if the club later gains an owner they still get access. Stamping it
+  // unconditionally would mark the club "shared" forever without anyone ever
+  // having been granted anything.
+  const clubsToShare = new Map<string, { calendarId: string; ownerEmail: string }>();
   for (const cs of syncable) {
-    if (cs.club && cs.club.calendarSharedAt === null && !clubsToShare.has(cs.club.id)) {
+    if (
+      cs.club &&
+      cs.club.calendarSharedAt === null &&
+      cs.club.owner?.email &&
+      !clubsToShare.has(cs.club.id)
+    ) {
       clubsToShare.set(cs.club.id, {
         calendarId: cs.club.googleCalendarId!,
         ownerEmail: cs.club.owner.email,
@@ -172,15 +189,13 @@ export async function POST(
   }
   await Promise.all(
     [...clubsToShare.entries()].map(async ([clubId, { calendarId, ownerEmail }]) => {
-      if (ownerEmail) {
-        try {
-          await shareCalendarWithTeacher(calendarId, ownerEmail);
-        } catch (err) {
-          console.error(
-            `Failed to share calendar for club ${clubId} (continuing — may already be shared):`,
-            err
-          );
-        }
+      try {
+        await shareCalendarWithTeacher(calendarId, ownerEmail);
+      } catch (err) {
+        console.error(
+          `Failed to share calendar for club ${clubId} (continuing — may already be shared):`,
+          err
+        );
       }
       await prisma.club
         .update({ where: { id: clubId }, data: { calendarSharedAt: new Date() } })
@@ -204,7 +219,8 @@ export async function POST(
         const teacherIds = resolveSessionTeacherIds(
           cs.club,
           cs.rotationCoverage,
-          cs.rotations
+          cs.rotations,
+          cs.teacherAbsences
         );
         const teacherEmails = new Set<string>();
         for (const id of teacherIds) {

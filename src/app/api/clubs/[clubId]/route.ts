@@ -3,9 +3,12 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSchema } from "@/lib/validations";
 import { deleteCalendar } from "@/lib/google-calendar";
-import { getDefaultRoomConflictIds } from "@/lib/scheduling";
+import {
+  getDefaultRoomConflictIds,
+  reconcileFutureSessions,
+} from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
-import type { Role } from "@prisma/client";
+import type { Role, RotationSlot } from "@prisma/client";
 
 async function checkClubAccess(clubId: string, userId: string, role: Role) {
   const club = await prisma.club.findUnique({ where: { id: clubId } });
@@ -128,13 +131,18 @@ export async function PUT(
     }
   }
 
-  // Only admin can reassign ownership; strip ownerId from non-admin updates
-  const { ownerId: newOwnerId, cosponsorId, ...updateData } = parsed.data;
-  const finalOwnerId =
-    session.user.role === "ADMIN" && newOwnerId ? newOwnerId : club.ownerId;
+  // Only admin can reassign ownership; strip ownerId from non-admin updates.
+  // `ownerId: null` from an admin is meaningful — it clears the owner, making the
+  // club admin-managed with no permanent teacher — so this distinguishes an
+  // explicit null from an absent key.
+  const { ownerId: newOwnerId, cosponsorId, teacherIds, ...updateData } = parsed.data;
+  const ownerIdProvided =
+    session.user.role === "ADMIN" && newOwnerId !== undefined;
+  const finalOwnerId = ownerIdProvided ? newOwnerId : club.ownerId;
+
   const finalData: Parameters<typeof prisma.club.update>[0]["data"] = {
     ...updateData,
-    ...(session.user.role === "ADMIN" && newOwnerId ? { ownerId: newOwnerId } : {}),
+    ...(ownerIdProvided ? { ownerId: newOwnerId } : {}),
   };
 
   // Any club manager can edit the cosponsor. Null it out if it matches the
@@ -143,12 +151,55 @@ export async function PUT(
     finalData.cosponsorId = cosponsorId && cosponsorId !== finalOwnerId ? cosponsorId : null;
   }
 
+  const rotationsChanged =
+    parsed.data.defaultRotations !== undefined &&
+    !sameRotationSet(parsed.data.defaultRotations, club.defaultRotations);
+  const linkedChanged =
+    parsed.data.linkedRotations !== undefined &&
+    parsed.data.linkedRotations !== club.linkedRotations;
+
   const updated = await prisma.club.update({
     where: { id: clubId },
     data: finalData,
   });
 
-  return NextResponse.json(updated);
+  // Replace the teacher pool wholesale when provided. Only teachers and admins
+  // are eligible; a silently-filtered list beats a 400 for a stale UI.
+  if (teacherIds !== undefined) {
+    const eligible = await prisma.user.findMany({
+      where: { id: { in: teacherIds }, role: { in: ["TEACHER", "ADMIN"] } },
+      select: { id: true },
+    });
+    await prisma.$transaction([
+      prisma.clubTeacher.deleteMany({ where: { clubId } }),
+      prisma.clubTeacher.createMany({
+        data: eligible.map((t) => ({ clubId, teacherId: t.id })),
+        skipDuplicates: true,
+      }),
+    ]);
+  }
+
+  // Sessions used to be generated only when a club or a flex day was created, so
+  // editing a club's rotations left every already-scheduled session untouched.
+  // Propagate the change forward now.
+  const reconcile =
+    rotationsChanged || linkedChanged
+      ? await reconcileFutureSessions({
+          id: updated.id,
+          defaultRotations: updated.defaultRotations,
+          linkedRotations: updated.linkedRotations,
+        })
+      : null;
+
+  return NextResponse.json({ ...updated, reconcile });
+}
+
+/** Order-insensitive rotation-set comparison. */
+function sameRotationSet(a: RotationSlot[], b: RotationSlot[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((r, i) => r === sb[i]);
 }
 
 export async function DELETE(

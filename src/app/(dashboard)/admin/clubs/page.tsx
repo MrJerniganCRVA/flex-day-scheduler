@@ -93,7 +93,11 @@ export default async function AdminClubsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.owner.name}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{club.owner?.name ?? (
+                      <span className="text-gray-400 dark:text-gray-500 italic">
+                        No teacher
+                      </span>
+                    )}</td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                     {club.defaultRoom?.name ?? "—"}
                   </td>

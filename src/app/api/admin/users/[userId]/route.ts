@@ -106,7 +106,7 @@ export async function DELETE(
         {
           error:
             clubCount > 0
-              ? `This teacher still owns ${clubCount} club${clubCount === 1 ? "" : "s"}. Reassign ownership before removing them.`
+              ? `This teacher still owns ${clubCount} club${clubCount === 1 ? "" : "s"}. Reassign each club to another teacher, or set it to "No teacher assigned", before removing them.`
               : "This user can't be removed because other records still reference them.",
         },
         { status: 409 }

@@ -61,8 +61,8 @@ export default async function AdminClubDetailPage({
           <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-400 dark:text-gray-500">
             <span>
               Teacher:{" "}
-              <span className="text-gray-600 dark:text-gray-300 font-medium">{club.owner.name}</span>{" "}
-              <span className="text-gray-400 dark:text-gray-500">({club.owner.email})</span>
+              <span className="text-gray-600 dark:text-gray-300 font-medium">{club.owner?.name ?? "No teacher assigned"}</span>{" "}
+              <span className="text-gray-400 dark:text-gray-500">{club.owner ? `(${club.owner.email})` : "(admin-managed)"}</span>
             </span>
             {club.cosponsor && (
               <span>

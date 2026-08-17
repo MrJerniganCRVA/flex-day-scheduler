@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
+import RotationClashNotice from "@/components/sessions/RotationClashNotice";
+import { rotationsExpectingTeacher } from "@/lib/coverage";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -13,24 +15,48 @@ export default async function TeacherDashboard() {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  // Next upcoming flex day (includes today), filtered to only this teacher's sessions
+  const me = session.user.id;
+
+  // Next upcoming flex day (includes today), filtered to sessions this teacher is
+  // connected to.
+  //
+  // Coverage assignments are included here deliberately. Previously this filtered
+  // on club ownership and cosponsorship only, so a teacher an admin had assigned
+  // to cover someone else's club never saw that session anywhere in the app — and
+  // for a club with no owner, coverage is the *only* way a teacher is attached to
+  // it, which made those clubs invisible to the very people running them.
   const nextFlexDay = await prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
     include: {
       clubSessions: {
         where: {
-          club: {
-            OR: [
-              { ownerId: session.user.id },
-              { cosponsorId: session.user.id },
-            ],
-          },
+          OR: [
+            { club: { ownerId: me } },
+            { club: { cosponsorId: me } },
+            { oneOffOwnerId: me },
+            { rotationCoverage: { some: { primaryTeacherId: me } } },
+            { rotationCoverage: { some: { secondaryTeacherId: me } } },
+          ],
         },
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true },
+            select: {
+              id: true,
+              name: true,
+              maxCapacity: true,
+              ownerId: true,
+              cosponsorId: true,
+            },
           },
+          rotationCoverage: {
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
+            },
+          },
+          teacherAbsences: { select: { teacherId: true, rotation: true } },
           signups: {
             select: {
               id: true,
@@ -44,6 +70,35 @@ export default async function TeacherDashboard() {
       },
     },
   });
+
+  type TeacherSession = NonNullable<typeof nextFlexDay>["clubSessions"][number];
+
+  /**
+   * Rotations of a session where this teacher is actually expected — resolved
+   * coverage with their own absences already subtracted. A session they've stepped
+   * back from still appears on the dashboard (so they can undo it) but no longer
+   * counts toward a clash.
+   */
+  const expectedRotations = (cs: TeacherSession) =>
+    rotationsExpectingTeacher(
+      cs.club,
+      cs.rotationCoverage,
+      cs.rotations,
+      cs.teacherAbsences,
+      me
+    );
+
+  const iAmAbsentFrom = (cs: TeacherSession, slot: RotationSlot) =>
+    cs.teacherAbsences.some((a) => a.teacherId === me && a.rotation === slot);
+
+  // A teacher expected by two sessions in the same rotation cannot attend both.
+  const clashes = new Map<RotationSlot, TeacherSession[]>();
+  for (const slot of ALL_ROTATIONS as RotationSlot[]) {
+    const expecting = (nextFlexDay?.clubSessions ?? []).filter((cs) =>
+      expectedRotations(cs).includes(slot)
+    );
+    if (expecting.length > 1) clashes.set(slot, expecting);
+  }
 
   const isToday = nextFlexDay
     ? nextFlexDay.date.getTime() === today.getTime()
@@ -107,6 +162,20 @@ export default async function TeacherDashboard() {
                       {ROTATION_LABELS[slot]}
                     </div>
 
+                    {clashes.has(slot) && (
+                      <div className="px-4 pt-3">
+                        <RotationClashNotice
+                          rotation={slot}
+                          rotationLabel={ROTATION_LABELS[slot]}
+                          options={clashes.get(slot)!.map((cs) => ({
+                            sessionId: cs.id,
+                            name: cs.club?.name ?? cs.title ?? "Session",
+                            absent: iAmAbsentFrom(cs, slot),
+                          }))}
+                        />
+                      </div>
+                    )}
+
                     <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
                       {sessions.length === 0 ? (
                         <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
@@ -114,11 +183,20 @@ export default async function TeacherDashboard() {
                         </p>
                       ) : (
                         sessions.map((cs) => {
+                          const absentHere = iAmAbsentFrom(cs, slot);
                           return (
-                            <div key={cs.id} className="px-4 py-4">
+                            <div
+                              key={cs.id}
+                              className={`px-4 py-4 ${absentHere ? "opacity-60" : ""}`}
+                            >
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <div className="font-medium text-gray-900 dark:text-white text-sm">
                                   {cs.club?.name ?? cs.title ?? "Session"}
+                                  {absentHere && (
+                                    <span className="ml-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                      Not attending
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                   {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}

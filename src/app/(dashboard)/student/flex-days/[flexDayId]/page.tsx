@@ -70,7 +70,7 @@ export default async function StudentFlexDayPage({
       id: cs.id,
       sessionName: cs.title ?? cs.club?.name ?? "Session",
       description: cs.club?.description ?? null,
-      teacherName: cs.oneOffOwner?.name ?? cs.club?.owner.name ?? null,
+      teacherName: cs.oneOffOwner?.name ?? cs.club?.owner?.name ?? null,
       rotations: cs.rotations,
       enrolledCount: cs._count.signups,
       capacity,

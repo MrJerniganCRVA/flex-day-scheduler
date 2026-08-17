@@ -19,10 +19,15 @@ export const createClubSchema = z.object({
   defaultRotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
-  ownerId: z.string().cuid().optional(), // admin only — ignored for teachers
+  // Admin only — ignored for teachers, who always own the clubs they create.
+  // Explicit null means "no teacher assigned": a club run by a rotation of
+  // teachers, managed by admins.
+  ownerId: z.string().cuid().nullable().optional(),
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
+  /** Pool of teachers who rotate through this club. Grants no edit rights. */
+  teacherIds: z.array(z.string().cuid()).max(50).optional(),
 });
 
 export const updateClubSchema = z.object({
@@ -34,10 +39,14 @@ export const updateClubSchema = z.object({
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required")
     .optional(),
-  ownerId: z.string().cuid().optional(), // admin can reassign club ownership
+  // Admin can reassign ownership, or clear it with an explicit null to make the
+  // club admin-managed with no permanent teacher.
+  ownerId: z.string().cuid().nullable().optional(),
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
+  /** Replaces the club's teacher pool wholesale when present. */
+  teacherIds: z.array(z.string().cuid()).max(50).optional(),
 });
 
 export const createClubSessionSchema = z.object({
@@ -130,5 +139,20 @@ export const updateClubSessionPerDaySchema = z.object({
     .optional(),
   roomOverrideId: z.string().cuid().nullable().optional(),
   capacityOverride: z.number().int().positive().min(1).nullable().optional(),
-  teacherAbsent: z.boolean().optional(),
+});
+
+/**
+ * Mark a teacher present or absent for a session.
+ *
+ * `teacherId` is optional and admin-only: a teacher acting on their own behalf
+ * omits it. `rotations` defaults to every rotation the session covers.
+ */
+export const sessionAbsenceSchema = z.object({
+  teacherId: z.string().cuid().optional(),
+  rotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1)
+    .optional(),
+  absent: z.boolean(),
+  reason: z.string().trim().max(300).optional(),
 });

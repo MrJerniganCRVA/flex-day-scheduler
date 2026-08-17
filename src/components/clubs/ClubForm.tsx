@@ -17,6 +17,27 @@ interface Room {
   capacity: number;
 }
 
+/** A future session that couldn't be reshaped when the club's rotations changed. */
+type ReconcileSkip = {
+  sessionId: string;
+  rotations: RotationSlot[];
+  flexDayDate: string;
+  reason: "has-signups" | "flex-day-finalized" | "has-calendar-event";
+};
+
+type ReconcileSummary = {
+  flexDaysTouched: number;
+  created: number;
+  deleted: number;
+  skipped: ReconcileSkip[];
+};
+
+const SKIP_REASONS: Record<ReconcileSkip["reason"], string> = {
+  "has-signups": "students are already signed up",
+  "flex-day-finalized": "invites have already been sent",
+  "has-calendar-event": "a calendar event already exists",
+};
+
 interface Props {
   clubId?: string;
   defaultValues?: {
@@ -28,13 +49,15 @@ interface Props {
     allowRandomAssignment?: boolean;
     linkedRotations?: boolean;
     cosponsorId?: string | null;
+    /** Teachers who rotate through this club. */
+    teacherIds?: string[];
   };
   /** Candidate teachers for the Cosponsor dropdown (and, for admins, ownership reassignment) */
   teachers?: Teacher[];
   /** Admin only: shows the owner-reassignment dropdown and submits ownerId */
   isAdmin?: boolean;
-  /** Admin only: pre-selected owner id */
-  defaultOwnerId?: string;
+  /** Admin only: pre-selected owner id. Null means the club has no teacher. */
+  defaultOwnerId?: string | null;
   /** Base path to redirect after save, e.g. "/admin/clubs" */
   returnBasePath?: string;
 }
@@ -69,10 +92,21 @@ export default function ClubForm({
     defaultValues?.linkedRotations ?? false
   );
   const [defaultRoomId, setDefaultRoomId] = useState(defaultValues?.defaultRoomId ?? "");
+  // "" means no teacher assigned. On a new club an admin still defaults to the
+  // first teacher, but editing preserves an existing null rather than silently
+  // adopting one.
   const [ownerId, setOwnerId] = useState(
-    isAdmin ? (defaultOwnerId ?? teachers?.[0]?.id ?? "") : ""
+    isAdmin
+      ? isEdit
+        ? (defaultOwnerId ?? "")
+        : (defaultOwnerId ?? teachers?.[0]?.id ?? "")
+      : ""
   );
   const [cosponsorId, setCosponsorId] = useState(defaultValues?.cosponsorId ?? "");
+  const [teacherIds, setTeacherIds] = useState<string[]>(
+    defaultValues?.teacherIds ?? []
+  );
+  const [reconcile, setReconcile] = useState<ReconcileSummary | null>(null);
 
   // Clear a stale cosponsor selection if admin reassigns the owner to that same person
   useEffect(() => {
@@ -154,7 +188,11 @@ export default function ClubForm({
         allowRandomAssignment,
         linkedRotations,
         cosponsorId: cosponsorId || null,
-        ...(isAdmin && ownerId ? { ownerId } : {}),
+        // An admin always sends ownerId, including as an explicit null — that is
+        // how a club is set to have no teacher. Omitting the key would mean
+        // "leave ownership alone", which is a different thing.
+        ...(isAdmin ? { ownerId: ownerId || null } : {}),
+        teacherIds,
       }),
     });
 
@@ -167,6 +205,22 @@ export default function ClubForm({
     }
 
     const club = await res.json();
+
+    // Changing rotations now reshapes sessions on every future Flex Day. When any
+    // of them couldn't be changed — students already signed up, or invites already
+    // sent — say so and stay on the page rather than navigating away from news the
+    // admin needs.
+    const skipped: ReconcileSkip[] = club.reconcile?.skipped ?? [];
+    if (skipped.length > 0) {
+      setReconcile({
+        flexDaysTouched: club.reconcile.flexDaysTouched ?? 0,
+        created: club.reconcile.created ?? 0,
+        deleted: club.reconcile.deleted ?? 0,
+        skipped,
+      });
+      return;
+    }
+
     router.push(`${returnBasePath}/${club.id}`);
     router.refresh();
   }
@@ -175,6 +229,18 @@ export default function ClubForm({
     "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500";
 
   const cosponsorCandidates = (teachers ?? []).filter((t) => t.id !== ownerId);
+
+  // The pool is "who else turns up", so the owner and cosponsor are excluded —
+  // they are already attached to the club and default into coverage on their own.
+  const poolCandidates = (teachers ?? []).filter(
+    (t) => t.id !== ownerId && t.id !== cosponsorId
+  );
+
+  function togglePoolTeacher(id: string) {
+    setTeacherIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -414,13 +480,19 @@ export default function ClubForm({
       {isAdmin && teachers && teachers.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-            Assigned Teacher <span className="text-red-500">*</span>
+            Assigned Teacher
           </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Optional. Leave unassigned for a club run by a rotation of teachers —
+            admins manage it, and whoever is teaching each session is set on the
+            Coverage page.
+          </p>
           <select
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
             className={inputClass}
           >
+            <option value="">No teacher assigned (admin-managed)</option>
             {teachers.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({t.email})
@@ -430,9 +502,94 @@ export default function ClubForm({
         </div>
       )}
 
+      {teachers && teachers.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+            Rotating Teachers{" "}
+            <span className="text-gray-400 dark:text-gray-500 font-normal">
+              (optional)
+            </span>
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Teachers who take turns running this club. They are offered first when
+            assigning coverage for each Flex Day. This does not let them edit the
+            club — use Cosponsor for that.
+          </p>
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-600 divide-y divide-gray-100 dark:divide-gray-700/50">
+            {poolCandidates.map((t) => (
+              <label
+                key={t.id}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={teacherIds.includes(t.id)}
+                  onChange={() => togglePoolTeacher(t.id)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <span>
+                  {t.name}{" "}
+                  <span className="text-gray-400 dark:text-gray-500 text-xs">
+                    {t.email}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
+        </div>
+      )}
+
+      {reconcile && (
+        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+            Saved. {reconcile.flexDaysTouched} upcoming Flex Day
+            {reconcile.flexDaysTouched === 1 ? "" : "s"} updated
+            {reconcile.created > 0 && `, ${reconcile.created} session${reconcile.created === 1 ? "" : "s"} added`}
+            {reconcile.deleted > 0 && `, ${reconcile.deleted} removed`}.
+          </p>
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+            {reconcile.skipped.length} existing session
+            {reconcile.skipped.length === 1 ? " was" : "s were"} left as-is rather
+            than changed automatically:
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {reconcile.skipped.map((s) => (
+              <li
+                key={s.sessionId}
+                className="text-xs text-amber-700 dark:text-amber-300"
+              >
+                {new Date(s.flexDayDate).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  timeZone: "UTC",
+                })}
+                {" — "}
+                {s.rotations.map((r) => ROTATION_LABELS[r]).join(", ")}:{" "}
+                {SKIP_REASONS[s.reason]}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+            Adjust these from the Flex Day if you want them changed — that way any
+            signups and invites are handled properly.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setReconcile(null);
+              router.push(returnBasePath);
+              router.refresh();
+            }}
+            className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Got it →
+          </button>
         </div>
       )}
 

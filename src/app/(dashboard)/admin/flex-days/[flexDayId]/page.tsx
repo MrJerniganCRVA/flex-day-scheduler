@@ -8,6 +8,7 @@ import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
+import { resolveSessionCoverage } from "@/lib/coverage";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -28,8 +29,22 @@ export default async function AdminFlexDayDetailPage({
       clubSessions: {
         include: {
           club: {
-            select: { id: true, name: true, maxCapacity: true },
+            select: {
+              id: true,
+              name: true,
+              maxCapacity: true,
+              ownerId: true,
+              cosponsorId: true,
+            },
           },
+          rotationCoverage: {
+            select: {
+              rotation: true,
+              primaryTeacherId: true,
+              secondaryTeacherId: true,
+            },
+          },
+          teacherAbsences: { select: { teacherId: true, rotation: true } },
           oneOffOwner: { select: { name: true } },
           signups: {
             select: {
@@ -54,6 +69,24 @@ export default async function AdminFlexDayDetailPage({
 
   const sessionLabel = (cs: (typeof flexDay.clubSessions)[number]) =>
     cs.title ?? cs.club?.name ?? "Session";
+
+  /**
+   * Rotations of a session with nobody in the room. Derived rather than read from
+   * a flag: the old per-session `teacherAbsent` boolean couldn't say which teacher
+   * was out, and said nothing at all about a club with no owner. A rotation needs
+   * coverage when no teacher resolves for it — whether because none was ever
+   * assigned or because the one who would have defaulted in is marked absent.
+   */
+  const rotationsNeedingCoverage = (cs: (typeof flexDay.clubSessions)[number]) =>
+    cs.rotations.filter(
+      (rotation) =>
+        resolveSessionCoverage(
+          cs.club,
+          cs.rotationCoverage,
+          rotation,
+          cs.teacherAbsences
+        ).primaryTeacherId === null
+    );
 
   // Candidate destinations for a roster move: any other session on this day,
   // labelled with its rotations so the admin can see what they're choosing.
@@ -155,6 +188,7 @@ export default async function AdminFlexDayDetailPage({
                       const recorded = cs.signups.filter(
                         (s) => s.attended !== null
                       ).length;
+                      const uncovered = rotationsNeedingCoverage(cs);
                       return (
                         <div key={cs.id} className="px-5 py-4">
                           <div className="flex items-center justify-between mb-2">
@@ -162,9 +196,18 @@ export default async function AdminFlexDayDetailPage({
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
                                 {cs.title ?? cs.club?.name ?? "Session"}
                               </span>
-                              {cs.teacherAbsent && (
-                                <span className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium">
+                              {uncovered.length > 0 && (
+                                <span
+                                  title={`No teacher for ${uncovered
+                                    .map((r) => ROTATION_LABELS[r])
+                                    .join(", ")}`}
+                                  className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium"
+                                >
                                   Coverage Needed
+                                  {uncovered.length < cs.rotations.length &&
+                                    ` (${uncovered
+                                      .map((r) => ROTATION_LABELS[r])
+                                      .join(", ")})`}
                                 </span>
                               )}
                             </div>

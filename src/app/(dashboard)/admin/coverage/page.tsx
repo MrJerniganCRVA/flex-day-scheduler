@@ -26,6 +26,7 @@ export default async function AdminCoveragePage() {
               cosponsorId: true,
               owner: { select: { name: true } },
               cosponsor: { select: { name: true } },
+              teachers: { select: { teacherId: true } },
             },
           },
           _count: { select: { signups: true } },
@@ -71,14 +72,17 @@ export default async function AdminCoveragePage() {
     sessionId: cs.id,
     clubId: cs.club!.id,
     name: cs.club!.name,
+    // Null for a club with no permanent teacher — T1 then resolves to nothing
+    // and the session shows as needing coverage, which is correct.
     ownerId: cs.club!.ownerId,
-    ownerName: cs.club!.owner.name ?? cs.club!.ownerId,
+    ownerName: cs.club!.owner?.name ?? null,
     // A club's cosponsor is its default second teacher. Without this the
     // cosponsor never appeared as T2, showed as fully free (so they could be
     // double-booked into another club in the same rotation), and never received
     // the calendar invite for a club they co-run.
     cosponsorId: cs.club!.cosponsorId,
     cosponsorName: cs.club!.cosponsor?.name ?? null,
+    poolTeacherIds: cs.club!.teachers.map((t) => t.teacherId),
     rotations: cs.rotations,
     studentCount: cs._count.signups,
     coverage: Object.fromEntries(

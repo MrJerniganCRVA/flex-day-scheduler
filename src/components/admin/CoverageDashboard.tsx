@@ -23,11 +23,17 @@ export type CoverageClub = {
   sessionId: string;
   clubId: string;
   name: string;
-  ownerId: string;
-  ownerName: string;
+  /**
+   * Default first teacher — the club's owner. Null for a club with no owner,
+   * which resolves T1 to nothing and lands the session in the "needs" bucket.
+   */
+  ownerId: string | null;
+  ownerName: string | null;
   /** Default second teacher — the club's cosponsor, if it has one. */
   cosponsorId: string | null;
   cosponsorName: string | null;
+  /** Teachers who rotate through this club — offered first in the dropdowns. */
+  poolTeacherIds: string[];
   rotations: RotationSlot[];
   studentCount: number;
   coverage: Partial<
@@ -84,7 +90,7 @@ export default function CoverageDashboard({
           c.rotations.map((r) => [
             r,
             {
-              t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId,
+              t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId ?? null,
               t2: c.coverage[r]?.secondaryTeacherId ?? c.cosponsorId ?? null,
             },
           ])
@@ -157,6 +163,27 @@ export default function CoverageDashboard({
     },
     []
   );
+
+  /**
+   * Teachers available for a slot, with the club's own pool first.
+   *
+   * For a club run by a rotation of teachers, the pool is almost always the right
+   * answer, and scanning the whole staff list to find one of four names is
+   * needless work.
+   */
+  function getAvailableTeachersForClub(
+    club: CoverageClub,
+    rotation: RotationSlot,
+    slot: "t1" | "t2"
+  ): CoverageTeacher[] {
+    const available = getAvailableTeachers(club.sessionId, rotation, slot);
+    if (club.poolTeacherIds.length === 0) return available;
+    const pool = new Set(club.poolTeacherIds);
+    return [
+      ...available.filter((t) => pool.has(t.id)),
+      ...available.filter((t) => !pool.has(t.id)),
+    ];
+  }
 
   // Teachers available for a given slot, filtered by rotation conflicts
   function getAvailableTeachers(
@@ -290,8 +317,8 @@ export default function CoverageDashboard({
                               }
                               teachers={teachers}
                               availableTeachers={(slot) =>
-                                getAvailableTeachers(
-                                  club.sessionId,
+                                getAvailableTeachersForClub(
+                                  club,
                                   rotation,
                                   slot
                                 )
@@ -323,8 +350,8 @@ export default function CoverageDashboard({
                               }
                               teachers={teachers}
                               availableTeachers={(slot) =>
-                                getAvailableTeachers(
-                                  club.sessionId,
+                                getAvailableTeachersForClub(
+                                  club,
                                   rotation,
                                   slot
                                 )
@@ -356,8 +383,8 @@ export default function CoverageDashboard({
                               }
                               teachers={teachers}
                               availableTeachers={(slot) =>
-                                getAvailableTeachers(
-                                  club.sessionId,
+                                getAvailableTeachersForClub(
+                                  club,
                                   rotation,
                                   slot
                                 )
