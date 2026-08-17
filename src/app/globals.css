@@ -10,3 +10,25 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+
+/* Every <select> in this app sets its own background via Tailwind, and an
+   <option>'s colours are inherited from the select inconsistently across
+   browsers. Left unstyled, the open dropdown list renders somewhere between
+   low-contrast and unreadable in dark mode — most visibly on Admin → Coverage,
+   where the selects carry coloured status backgrounds.
+
+   Setting them explicitly makes the popup legible everywhere. Dark mode here is
+   driven by prefers-color-scheme (Tailwind v4's default; there is no darkMode
+   override), so this media query is the right hook. */
+@media (prefers-color-scheme: dark) {
+  select option {
+    background-color: #1f2937; /* gray-800 */
+    color: #f3f4f6; /* gray-100 */
+  }
+
+  /* Some browsers render the disabled placeholder option at the same colour as
+     the rest; dim it so it still reads as a prompt rather than a choice. */
+  select option:disabled {
+    color: #9ca3af; /* gray-400 */
+  }
+}

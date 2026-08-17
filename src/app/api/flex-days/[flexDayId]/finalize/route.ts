@@ -66,6 +66,7 @@ export async function POST(
               rotation: true,
               primaryTeacherId: true,
               secondaryTeacherId: true,
+              secondaryCleared: true,
             },
           },
           // A teacher who has stepped back from this session must not be invited

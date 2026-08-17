@@ -18,11 +18,13 @@ const clubNoCosponsor = { ownerId: "owner", cosponsorId: null };
 const row = (
   rotation: CoverageRow["rotation"],
   primary: string | null,
-  secondary: string | null
+  secondary: string | null,
+  secondaryCleared = false
 ): CoverageRow => ({
   rotation,
   primaryTeacherId: primary,
   secondaryTeacherId: secondary,
+  secondaryCleared,
 });
 
 describe("resolveSessionCoverage", () => {
@@ -173,6 +175,69 @@ describe("resolveSessionCoverage with absences", () => {
         "FLEX_1"
       ).primaryTeacherId
     ).toBe("rotating");
+  });
+});
+
+describe("resolveSessionCoverage with a cleared T2", () => {
+  it("resolves T2 to null even though the club has a cosponsor", () => {
+    // The case that had no representation at all: an admin saying this rotation
+    // needs no second teacher. Writing a null secondary alone was not enough —
+    // the cosponsor fallback simply re-derived them.
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, null, true)], "FLEX_1")
+    ).toEqual({ primaryTeacherId: "owner", secondaryTeacherId: null });
+  });
+
+  it("keeps the cosponsor fallback when the flag is false", () => {
+    // No regression: a null secondary without the flag still means "not set".
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, null, false)], "FLEX_1")
+        .secondaryTeacherId
+    ).toBe("cosponsor");
+  });
+
+  it("still resolves to the cosponsor for a row created by setting T1 only", () => {
+    // This is precisely why the flag exists rather than inferring from the null:
+    // rows are upserted per field, so assigning T1 leaves a null secondary behind
+    // that must keep meaning "not set".
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null)], "FLEX_1")
+    ).toEqual({ primaryTeacherId: "sub1", secondaryTeacherId: "cosponsor" });
+  });
+
+  it("lets an explicit teacher win over the cleared flag", () => {
+    // Shouldn't co-occur, but if both are set the named teacher is the more
+    // specific intent.
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2", true)], "FLEX_1")
+        .secondaryTeacherId
+    ).toBe("sub2");
+  });
+
+  it("only clears the rotation whose row carries the flag", () => {
+    const rows = [row("FLEX_1", null, null, true)];
+    expect(
+      resolveSessionCoverage(club, rows, "FLEX_1").secondaryTeacherId
+    ).toBeNull();
+    expect(
+      resolveSessionCoverage(club, rows, "FLEX_2").secondaryTeacherId
+    ).toBe("cosponsor");
+  });
+
+  it("keeps a cleared cosponsor off the calendar invite", () => {
+    const ids = resolveSessionTeacherIds(
+      club,
+      [row("FLEX_1", null, null, true)],
+      ["FLEX_1"]
+    );
+    expect([...ids]).toEqual(["owner"]);
+  });
+
+  it("treats an absent row's flag as false when omitted", () => {
+    // CoverageRow.secondaryCleared is optional for callers that don't select it.
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_1").secondaryTeacherId
+    ).toBe("cosponsor");
   });
 });
 

@@ -34,6 +34,12 @@ export type CoverageRow = {
   rotation: RotationSlot;
   primaryTeacherId: string | null;
   secondaryTeacherId: string | null;
+  /**
+   * The admin explicitly decided this rotation needs no second teacher, which
+   * suppresses the cosponsor fallback. Optional so callers that genuinely don't
+   * care (and older fixtures) don't have to select it; absent behaves as false.
+   */
+  secondaryCleared?: boolean;
 };
 
 /** A teacher who won't attend, for one rotation of one session. */
@@ -54,6 +60,12 @@ export type ResolvedCoverage = {
  * back to, so only an explicit assignment counts. A club with no owner behaves
  * the same way for T1.
  *
+ * `secondaryCleared` suppresses the cosponsor fallback, which is the only way to
+ * express "this rotation needs no second teacher" on a club that has one. It is a
+ * stored flag rather than an inference from a null secondary because rows are
+ * upserted per field: assigning T1 leaves a null secondary behind that has to keep
+ * meaning "not set".
+ *
  * Absences are subtracted *after* the fallbacks, which is the whole reason they
  * are stored explicitly: the absent teacher is frequently the club's owner, so
  * removing their coverage row would achieve nothing — the fallback would name
@@ -72,7 +84,10 @@ export function resolveSessionCoverage(
   );
 
   const primary = row?.primaryTeacherId ?? club?.ownerId ?? null;
-  const secondary = row?.secondaryTeacherId ?? club?.cosponsorId ?? null;
+  const secondaryDefault = row?.secondaryCleared
+    ? null
+    : (club?.cosponsorId ?? null);
+  const secondary = row?.secondaryTeacherId ?? secondaryDefault;
 
   return {
     primaryTeacherId: primary && !absent.has(primary) ? primary : null,
