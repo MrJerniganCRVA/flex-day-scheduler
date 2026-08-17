@@ -61,6 +61,32 @@ export const createSignupSchema = z.object({
   clubSessionId: z.string().cuid(),
 });
 
+/**
+ * Admin roster override, used after calendar invites have already gone out.
+ * `reason` is required because this writes an audit row — an override with no
+ * recorded justification is the thing that makes "why was my child moved?"
+ * unanswerable later.
+ */
+export const rosterOverrideSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("move"),
+    signupId: z.string().cuid(),
+    toClubSessionId: z.string().cuid(),
+    reason: z.string().trim().min(3, "A reason is required").max(500),
+  }),
+  z.object({
+    action: z.literal("remove"),
+    signupId: z.string().cuid(),
+    reason: z.string().trim().min(3, "A reason is required").max(500),
+  }),
+  z.object({
+    action: z.literal("add"),
+    studentId: z.string().cuid(),
+    toClubSessionId: z.string().cuid(),
+    reason: z.string().trim().min(3, "A reason is required").max(500),
+  }),
+]);
+
 export const updateUserRoleSchema = z.object({
   role: z.enum(["STUDENT", "TEACHER", "ADMIN"] as [Role, ...Role[]]),
 });
