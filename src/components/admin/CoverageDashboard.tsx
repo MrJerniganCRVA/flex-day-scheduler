@@ -26,33 +26,32 @@ const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
  */
 const CLEARED = "__none__";
 
+/**
+ * What one session's card needs. Deliberately *not* the raw ingredients of
+ * coverage resolution: the owner, cosponsor and coverage rows used to be passed
+ * here so this component could derive T1/T2 itself, and that second
+ * implementation is exactly why absences never reached this screen. The server
+ * resolves now; this renders and edits.
+ */
 export type CoverageClub = {
   sessionId: string;
-  clubId: string;
   name: string;
-  /**
-   * Default first teacher — the club's owner. Null for a club with no owner,
-   * which resolves T1 to nothing and lands the session in the "needs" bucket.
-   */
-  ownerId: string | null;
-  ownerName: string | null;
-  /** Default second teacher — the club's cosponsor, if it has one. */
-  cosponsorId: string | null;
+  /** Labels the "fall back to the cosponsor" option; not used to derive anything. */
   cosponsorName: string | null;
   /** Teachers who rotate through this club — offered first in the dropdowns. */
   poolTeacherIds: string[];
   rotations: RotationSlot[];
   studentCount: number;
-  coverage: Partial<
-    Record<
-      RotationSlot,
-      {
-        primaryTeacherId: string | null;
-        secondaryTeacherId: string | null;
-        secondaryCleared: boolean;
-      }
-    >
-  >;
+  /** Server-resolved starting state, per rotation. */
+  assignments: Partial<Record<RotationSlot, ResolvedAssignment>>;
+};
+
+/** Effective coverage for one rotation, as resolved by src/lib/coverage.ts. */
+export type ResolvedAssignment = {
+  t1: string | null;
+  t2: string | null;
+  /** True when an admin explicitly said this rotation needs no second teacher. */
+  t2Cleared: boolean;
 };
 
 export type CoverageTeacher = {
@@ -60,14 +59,15 @@ export type CoverageTeacher = {
   name: string;
 };
 
-// assignments[sessionId][rotation] = { t1, t2, t2Cleared }
+// assignments[sessionId][rotation] — seeded from the server's resolution and then
+// updated optimistically as the admin edits.
 //
 // t2 and t2Cleared together carry three states, because an empty T2 is ambiguous
 // on a club with a cosponsor:
 //   t2 set                     → that teacher
 //   t2 null, t2Cleared false   → fall back to the club's cosponsor
 //   t2 null, t2Cleared true    → deliberately nobody
-type Assignment = { t1: string | null; t2: string | null; t2Cleared: boolean };
+type Assignment = ResolvedAssignment;
 type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
@@ -100,30 +100,12 @@ export default function CoverageDashboard({
   teachers: CoverageTeacher[];
   flexDayLabel: string;
 }) {
-  // Effective coverage: an explicit assignment always wins, otherwise the club's
-  // owner is T1 and its cosponsor is T2. Derived rather than stored, so changing
-  // a club's cosponsor takes effect immediately on every session — materializing
-  // it into SessionRotationCoverage would go stale on the next change.
-  // Kept in sync with resolveSessionCoverage() in src/lib/coverage.ts, which
-  // finalize uses to build the same roster for the calendar invite.
+  // Seeded straight from the server's resolution — no fallback logic here. The
+  // previous version rebuilt T1/T2 from owner/cosponsor in this file, which meant
+  // every rule added to src/lib/coverage.ts (absences, most recently) had to be
+  // remembered a second time, and wasn't.
   const [assignments, setAssignments] = useState<Assignments>(() =>
-    Object.fromEntries(
-      clubs.map((c) => [
-        c.sessionId,
-        Object.fromEntries(
-          c.rotations.map((r) => [
-            r,
-            {
-              t1: c.coverage[r]?.primaryTeacherId ?? c.ownerId ?? null,
-              t2:
-                c.coverage[r]?.secondaryTeacherId ??
-                (c.coverage[r]?.secondaryCleared ? null : c.cosponsorId ?? null),
-              t2Cleared: c.coverage[r]?.secondaryCleared ?? false,
-            },
-          ])
-        ),
-      ])
-    )
+    Object.fromEntries(clubs.map((c) => [c.sessionId, { ...c.assignments }]))
   );
 
   const [saveStatus, setSaveStatus] = useState<SaveStatuses>(() =>

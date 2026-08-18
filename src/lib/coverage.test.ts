@@ -3,6 +3,7 @@ import {
   resolveSessionCoverage,
   resolveSessionTeacherIds,
   rotationsExpectingTeacher,
+  sessionRef,
   type CoverageRow,
 } from "./coverage";
 
@@ -31,7 +32,7 @@ describe("resolveSessionCoverage", () => {
   it("falls back to the owner as T1 and the cosponsor as T2 when nothing is assigned", () => {
     // The common case: coverage rows are only created when an admin touches the
     // Coverage page, so most sessions have none at all.
-    expect(resolveSessionCoverage(club, [], "FLEX_1")).toEqual({
+    expect(resolveSessionCoverage(club, [], "FLEX_1", [])).toEqual({
       primaryTeacherId: "owner",
       secondaryTeacherId: "cosponsor",
     });
@@ -39,24 +40,24 @@ describe("resolveSessionCoverage", () => {
 
   it("lets an explicit assignment win over both fallbacks", () => {
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", "sub1", "sub2")], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", "sub1", "sub2")], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "sub1", secondaryTeacherId: "sub2" });
   });
 
   it("keeps the cosponsor as T2 when only T1 was reassigned", () => {
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null)], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null)], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "sub1", secondaryTeacherId: "cosponsor" });
   });
 
   it("keeps the owner as T1 when only T2 was reassigned", () => {
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2")], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2")], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "owner", secondaryTeacherId: "sub2" });
   });
 
   it("leaves T2 empty for a club with no cosponsor", () => {
-    expect(resolveSessionCoverage(clubNoCosponsor, [], "FLEX_2")).toEqual({
+    expect(resolveSessionCoverage(clubNoCosponsor, [], "FLEX_2", [])).toEqual({
       primaryTeacherId: "owner",
       secondaryTeacherId: null,
     });
@@ -64,26 +65,26 @@ describe("resolveSessionCoverage", () => {
 
   it("only applies a row to its own rotation", () => {
     const rows = [row("FLEX_1", "sub1", "sub2")];
-    expect(resolveSessionCoverage(club, rows, "FLEX_2")).toEqual({
+    expect(resolveSessionCoverage(club, rows, "FLEX_2", [])).toEqual({
       primaryTeacherId: "owner",
       secondaryTeacherId: "cosponsor",
     });
   });
 
   it("has no fallback for a one-off session, which has no club", () => {
-    expect(resolveSessionCoverage(null, [], "FLEX_1")).toEqual({
+    expect(resolveSessionCoverage(null, [], "FLEX_1", [])).toEqual({
       primaryTeacherId: null,
       secondaryTeacherId: null,
     });
     expect(
-      resolveSessionCoverage(null, [row("FLEX_1", "teacher", null)], "FLEX_1")
+      resolveSessionCoverage(null, [row("FLEX_1", "teacher", null)], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "teacher", secondaryTeacherId: null });
   });
 });
 
 describe("resolveSessionTeacherIds", () => {
   it("includes the cosponsor, so they land on the calendar invite", () => {
-    const ids = resolveSessionTeacherIds(club, [], ["FLEX_1"]);
+    const ids = resolveSessionTeacherIds(club, [], ["FLEX_1"], []);
     expect([...ids].sort()).toEqual(["cosponsor", "owner"]);
   });
 
@@ -94,7 +95,7 @@ describe("resolveSessionTeacherIds", () => {
       "FLEX_1",
       "FLEX_2",
       "FLEX_3",
-    ]);
+    ], []);
     expect([...ids].sort()).toEqual(["cosponsor", "owner", "sub1", "sub2"]);
   });
 
@@ -103,12 +104,12 @@ describe("resolveSessionTeacherIds", () => {
       "FLEX_1",
       "FLEX_2",
       "FLEX_3",
-    ]);
+    ], []);
     expect(ids.size).toBe(2);
   });
 
   it("is empty for a one-off session with no assigned coverage", () => {
-    expect(resolveSessionTeacherIds(null, [], ["FLEX_1"]).size).toBe(0);
+    expect(resolveSessionTeacherIds(null, [], ["FLEX_1"], []).size).toBe(0);
   });
 
   it("excludes an absent teacher, so they aren't invited", () => {
@@ -163,7 +164,7 @@ describe("resolveSessionCoverage with absences", () => {
 
   it("resolves T1 to null for a club with no owner", () => {
     expect(
-      resolveSessionCoverage({ ownerId: null, cosponsorId: null }, [], "FLEX_1")
+      resolveSessionCoverage({ ownerId: null, cosponsorId: null }, [], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: null, secondaryTeacherId: null });
   });
 
@@ -172,7 +173,7 @@ describe("resolveSessionCoverage with absences", () => {
       resolveSessionCoverage(
         { ownerId: null, cosponsorId: null },
         [row("FLEX_1", "rotating", null)],
-        "FLEX_1"
+        "FLEX_1", []
       ).primaryTeacherId
     ).toBe("rotating");
   });
@@ -184,14 +185,14 @@ describe("resolveSessionCoverage with a cleared T2", () => {
     // needs no second teacher. Writing a null secondary alone was not enough —
     // the cosponsor fallback simply re-derived them.
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", null, null, true)], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", null, null, true)], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "owner", secondaryTeacherId: null });
   });
 
   it("keeps the cosponsor fallback when the flag is false", () => {
     // No regression: a null secondary without the flag still means "not set".
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", null, null, false)], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", null, null, false)], "FLEX_1", [])
         .secondaryTeacherId
     ).toBe("cosponsor");
   });
@@ -201,7 +202,7 @@ describe("resolveSessionCoverage with a cleared T2", () => {
     // rows are upserted per field, so assigning T1 leaves a null secondary behind
     // that must keep meaning "not set".
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null)], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null)], "FLEX_1", [])
     ).toEqual({ primaryTeacherId: "sub1", secondaryTeacherId: "cosponsor" });
   });
 
@@ -209,7 +210,7 @@ describe("resolveSessionCoverage with a cleared T2", () => {
     // Shouldn't co-occur, but if both are set the named teacher is the more
     // specific intent.
     expect(
-      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2", true)], "FLEX_1")
+      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2", true)], "FLEX_1", [])
         .secondaryTeacherId
     ).toBe("sub2");
   });
@@ -217,10 +218,10 @@ describe("resolveSessionCoverage with a cleared T2", () => {
   it("only clears the rotation whose row carries the flag", () => {
     const rows = [row("FLEX_1", null, null, true)];
     expect(
-      resolveSessionCoverage(club, rows, "FLEX_1").secondaryTeacherId
+      resolveSessionCoverage(club, rows, "FLEX_1", []).secondaryTeacherId
     ).toBeNull();
     expect(
-      resolveSessionCoverage(club, rows, "FLEX_2").secondaryTeacherId
+      resolveSessionCoverage(club, rows, "FLEX_2", []).secondaryTeacherId
     ).toBe("cosponsor");
   });
 
@@ -228,7 +229,7 @@ describe("resolveSessionCoverage with a cleared T2", () => {
     const ids = resolveSessionTeacherIds(
       club,
       [row("FLEX_1", null, null, true)],
-      ["FLEX_1"]
+      ["FLEX_1"], []
     );
     expect([...ids]).toEqual(["owner"]);
   });
@@ -236,7 +237,7 @@ describe("resolveSessionCoverage with a cleared T2", () => {
   it("treats an absent row's flag as false when omitted", () => {
     // CoverageRow.secondaryCleared is optional for callers that don't select it.
     expect(
-      resolveSessionCoverage(club, [], "FLEX_1").secondaryTeacherId
+      resolveSessionCoverage(club, [], "FLEX_1", []).secondaryTeacherId
     ).toBe("cosponsor");
   });
 });
@@ -277,5 +278,75 @@ describe("rotationsExpectingTeacher", () => {
     expect(
       rotationsExpectingTeacher(club, [], ["FLEX_1"], [], "stranger")
     ).toEqual([]);
+  });
+});
+
+describe("one-off sessions", () => {
+  // A one-off has no club, so before this its creator was never anybody's
+  // resolved teacher: the session was filtered off the Coverage page entirely,
+  // and a teacher running one opposite their own club got no clash warning.
+  const oneOff = sessionRef({ club: null, oneOffOwnerId: "creator" });
+
+  it("treats the creator as the implicit primary teacher", () => {
+    expect(resolveSessionCoverage(oneOff, [], "FLEX_1", [])).toEqual({
+      primaryTeacherId: "creator",
+      secondaryTeacherId: null,
+    });
+  });
+
+  it("counts the creator for double-booking detection", () => {
+    expect(
+      rotationsExpectingTeacher(oneOff, [], ["FLEX_2"], [], "creator")
+    ).toEqual(["FLEX_2"]);
+  });
+
+  it("drops the creator when they mark themselves absent", () => {
+    expect(
+      resolveSessionCoverage(oneOff, [], "FLEX_1", [
+        { teacherId: "creator", rotation: "FLEX_1" },
+      ]).primaryTeacherId
+    ).toBeNull();
+  });
+
+  it("lets an assigned substitute override the creator", () => {
+    expect(
+      resolveSessionCoverage(oneOff, [row("FLEX_1", "sub1", null)], "FLEX_1", [])
+        .primaryTeacherId
+    ).toBe("sub1");
+  });
+
+  it("puts the creator on the calendar invite", () => {
+    expect([...resolveSessionTeacherIds(oneOff, [], ["FLEX_1"], [])]).toEqual([
+      "creator",
+    ]);
+  });
+});
+
+describe("sessionRef", () => {
+  it("prefers a club owner over a one-off owner", () => {
+    // Both are never set at once, but the club is the more specific source.
+    const ref = sessionRef({
+      club: { ownerId: "owner", cosponsorId: "cosponsor" },
+      oneOffOwnerId: "creator",
+    });
+    expect(resolveSessionCoverage(ref, [], "FLEX_1", [])).toEqual({
+      primaryTeacherId: "owner",
+      secondaryTeacherId: "cosponsor",
+    });
+  });
+
+  it("yields no defaults for a club with no owner and no one-off owner", () => {
+    const ref = sessionRef({ club: { ownerId: null }, oneOffOwnerId: null });
+    expect(resolveSessionCoverage(ref, [], "FLEX_1", [])).toEqual({
+      primaryTeacherId: null,
+      secondaryTeacherId: null,
+    });
+  });
+
+  it("falls through to the one-off owner when the club is absent", () => {
+    const ref = sessionRef({ oneOffOwnerId: "creator" });
+    expect(resolveSessionCoverage(ref, [], "FLEX_3", []).primaryTeacherId).toBe(
+      "creator"
+    );
   });
 });

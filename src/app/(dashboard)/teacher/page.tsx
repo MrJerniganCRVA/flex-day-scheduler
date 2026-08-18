@@ -6,7 +6,12 @@ import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import RotationClashNotice from "@/components/sessions/RotationClashNotice";
-import { rotationsExpectingTeacher } from "@/lib/coverage";
+import {
+  SESSION_ABSENCE_SELECT,
+  SESSION_COVERAGE_SELECT,
+  rotationsExpectingTeacher,
+  sessionRef,
+} from "@/lib/coverage";
 
 export default async function TeacherDashboard() {
   const session = await auth();
@@ -49,15 +54,8 @@ export default async function TeacherDashboard() {
               cosponsorId: true,
             },
           },
-          rotationCoverage: {
-            select: {
-              rotation: true,
-              primaryTeacherId: true,
-              secondaryTeacherId: true,
-              secondaryCleared: true,
-            },
-          },
-          teacherAbsences: { select: { teacherId: true, rotation: true } },
+          rotationCoverage: { select: SESSION_COVERAGE_SELECT },
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
           signups: {
             select: {
               id: true,
@@ -82,7 +80,7 @@ export default async function TeacherDashboard() {
    */
   const expectedRotations = (cs: TeacherSession) =>
     rotationsExpectingTeacher(
-      cs.club,
+      sessionRef(cs),
       cs.rotationCoverage,
       cs.rotations,
       cs.teacherAbsences,

@@ -2,8 +2,18 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import CoverageDashboard from "@/components/admin/CoverageDashboard";
-import type { CoverageClub, CoverageTeacher } from "@/components/admin/CoverageDashboard";
+import type {
+  CoverageClub,
+  CoverageTeacher,
+  ResolvedAssignment,
+} from "@/components/admin/CoverageDashboard";
 import type { RotationSlot } from "@prisma/client";
+import {
+  SESSION_ABSENCE_SELECT,
+  SESSION_COVERAGE_SELECT,
+  resolveSessionCoverage,
+  sessionRef,
+} from "@/lib/coverage";
 
 export default async function AdminCoveragePage() {
   const session = await auth();
@@ -29,15 +39,12 @@ export default async function AdminCoveragePage() {
               teachers: { select: { teacherId: true } },
             },
           },
+          oneOffOwner: { select: { name: true } },
           _count: { select: { signups: true } },
-          rotationCoverage: {
-            select: {
-              rotation: true,
-              primaryTeacherId: true,
-              secondaryTeacherId: true,
-              secondaryCleared: true,
-            },
-          },
+          rotationCoverage: { select: SESSION_COVERAGE_SELECT },
+          // Without these, a teacher who has stepped back still showed here as
+          // covering the session — on the one screen an admin uses to find gaps.
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
         },
       },
     },
@@ -67,45 +74,45 @@ export default async function AdminCoveragePage() {
     );
   }
 
-  const clubs: CoverageClub[] = nextFlexDay.clubSessions
-    .filter((cs) => cs.club !== null)
-    .map((cs) => ({
-    sessionId: cs.id,
-    clubId: cs.club!.id,
-    name: cs.club!.name,
-    // Null for a club with no permanent teacher — T1 then resolves to nothing
-    // and the session shows as needing coverage, which is correct.
-    ownerId: cs.club!.ownerId,
-    ownerName: cs.club!.owner?.name ?? null,
-    // A club's cosponsor is its default second teacher. Without this the
-    // cosponsor never appeared as T2, showed as fully free (so they could be
-    // double-booked into another club in the same rotation), and never received
-    // the calendar invite for a club they co-run.
-    cosponsorId: cs.club!.cosponsorId,
-    cosponsorName: cs.club!.cosponsor?.name ?? null,
-    poolTeacherIds: cs.club!.teachers.map((t) => t.teacherId),
-    rotations: cs.rotations,
-    studentCount: cs._count.signups,
-    coverage: Object.fromEntries(
-      cs.rotationCoverage.map((rc) => [
-        rc.rotation,
-        {
-          primaryTeacherId: rc.primaryTeacherId,
-          secondaryTeacherId: rc.secondaryTeacherId,
-          secondaryCleared: rc.secondaryCleared,
-        },
-      ])
-    ) as Partial<
-      Record<
-        RotationSlot,
-        {
-          primaryTeacherId: string | null;
-          secondaryTeacherId: string | null;
-          secondaryCleared: boolean;
-        }
-      >
-    >,
-  }));
+  // Coverage is resolved here, on the server, through the same function finalize
+  // and the teacher dashboard use. It used to be re-derived inside the client
+  // component from owner/cosponsor fallbacks, which is why absences never showed
+  // up on this page: the copy never learned about them. One implementation only.
+  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => {
+    const ref = sessionRef(cs);
+    const assignments = Object.fromEntries(
+      cs.rotations.map((rotation) => {
+        const resolved = resolveSessionCoverage(
+          ref,
+          cs.rotationCoverage,
+          rotation,
+          cs.teacherAbsences
+        );
+        const row = cs.rotationCoverage.find((r) => r.rotation === rotation);
+        return [
+          rotation,
+          {
+            t1: resolved.primaryTeacherId,
+            t2: resolved.secondaryTeacherId,
+            t2Cleared: row?.secondaryCleared ?? false,
+          } satisfies ResolvedAssignment,
+        ];
+      })
+    ) as Partial<Record<RotationSlot, ResolvedAssignment>>;
+
+    return {
+      sessionId: cs.id,
+      // One-off sessions have no club; they are still real sessions in real rooms
+      // whose teacher can be absent or double-booked, so they belong here.
+      name: cs.title ?? cs.club?.name ?? "Session",
+      // Only used to label the "fall back to the cosponsor" option.
+      cosponsorName: cs.club?.cosponsor?.name ?? null,
+      poolTeacherIds: cs.club?.teachers.map((t) => t.teacherId) ?? [],
+      rotations: cs.rotations,
+      studentCount: cs._count.signups,
+      assignments,
+    };
+  });
 
   const flexDayLabel = nextFlexDay.label
     ? nextFlexDay.label

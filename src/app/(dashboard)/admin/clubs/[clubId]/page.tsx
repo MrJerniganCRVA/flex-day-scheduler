@@ -23,6 +23,7 @@ export default async function AdminClubDetailPage({
     include: {
       owner: { select: { id: true, name: true, email: true } },
       cosponsor: { select: { id: true, name: true, email: true } },
+      teachers: { include: { teacher: { select: { id: true, name: true } } } },
       clubSessions: {
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
@@ -69,6 +70,14 @@ export default async function AdminClubDetailPage({
                 Cosponsor:{" "}
                 <span className="text-gray-600 dark:text-gray-300 font-medium">
                   {club.cosponsor.name}
+                </span>
+              </span>
+            )}
+            {club.teachers.length > 0 && (
+              <span>
+                Rotating teachers:{" "}
+                <span className="text-gray-600 dark:text-gray-300 font-medium">
+                  {club.teachers.map((t) => t.teacher.name).join(", ")}
                 </span>
               </span>
             )}
