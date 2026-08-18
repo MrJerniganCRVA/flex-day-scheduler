@@ -8,7 +8,12 @@ import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
-import { resolveSessionCoverage } from "@/lib/coverage";
+import {
+  SESSION_ABSENCE_SELECT,
+  SESSION_COVERAGE_SELECT,
+  resolveSessionCoverage,
+  sessionRef,
+} from "@/lib/coverage";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -37,15 +42,8 @@ export default async function AdminFlexDayDetailPage({
               cosponsorId: true,
             },
           },
-          rotationCoverage: {
-            select: {
-              rotation: true,
-              primaryTeacherId: true,
-              secondaryTeacherId: true,
-              secondaryCleared: true,
-            },
-          },
-          teacherAbsences: { select: { teacherId: true, rotation: true } },
+          rotationCoverage: { select: SESSION_COVERAGE_SELECT },
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
           oneOffOwner: { select: { name: true } },
           signups: {
             select: {
@@ -82,7 +80,7 @@ export default async function AdminFlexDayDetailPage({
     cs.rotations.filter(
       (rotation) =>
         resolveSessionCoverage(
-          cs.club,
+          sessionRef(cs),
           cs.rotationCoverage,
           rotation,
           cs.teacherAbsences
@@ -103,13 +101,16 @@ export default async function AdminFlexDayDetailPage({
   }));
 
   // Roster overrides made after invites went out, newest first.
-  const auditEntries = flexDay.isFinalized
-    ? await prisma.signupAudit.findMany({
-        where: { flexDayId: flexDay.id },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      })
-    : [];
+  //
+  // Loaded regardless of isFinalized: this was previously gated on the day still
+  // being finalized, so unfinalizing a day hid the record of who moved whom and
+  // why — the one question the audit trail exists to answer, asked precisely when
+  // someone is re-examining the day.
+  const auditEntries = await prisma.signupAudit.findMany({
+    where: { flexDayId: flexDay.id },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
 
   const tabs = [
     { key: "sessions", label: "Sessions" },

@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import FlexDaySessionGroup from "@/components/sessions/FlexDaySessionGroup";
 import { isClubManager } from "@/lib/auth-helpers";
+import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 
 export default async function ClubDetailPage({
@@ -24,13 +25,14 @@ export default async function ClubDetailPage({
     include: {
       owner: { select: { id: true, name: true } },
       cosponsor: { select: { id: true, name: true } },
+      teachers: { include: { teacher: { select: { id: true, name: true } } } },
       defaultRoom: { select: { id: true, name: true } },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
           _count: { select: { signups: true } },
-          teacherAbsences: { select: { teacherId: true } },
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
           signups: {
             include: {
               student: { select: { id: true, name: true, email: true } },
@@ -61,6 +63,12 @@ export default async function ClubDetailPage({
             <span>Capacity: {club.maxCapacity}</span>
             <span>Owner: {club.owner?.name ?? "None (admin-managed)"}</span>
             {club.cosponsor && <span>Cosponsor: {club.cosponsor.name}</span>}
+            {club.teachers.length > 0 && (
+              <span>
+                Rotating:{" "}
+                {club.teachers.map((t) => t.teacher.name).join(", ")}
+              </span>
+            )}
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
             ) : (
@@ -97,10 +105,14 @@ export default async function ClubDetailPage({
                 enrollmentCount: cs._count.signups,
                 maxCapacity: club.maxCapacity,
                 capacityOverride: cs.capacityOverride,
-                // Whether *this* teacher has stepped back from the session, not
-                // whether the session lacks a teacher generally.
-                teacherAbsent: cs.teacherAbsences.some(
-                  (a) => a.teacherId === session.user.id
+                // Whether *this* teacher has stepped back from every rotation the
+                // session covers. Checking "any rotation" would mark a linked
+                // session absent when they had only stepped back from one of its
+                // three, which reads as far more than they actually said.
+                teacherAbsent: cs.rotations.every((r) =>
+                  cs.teacherAbsences.some(
+                    (a) => a.teacherId === session.user.id && a.rotation === r
+                  )
                 ),
                 roomOverrideId: cs.roomOverrideId,
                 defaultRoomName: club.defaultRoom?.name ?? null,

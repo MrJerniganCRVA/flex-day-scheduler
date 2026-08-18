@@ -4,7 +4,12 @@ import prisma from "@/lib/prisma";
 import { bulkAttendanceSchema } from "@/lib/validations";
 import { getSchoolWeekWindow } from "@/lib/flex-day-utils";
 import { canRecordAttendance } from "@/lib/auth-helpers";
-import { resolveSessionTeacherIds } from "@/lib/coverage";
+import {
+  SESSION_ABSENCE_SELECT,
+  SESSION_COVERAGE_SELECT,
+  resolveSessionTeacherIds,
+  sessionRef,
+} from "@/lib/coverage";
 
 export async function PUT(
   req: NextRequest,
@@ -33,15 +38,8 @@ export async function PUT(
       flexDay: { select: { date: true } },
       club: { select: { ownerId: true, cosponsorId: true } },
       oneOffOwnerId: true,
-      rotationCoverage: {
-        select: {
-          rotation: true,
-          primaryTeacherId: true,
-          secondaryTeacherId: true,
-          secondaryCleared: true,
-        },
-      },
-      teacherAbsences: { select: { teacherId: true, rotation: true } },
+      rotationCoverage: { select: SESSION_COVERAGE_SELECT },
+      teacherAbsences: { select: SESSION_ABSENCE_SELECT },
     },
   });
 
@@ -54,7 +52,7 @@ export async function PUT(
   // session they were covering — and for a club with no owner, the assigned
   // coverage teacher is the only person who can.
   const coverageTeacherIds = resolveSessionTeacherIds(
-    clubSession.club,
+    sessionRef(clubSession),
     clubSession.rotationCoverage,
     clubSession.rotations,
     clubSession.teacherAbsences

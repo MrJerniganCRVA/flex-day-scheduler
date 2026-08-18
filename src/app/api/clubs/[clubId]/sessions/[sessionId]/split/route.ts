@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createEventForSession, deleteEvent } from "@/lib/google-calendar";
-import { resolveSessionTeacherIds } from "@/lib/coverage";
+import { resolveSessionTeacherIds, sessionRef } from "@/lib/coverage";
 
 export async function POST(
   _req: NextRequest,
@@ -60,6 +60,7 @@ export async function POST(
   }
 
   const club = original.club;
+  const ref = sessionRef(original);
   const rotationCoverage = original.rotationCoverage;
   const teacherAbsences = original.teacherAbsences;
   const rotations = original.rotations;
@@ -95,7 +96,7 @@ export async function POST(
   // session dropped its cosponsor from the resulting calendar events.
   function attendeeEmailsForRotation(rotation: (typeof rotations)[number]) {
     const teacherIds = resolveSessionTeacherIds(
-      club,
+      ref,
       rotationCoverage,
       [rotation],
       teacherAbsences

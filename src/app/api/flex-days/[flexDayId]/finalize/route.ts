@@ -7,7 +7,12 @@ import {
   shareCalendarWithTeacher,
   syncEventAttendees,
 } from "@/lib/google-calendar";
-import { resolveSessionTeacherIds } from "@/lib/coverage";
+import {
+  SESSION_ABSENCE_SELECT,
+  SESSION_COVERAGE_SELECT,
+  resolveSessionTeacherIds,
+  sessionRef,
+} from "@/lib/coverage";
 
 /** Why a session could not be synced, for the admin-facing report. */
 type SkipReason = "club-calendar-missing" | "one-off-calendar-unavailable";
@@ -61,20 +66,11 @@ export async function POST(
           },
           oneOffOwner: { select: { id: true, email: true } },
           roomOverride: { select: { name: true } },
-          rotationCoverage: {
-            select: {
-              rotation: true,
-              primaryTeacherId: true,
-              secondaryTeacherId: true,
-              secondaryCleared: true,
-            },
-          },
+          rotationCoverage: { select: SESSION_COVERAGE_SELECT },
           // A teacher who has stepped back from this session must not be invited
           // to it, even when they are the club's owner and therefore the implicit
           // default.
-          teacherAbsences: {
-            select: { teacherId: true, rotation: true },
-          },
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -218,7 +214,7 @@ export async function POST(
         // Teachers expected in the room: explicit coverage, else the club's
         // owner/cosponsor. One-off sessions fall back to their creator.
         const teacherIds = resolveSessionTeacherIds(
-          cs.club,
+          sessionRef(cs),
           cs.rotationCoverage,
           cs.rotations,
           cs.teacherAbsences

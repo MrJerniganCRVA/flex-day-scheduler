@@ -7,28 +7,58 @@ import type { RotationSlot } from "@prisma/client";
  * created lazily — only when an admin actually touches the Coverage page. So for
  * most sessions there is no row at all, and the teachers have to be *derived*:
  *
- *   T1 = explicit primary   ?? the club's owner
+ *   T1 = explicit primary   ?? the club's owner  ?? the one-off's creator
  *   T2 = explicit secondary ?? the club's cosponsor
  *
- * The T1 fallback already existed (inline in CoverageDashboard). The T2 fallback
- * did not, which is why a cosponsor never appeared on the Coverage page and —
- * worse — never received the calendar invite for a club they co-run.
+ * Then absences are subtracted, and `secondaryCleared` suppresses the T2 fallback.
  *
- * This lives in one module because three call sites need the same answer: the
- * Coverage page, the CoverageDashboard client component, and finalize's attendee
- * list. Duplicating the `??` chain is exactly how the roster an admin *sees*
- * drifts from the roster that actually gets *invited*.
+ * **Every surface must go through this module.** That is not a style preference:
+ * the Coverage page used to re-derive T1/T2 inline, and when absences were added
+ * here it silently kept showing teachers who had stepped back — on the very screen
+ * an admin uses to find sessions needing cover. Two implementations means one of
+ * them is quietly wrong.
+ *
+ * Two deliberate choices guard that:
+ *
+ *  - `secondaryCleared` and `absences` are **required**, not optional. Both were
+ *    optional once, and that is exactly what let a query forget a column and still
+ *    typecheck while producing a different answer from the rest of the app. A
+ *    caller with genuinely no absences passes `[]`, which reads as a decision.
+ *  - The Prisma `select` fragments below are exported so no screen hand-rolls its
+ *    own. Adding a column here reaches every reader at once.
  *
  * Deliberately a derivation, not stored data. Writing `secondaryTeacherId =
  * cosponsorId` into the coverage rows would go stale the moment a club's
  * cosponsor changed — which is the bug this fixes, reintroduced.
  */
 
-export type CoverageClubRef = {
+/**
+ * Everything about a session that feeds the defaults. Clubs contribute an owner
+ * and cosponsor; one-off sessions contribute their creator, who is the teacher
+ * standing in that room just as surely as a club's owner is.
+ */
+export type CoverageSessionRef = {
   /** Null for a club with no owner — see the note on Club.ownerId in the schema. */
   ownerId: string | null;
   cosponsorId?: string | null;
+  /** Set only for one-off sessions, which have no club. */
+  oneOffOwnerId?: string | null;
 };
+
+/**
+ * Build a session ref from a row shaped like `{ club, oneOffOwnerId }` — the shape
+ * every query already produces, so call sites stay one line.
+ */
+export function sessionRef(session: {
+  club?: { ownerId: string | null; cosponsorId?: string | null } | null;
+  oneOffOwnerId?: string | null;
+}): CoverageSessionRef {
+  return {
+    ownerId: session.club?.ownerId ?? null,
+    cosponsorId: session.club?.cosponsorId ?? null,
+    oneOffOwnerId: session.oneOffOwnerId ?? null,
+  };
+}
 
 export type CoverageRow = {
   rotation: RotationSlot;
@@ -36,10 +66,10 @@ export type CoverageRow = {
   secondaryTeacherId: string | null;
   /**
    * The admin explicitly decided this rotation needs no second teacher, which
-   * suppresses the cosponsor fallback. Optional so callers that genuinely don't
-   * care (and older fixtures) don't have to select it; absent behaves as false.
+   * suppresses the cosponsor fallback. Required: a query that omits it would
+   * otherwise compile and silently re-derive a cosponsor the admin removed.
    */
-  secondaryCleared?: boolean;
+  secondaryCleared: boolean;
 };
 
 /** A teacher who won't attend, for one rotation of one session. */
@@ -54,39 +84,46 @@ export type ResolvedCoverage = {
 };
 
 /**
+ * Prisma `select` for a session's coverage rows. Spread this rather than listing
+ * columns by hand — it is what keeps `CoverageRow` satisfiable everywhere.
+ */
+export const SESSION_COVERAGE_SELECT = {
+  rotation: true,
+  primaryTeacherId: true,
+  secondaryTeacherId: true,
+  secondaryCleared: true,
+} as const;
+
+/** Prisma `select` for a session's teacher absences. */
+export const SESSION_ABSENCE_SELECT = {
+  teacherId: true,
+  rotation: true,
+} as const;
+
+/**
  * Effective T1/T2 for one rotation of one session.
  *
- * `club` is null for one-off sessions — they have no owner or cosponsor to fall
- * back to, so only an explicit assignment counts. A club with no owner behaves
- * the same way for T1.
- *
- * `secondaryCleared` suppresses the cosponsor fallback, which is the only way to
- * express "this rotation needs no second teacher" on a club that has one. It is a
- * stored flag rather than an inference from a null secondary because rows are
- * upserted per field: assigning T1 leaves a null secondary behind that has to keep
- * meaning "not set".
- *
- * Absences are subtracted *after* the fallbacks, which is the whole reason they
- * are stored explicitly: the absent teacher is frequently the club's owner, so
- * removing their coverage row would achieve nothing — the fallback would name
- * them again. An absent teacher resolves to null, which the admin Coverage page
- * already surfaces as needing cover.
+ * With no explicit assignment, T1 falls back to the club's owner, or for a one-off
+ * session to its creator. A club with no owner and no assignment resolves to null,
+ * which the Coverage page surfaces as needing cover.
  */
 export function resolveSessionCoverage(
-  club: CoverageClubRef | null | undefined,
+  session: CoverageSessionRef | null | undefined,
   rows: CoverageRow[],
   rotation: RotationSlot,
-  absences: AbsenceRow[] = []
+  absences: AbsenceRow[]
 ): ResolvedCoverage {
   const row = rows.find((r) => r.rotation === rotation);
   const absent = new Set(
     absences.filter((a) => a.rotation === rotation).map((a) => a.teacherId)
   );
 
-  const primary = row?.primaryTeacherId ?? club?.ownerId ?? null;
+  const primaryDefault = session?.ownerId ?? session?.oneOffOwnerId ?? null;
+  const primary = row?.primaryTeacherId ?? primaryDefault;
+
   const secondaryDefault = row?.secondaryCleared
     ? null
-    : (club?.cosponsorId ?? null);
+    : (session?.cosponsorId ?? null);
   const secondary = row?.secondaryTeacherId ?? secondaryDefault;
 
   return {
@@ -103,15 +140,15 @@ export function resolveSessionCoverage(
  * rotation, so this unions across all of them.
  */
 export function resolveSessionTeacherIds(
-  club: CoverageClubRef | null | undefined,
+  session: CoverageSessionRef | null | undefined,
   rows: CoverageRow[],
   rotations: RotationSlot[],
-  absences: AbsenceRow[] = []
+  absences: AbsenceRow[]
 ): Set<string> {
   const ids = new Set<string>();
   for (const rotation of rotations) {
     const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
-      club,
+      session,
       rows,
       rotation,
       absences
@@ -126,10 +163,12 @@ export function resolveSessionTeacherIds(
  * Rotations of this session where `teacherId` is expected to be present.
  *
  * Used by the teacher dashboard to detect double-booking: a teacher expected in
- * the same rotation by two different sessions cannot attend both.
+ * the same rotation by two different sessions cannot attend both. Because the
+ * defaults above include a one-off's creator, running a one-off opposite your own
+ * club now registers as a clash — it previously did not.
  */
 export function rotationsExpectingTeacher(
-  club: CoverageClubRef | null | undefined,
+  session: CoverageSessionRef | null | undefined,
   rows: CoverageRow[],
   rotations: RotationSlot[],
   absences: AbsenceRow[],
@@ -137,7 +176,7 @@ export function rotationsExpectingTeacher(
 ): RotationSlot[] {
   return rotations.filter((rotation) => {
     const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
-      club,
+      session,
       rows,
       rotation,
       absences
