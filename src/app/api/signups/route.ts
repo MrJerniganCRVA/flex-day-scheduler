@@ -4,6 +4,12 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { createSignupSchema } from "@/lib/validations";
 import { isPastSignupDeadline } from "@/lib/flex-day-utils";
+import {
+  MAX_TX_ATTEMPTS,
+  conflictBackoffMs,
+  isSerializationConflict,
+  sleep,
+} from "@/lib/tx-retry";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -33,10 +39,10 @@ export async function POST(request: NextRequest) {
   // Capacity/rotation checks are check-then-write, so run the transaction at
   // Serializable isolation to prevent two concurrent signups from both
   // reading "under capacity" and both committing (overbooking). Postgres
-  // aborts the losing side with a P2034 write-conflict error, which we
-  // retry a couple of times before giving up.
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  // aborts the losing side with a serialization failure, which we retry with
+  // a short randomised backoff before giving up — see src/lib/tx-retry.ts for
+  // why recognising that failure takes more than a P2034 check.
+  for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt++) {
     try {
       const signup = await prisma.$transaction(
         async (tx) => {
@@ -109,13 +115,11 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(signup, { status: 201 });
     } catch (error: unknown) {
-      const isSerializationConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034";
-      if (isSerializationConflict && attempt < MAX_ATTEMPTS) {
-        continue;
-      }
-      if (isSerializationConflict) {
+      if (isSerializationConflict(error)) {
+        if (attempt < MAX_TX_ATTEMPTS) {
+          await sleep(conflictBackoffMs(attempt));
+          continue;
+        }
         return NextResponse.json(
           { error: "This club filled up while processing your request. Please try again." },
           { status: 409 }

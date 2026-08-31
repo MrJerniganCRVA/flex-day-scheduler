@@ -159,6 +159,41 @@ invites**. The admin Clubs page flags such clubs and offers "Retry calendar
 setup". Finalizing a Flex Day reports any session it had to skip for this reason
 rather than reporting success.
 
+## Roster CSV Export (the offline fallback)
+
+Admins can download a Flex Day's full roster as a CSV — from **Export CSV** on
+the Flex Day page, or the **CSV** link in the Flex Days list. It is the
+contingency plan for the app being unavailable on a Flex Day morning: the file
+stands on its own, so staff can direct students from a printout with no app
+involved. Download it once signups close, before the day itself.
+
+Columns, in this fixed order:
+
+| Column | Value |
+|---|---|
+| `student_id` | Local part of the school email (`jdoe27@students.coderva.org` → `jdoe27`) |
+| `email` | Full school email address |
+| `grade_level` | Currently the constant `9` — see below |
+| `F1` / `F2` / `F3` | Name of the club the student is in for that rotation, blank if none |
+
+One row per student who has at least one signup that day, ordered by email so
+two downloads of the same day are diffable. A session spanning several rotations
+fills each of its columns with the same name: a student in Esports for all three
+reads `Esports,Esports,Esports`, not one name and two blanks.
+
+Club names are free text, so the file is RFC 4180 quoted (a club called
+`Drama, "Stage" & Set` survives a round trip) and carries CRLF endings and a
+UTF-8 BOM so Excel opens it correctly.
+
+**`student_id` and `grade_level` are derived, not stored.** Accounts come from
+Google sign-in, which supplies only a name and an email — the app has never held
+a student number or a grade level. The email local part is used as the id
+because it is stable, unique, and is what school systems key on, where the
+internal cuid would be meaningless outside this database. `grade_level` is a
+placeholder constant so the column is present and populated for downstream
+invite tooling. Both are computed in `src/lib/csv-export.ts` and are the two
+things to revisit if the app ever gains real student records.
+
 ## Changing a Roster After Invites Are Sent
 
 Once a Flex Day is finalized, students are past their signup deadline and cannot

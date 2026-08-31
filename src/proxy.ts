@@ -18,8 +18,21 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // All other non-public routes require auth
+  // All other non-public routes require auth.
+  //
+  // API routes get a 401 rather than a redirect. A redirect here is actively
+  // dangerous for the client: `fetch` follows it, /login answers 200 with an
+  // HTML page, and `res.ok` is therefore true — so a student whose session had
+  // expired saw "Signed up! ✓" (and a successful-looking cancel) for a request
+  // that never reached the database. Every /api route already authenticates
+  // itself and returns JSON, so the redirect was never load-bearing there.
   if (!isLoggedIn) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Your session has expired. Please sign in again." },
+        { status: 401 }
+      );
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);

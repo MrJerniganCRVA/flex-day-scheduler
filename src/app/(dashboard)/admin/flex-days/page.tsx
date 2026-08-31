@@ -166,6 +166,14 @@ export default async function AdminFlexDaysPage({
                       >
                         View
                       </Link>
+                      <a
+                        href={`/api/admin/flex-days/${fd.id}/export`}
+                        download
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-medium"
+                        title="Download this Flex Day's signups as a CSV"
+                      >
+                        CSV
+                      </a>
                       <DeleteFlexDayButton
                         flexDayId={fd.id}
                         sessionCount={fd._count.clubSessions}
