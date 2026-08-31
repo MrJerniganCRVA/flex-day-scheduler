@@ -9,6 +9,12 @@ import {
   getOneOffCalendarId,
   removeAttendeeFromEvent,
 } from "@/lib/google-calendar";
+import {
+  MAX_TX_ATTEMPTS,
+  conflictBackoffMs,
+  isSerializationConflict,
+  sleep,
+} from "@/lib/tx-retry";
 
 /**
  * POST /api/admin/roster — admin roster override.
@@ -38,8 +44,6 @@ import {
  * unfinalizing and re-finalizing the whole day, which would re-notify every
  * student on every session over one student's change.
  */
-
-const MAX_ATTEMPTS = 3;
 
 type SessionForOverride = {
   id: string;
@@ -92,7 +96,7 @@ export async function POST(request: NextRequest) {
   const actorId = session.user.id;
   const actorEmail = session.user.email ?? "unknown";
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt++) {
     try {
       const result = await prisma.$transaction(
         async (tx) => {
@@ -273,11 +277,11 @@ export async function POST(request: NextRequest) {
         calendarUpdates: result.calendarOps.length,
       });
     } catch (error: unknown) {
-      const isSerializationConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034";
-      if (isSerializationConflict && attempt < MAX_ATTEMPTS) continue;
-      if (isSerializationConflict) {
+      if (isSerializationConflict(error)) {
+        if (attempt < MAX_TX_ATTEMPTS) {
+          await sleep(conflictBackoffMs(attempt));
+          continue;
+        }
         return NextResponse.json(
           {
             error:

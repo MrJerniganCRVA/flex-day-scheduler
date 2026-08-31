@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { ROTATION_LABELS } from "@/types";
 import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
+import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
 import type { RotationSlot } from "@prisma/client";
@@ -43,7 +44,19 @@ export default async function StudentFlexDayPage({
     },
   });
 
-  if (!flexDay) notFound();
+  // An inactive Flex Day is one an admin has withdrawn. It is absent from every
+  // listing, but this page is addressable by id, so without this check a
+  // bookmarked or shared link still offered a working signup form for a day
+  // that is no longer happening.
+  if (!flexDay || !flexDay.isActive) notFound();
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const upcomingFlexDays = await prisma.flexDay.findMany({
+    where: { isActive: true, date: { gte: today } },
+    orderBy: { date: "asc" },
+    select: { id: true, date: true, label: true },
+  });
 
   const bookedRotations = new Set<RotationSlot>();
   const bookedSessionByRotation = new Map<RotationSlot, string>();
@@ -100,6 +113,8 @@ export default async function StudentFlexDayPage({
       <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
         Select a club for each rotation below.
       </p>
+
+      <FlexDayPicker days={upcomingFlexDays} currentId={flexDay.id} />
 
       <FlexDaySignupView
         sessions={sessions}

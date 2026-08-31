@@ -138,10 +138,37 @@ export default async function AdminFlexDayDetailPage({
             {flexDay.clubSessions.length} sessions · {totalSignups} total signups
           </div>
         </div>
-        <FinalizeButton
-          flexDayId={flexDay.id}
-          isFinalized={flexDay.isFinalized}
-        />
+        <div className="flex items-center gap-3">
+          {/* The offline fallback: whatever happens to the app on the day, this
+              file says which student is in which club for each rotation. */}
+          <a
+            href={`/api/admin/flex-days/${flexDay.id}/export`}
+            download
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            title="Download every signup for this Flex Day as a CSV — the backup if the app is unavailable"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            Export CSV
+          </a>
+          <FinalizeButton
+            flexDayId={flexDay.id}
+            isFinalized={flexDay.isFinalized}
+          />
+        </div>
       </div>
 
       {/* Tab navigation */}

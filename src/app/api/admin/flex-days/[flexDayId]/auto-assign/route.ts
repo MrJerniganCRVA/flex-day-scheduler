@@ -3,6 +3,12 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { RotationSlot } from "@prisma/client";
+import {
+  MAX_TX_ATTEMPTS,
+  conflictBackoffMs,
+  isSerializationConflict,
+  sleep,
+} from "@/lib/tx-retry";
 
 const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
 
@@ -272,8 +278,7 @@ export async function POST(
   // against live data here rather than trusting the client-submitted list.
   // Serializable isolation prevents this from racing a concurrent /api/signups
   // call the same way the regular signup endpoint is protected.
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt++) {
     try {
       const result = await prisma.$transaction(
         async (tx) => {
@@ -302,6 +307,7 @@ export async function POST(
             where: { studentId: { in: studentIds }, clubSession: { flexDayId } },
             select: {
               studentId: true,
+              clubSessionId: true,
               clubSession: { select: { rotations: true } },
             },
           });
@@ -311,6 +317,16 @@ export async function POST(
             for (const r of s.clubSession.rotations as RotationSlot[]) set.add(r);
             occupiedRotations.set(s.studentId, set);
           }
+
+          // Rows that already exist verbatim. Checked up front rather than by
+          // catching the unique-constraint violation from the insert: in
+          // Postgres a failed statement aborts the whole transaction, so
+          // swallowing P2002 and carrying on would leave every subsequent
+          // statement failing with "current transaction is aborted" — turning
+          // one skippable duplicate into a 500 for the entire batch.
+          const alreadySignedUp = new Set(
+            existingSignups.map((s) => `${s.studentId}:${s.clubSessionId}`)
+          );
 
           // Running enrolled counts, seeded from the DB and updated as rows are accepted.
           const enrolledCount = new Map(sessions.map((s) => [s.id, s._count.signups]));
@@ -326,6 +342,10 @@ export async function POST(
             }
             if (!validStudentIds.has(row.studentId)) {
               skipped.push({ ...row, reason: "invalid_student" });
+              continue;
+            }
+            if (alreadySignedUp.has(`${row.studentId}:${row.clubSessionId}`)) {
+              skipped.push({ ...row, reason: "already_signed_up" });
               continue;
             }
 
@@ -348,32 +368,20 @@ export async function POST(
             }
 
             accepted.push(row);
+            alreadySignedUp.add(`${row.studentId}:${row.clubSessionId}`);
             enrolledCount.set(row.clubSessionId, currentCount + 1);
             for (const r of targetSession.rotations as RotationSlot[]) studentOccupied.add(r);
             occupiedRotations.set(row.studentId, studentOccupied);
           }
 
-          let signupsCreated = 0;
           const affectedStudentIds = new Set<string>();
           for (const row of accepted) {
-            try {
-              await tx.signup.create({ data: row });
-              signupsCreated++;
-              affectedStudentIds.add(row.studentId);
-            } catch (err) {
-              if (
-                err instanceof Prisma.PrismaClientKnownRequestError &&
-                err.code === "P2002"
-              ) {
-                skipped.push({ ...row, reason: "already_signed_up" });
-              } else {
-                throw err;
-              }
-            }
+            await tx.signup.create({ data: row });
+            affectedStudentIds.add(row.studentId);
           }
 
           return {
-            signupsCreated,
+            signupsCreated: accepted.length,
             studentsAffected: affectedStudentIds.size,
             skipped,
           };
@@ -383,12 +391,11 @@ export async function POST(
 
       return NextResponse.json(result);
     } catch (error) {
-      const isSerializationConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
-      if (isSerializationConflict && attempt < MAX_ATTEMPTS) {
-        continue;
-      }
-      if (isSerializationConflict) {
+      if (isSerializationConflict(error)) {
+        if (attempt < MAX_TX_ATTEMPTS) {
+          await sleep(conflictBackoffMs(attempt));
+          continue;
+        }
         return NextResponse.json(
           {
             error:

@@ -2,8 +2,9 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
+import { ROTATION_LABELS } from "@/types";
 import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
+import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
 import type { RotationSlot } from "@prisma/client";
@@ -14,6 +15,18 @@ export default async function StudentDashboard() {
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+
+  // Every upcoming day, not just the nearest one.
+  //
+  // The dashboard used to show only the next Flex Day and nothing linked to the
+  // per-day page, so between one day's Friday deadline and the day itself
+  // students were parked on a "Signups closed" screen with no route to the next
+  // Flex Day — whose signups were open the whole time.
+  const upcomingFlexDays = await prisma.flexDay.findMany({
+    where: { isActive: true, date: { gte: today } },
+    orderBy: { date: "asc" },
+    select: { id: true, date: true, label: true },
+  });
 
   // Next upcoming flex day with all club sessions
   const nextFlexDay = await prisma.flexDay.findFirst({
@@ -109,6 +122,8 @@ export default async function StudentDashboard() {
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
         Sign up for clubs for the next Flex Day below.
       </p>
+
+      <FlexDayPicker days={upcomingFlexDays} currentId={nextFlexDay.id} />
 
       {/* Signed-up clubs summary */}
       {mySignups.length > 0 && (

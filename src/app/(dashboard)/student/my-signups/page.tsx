@@ -46,8 +46,10 @@ function SignupTable({
   showAttendance: boolean;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-      <table className="w-full text-sm">
+    // overflow-x-auto, not overflow-hidden: on a phone this table is wider than
+    // the screen, and hiding the overflow simply cut the Cancel button off.
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <table className="w-full text-sm min-w-[34rem]">
         <thead className="bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
           <tr>
             <th className="px-4 py-3 text-left">Date</th>
@@ -84,7 +86,12 @@ function SignupTable({
                   )}
                 </td>
                 <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                  {signup.clubSession.club?.name ?? signup.clubSession.title ?? "Session"}
+                  {/* title first, matching every other display of a session
+                      name in the app — a title only exists on a one-off
+                      session, which has no club, so the two orderings agree
+                      today, but they would diverge the moment a club session
+                      gains a title override. */}
+                  {signup.clubSession.title ?? signup.clubSession.club?.name ?? "Session"}
                 </td>
                 <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                   {signup.clubSession.rotations
