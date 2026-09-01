@@ -111,6 +111,41 @@ export const updateRoomSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+/**
+ * A supervision post that is not a club. `requiredRotations` is the standing
+ * requirement rather than a default, so it may not be empty: a post that needs
+ * staffing in no rotation is a post that does not need to exist, and an empty
+ * array would render as a card with no slots on the Coverage page.
+ */
+export const createDutyPostSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100),
+  location: z.string().trim().max(100).optional(),
+  requiredRotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1, "At least one rotation is required"),
+});
+
+export const updateDutyPostSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100).optional(),
+  location: z.string().trim().max(100).nullable().optional(),
+  requiredRotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1, "At least one rotation is required")
+    .optional(),
+  isActive: z.boolean().optional(),
+});
+
+/**
+ * Staff one rotation of one duty post on one Flex Day. `teacherId: null` clears
+ * it — unambiguous here, because a duty post has no owner to fall back to.
+ */
+export const dutyAssignmentSchema = z.object({
+  dutyPostId: z.string().cuid(),
+  flexDayId: z.string().cuid(),
+  rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]),
+  teacherId: z.string().cuid().nullable(),
+});
+
 export const bulkAttendanceSchema = z.object({
   records: z
     .array(

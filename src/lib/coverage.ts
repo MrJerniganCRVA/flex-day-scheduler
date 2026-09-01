@@ -10,7 +10,9 @@ import type { RotationSlot } from "@prisma/client";
  *   T1 = explicit primary   ?? the club's owner  ?? the one-off's creator
  *   T2 = explicit secondary ?? the club's cosponsor
  *
- * Then absences are subtracted, and `secondaryCleared` suppresses the T2 fallback.
+ * Then absences are subtracted. `primaryCleared` / `secondaryCleared` suppress the
+ * corresponding fallback, which is the only way to say "this slot is deliberately
+ * empty" — a null id alone cannot, because rows are upserted per field.
  *
  * **Every surface must go through this module.** That is not a style preference:
  * the Coverage page used to re-derive T1/T2 inline, and when absences were added
@@ -20,7 +22,7 @@ import type { RotationSlot } from "@prisma/client";
  *
  * Two deliberate choices guard that:
  *
- *  - `secondaryCleared` and `absences` are **required**, not optional. Both were
+ *  - the `*Cleared` flags and `absences` are **required**, not optional. Both were
  *    optional once, and that is exactly what let a query forget a column and still
  *    typecheck while producing a different answer from the rest of the app. A
  *    caller with genuinely no absences passes `[]`, which reads as a decision.
@@ -70,6 +72,13 @@ export type CoverageRow = {
    * otherwise compile and silently re-derive a cosponsor the admin removed.
    */
   secondaryCleared: boolean;
+  /**
+   * The same decision for T1, suppressing the owner fallback. Required for the
+   * same reason — and this one was learned the hard way: without it, clearing T1
+   * saved a null that the fallback immediately overwrote with the club's owner,
+   * so the Coverage page said "Saved" and reverted on reload.
+   */
+  primaryCleared: boolean;
 };
 
 /** A teacher who won't attend, for one rotation of one session. */
@@ -92,6 +101,7 @@ export const SESSION_COVERAGE_SELECT = {
   primaryTeacherId: true,
   secondaryTeacherId: true,
   secondaryCleared: true,
+  primaryCleared: true,
 } as const;
 
 /** Prisma `select` for a session's teacher absences. */
@@ -118,7 +128,9 @@ export function resolveSessionCoverage(
     absences.filter((a) => a.rotation === rotation).map((a) => a.teacherId)
   );
 
-  const primaryDefault = session?.ownerId ?? session?.oneOffOwnerId ?? null;
+  const primaryDefault = row?.primaryCleared
+    ? null
+    : (session?.ownerId ?? session?.oneOffOwnerId ?? null);
   const primary = row?.primaryTeacherId ?? primaryDefault;
 
   const secondaryDefault = row?.secondaryCleared
@@ -183,4 +195,115 @@ export function rotationsExpectingTeacher(
     );
     return primaryTeacherId === teacherId || secondaryTeacherId === teacherId;
   });
+}
+
+/**
+ * One thing a teacher is expected at during a Flex Day.
+ *
+ * Deliberately neutral about *what* it is. A club session supplies its coverage
+ * rows and absences and lets the fallbacks resolve; a duty post supplies an
+ * already-decided teacher and empty rows. Both are places a person has to
+ * physically stand, which is the only property that matters for a clash, so both
+ * go through one function rather than each growing its own comparison.
+ */
+export type ExpectedPlacement = {
+  /** Opaque to this module — a session id, or a duty post + rotation key. */
+  id: string;
+  name: string;
+  rotations: RotationSlot[];
+  session: CoverageSessionRef | null;
+  rows: CoverageRow[];
+  absences: AbsenceRow[];
+};
+
+/** One teacher expected in two or more places during the same rotation. */
+export type TeacherClash = {
+  rotation: RotationSlot;
+  teacherId: string;
+  /** Always two or more, in the order the placements were supplied. */
+  placements: { id: string; name: string }[];
+};
+
+/**
+ * Every teacher double-booked across a Flex Day.
+ *
+ * Nobody can be in two rooms at once, and until this existed no admin was ever
+ * told when that had happened. The teacher's own dashboard has warned them since
+ * clashes were introduced, but it is scoped to the logged-in user, so the one
+ * screen where an admin assigns coverage — and where a clash is most easily
+ * *created* — showed two ordinary green cards with the same name in the same
+ * column.
+ *
+ * The common case needs no dropdown to have been touched at all: a teacher who
+ * owns two clubs is the fallback T1 for both, so scheduling both in one rotation
+ * double-books them silently.
+ *
+ * Absences are subtracted by `resolveSessionCoverage` before they get here, so
+ * marking a teacher "not here" for one placement resolves the clash — which is
+ * what makes that the natural fix to offer beside the warning.
+ */
+export function findTeacherClashes(
+  placements: ExpectedPlacement[],
+  rotations: RotationSlot[]
+): TeacherClash[] {
+  const clashes: TeacherClash[] = [];
+
+  for (const rotation of rotations) {
+    // teacherId -> the placements expecting them this rotation.
+    const expecting = new Map<string, { id: string; name: string }[]>();
+
+    for (const placement of placements) {
+      if (!placement.rotations.includes(rotation)) continue;
+
+      const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
+        placement.session,
+        placement.rows,
+        rotation,
+        placement.absences
+      );
+
+      // A teacher filling both slots of one placement is standing in one room,
+      // so dedupe within a placement before counting.
+      for (const teacherId of new Set(
+        [primaryTeacherId, secondaryTeacherId].filter(
+          (id): id is string => id !== null
+        )
+      )) {
+        const list = expecting.get(teacherId) ?? [];
+        list.push({ id: placement.id, name: placement.name });
+        expecting.set(teacherId, list);
+      }
+    }
+
+    for (const [teacherId, involved] of expecting) {
+      if (involved.length > 1) {
+        clashes.push({ rotation, teacherId, placements: involved });
+      }
+    }
+  }
+
+  return clashes;
+}
+
+/**
+ * Adapt a club session row to a placement. Keeps the mapping in one place, since
+ * both the admin Coverage page and the teacher dashboard need it.
+ */
+export function sessionPlacement(session: {
+  id: string;
+  rotations: RotationSlot[];
+  title?: string | null;
+  club?: { name?: string; ownerId: string | null; cosponsorId?: string | null } | null;
+  oneOffOwnerId?: string | null;
+  rotationCoverage: CoverageRow[];
+  teacherAbsences: AbsenceRow[];
+}): ExpectedPlacement {
+  return {
+    id: session.id,
+    name: session.title ?? session.club?.name ?? "Session",
+    rotations: session.rotations,
+    session: sessionRef(session),
+    rows: session.rotationCoverage,
+    absences: session.teacherAbsences,
+  };
 }
