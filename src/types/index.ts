@@ -19,3 +19,14 @@ export const ROTATION_LABELS: Record<RotationSlot, string> = {
 };
 
 export const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
+
+/**
+ * The compact form, for places that label a control rather than a heading — the
+ * Coverage page's per-slot rows and its teacher availability chips. Lives here
+ * rather than in a component because more than one now wants it.
+ */
+export const SHORT_ROTATION_LABELS: Record<RotationSlot, string> = {
+  FLEX_1: "F1",
+  FLEX_2: "F2",
+  FLEX_3: "F3",
+};
