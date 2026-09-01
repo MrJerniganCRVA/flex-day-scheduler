@@ -6,6 +6,7 @@ import type {
   CoverageClash,
   CoverageClub,
   CoverageDuty,
+  CoverageSummary,
   CoverageTeacher,
   ResolvedAssignment,
 } from "@/components/admin/CoverageDashboard";
@@ -188,6 +189,26 @@ export default async function AdminCoveragePage() {
     placements: clash.placements,
   }));
 
+  // The three numbers the page exists to answer, derived from the same resolution
+  // the cards are built from. Never recomputed in the client, for the reason the
+  // coverage module header gives: a second implementation is a second chance to
+  // disagree with the cards underneath it.
+  const summary: CoverageSummary = {
+    sessionsNeedingTeacher: clubs.filter((c) =>
+      c.rotations.some((r) => !c.assignments[r]?.t1)
+    ).length,
+    totalSessions: clubs.length,
+    dutySlotsUnstaffed: duties.reduce(
+      (n, d) => n + d.rotations.filter((r) => !d.assignments[r]).length,
+      0
+    ),
+    totalDutySlots: duties.reduce((n, d) => n + d.rotations.length, 0),
+    // Distinct people, not clash rows: one teacher double-booked in two
+    // rotations is one person to talk to, not two problems.
+    doubleBookedTeachers: new Set(clashWarnings.map((c) => c.teacherId)).size,
+    hasDutyPosts: dutyPosts.length > 0,
+  };
+
   const flexDayLabel = nextFlexDay.label
     ? nextFlexDay.label
     : new Date(nextFlexDay.date).toLocaleDateString("en-US", {
@@ -205,6 +226,7 @@ export default async function AdminCoveragePage() {
       duties={duties}
       flexDayId={nextFlexDay.id}
       clashes={clashWarnings}
+      summary={summary}
       flexDayLabel={flexDayLabel}
     />
   );

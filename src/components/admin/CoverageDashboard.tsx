@@ -2,24 +2,15 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import CoverageAbsenceButton from "@/components/admin/CoverageAbsenceButton";
+import StatTile from "@/components/admin/StatTile";
 import type { RotationSlot } from "@prisma/client";
+import {
+  ALL_ROTATIONS,
+  ROTATION_LABELS,
+  SHORT_ROTATION_LABELS as SHORT_LABELS,
+} from "@/types";
 
 const HIGH_ENROLLMENT_THRESHOLD = 20;
-
-const ROTATION_LABELS: Record<RotationSlot, string> = {
-  FLEX_1: "Flex 1",
-  FLEX_2: "Flex 2",
-  FLEX_3: "Flex 3",
-};
-
-const SHORT_LABELS: Record<RotationSlot, string> = {
-  FLEX_1: "F1",
-  FLEX_2: "F2",
-  FLEX_3: "F3",
-};
-
-const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
 
 /**
  * Select value meaning "no teacher at all in this slot", as distinct from "" which
@@ -95,6 +86,21 @@ export type CoverageDuty = {
   assignments: Partial<Record<RotationSlot, string | null>>;
 };
 
+/**
+ * The headline numbers, resolved on the server. Coverage was the only admin
+ * screen that went straight from its heading to its content, so "is anything
+ * wrong today?" cost a scroll past three full-height columns.
+ */
+export type CoverageSummary = {
+  sessionsNeedingTeacher: number;
+  totalSessions: number;
+  dutySlotsUnstaffed: number;
+  totalDutySlots: number;
+  doubleBookedTeachers: number;
+  /** False when no duty posts exist at all, which needs a different empty hint. */
+  hasDutyPosts: boolean;
+};
+
 export type CoverageClash = {
   rotation: RotationSlot;
   teacherId: string;
@@ -132,10 +138,33 @@ type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
 
+type Urgency = "needs" | "consider" | "covered";
+
+/**
+ * One thing in a rotation column. Clubs and duty posts share the column, the
+ * urgency banding and the card grammar, but not their content — a duty post has
+ * no second teacher, no students and no absences — so they stay separate shapes
+ * rather than one type full of nullable fields.
+ */
+/** The urgency bands a column renders, worst first — gaps float to the top. */
+const BANDS = [
+  { urgency: "needs", label: "Needs teacher", color: "red" },
+  { urgency: "consider", label: "Consider 2nd", color: "amber" },
+  { urgency: "covered", label: "Covered", color: "gray" },
+] as const satisfies readonly {
+  urgency: Urgency;
+  label: string;
+  color: "red" | "amber" | "gray";
+}[];
+
+type ColumnItem =
+  | { kind: "club"; key: string; club: CoverageClub; urgency: Urgency }
+  | { kind: "duty"; key: string; duty: CoverageDuty; urgency: Urgency };
+
 function urgencyOf(
   club: CoverageClub,
   assignment: Assignment | undefined
-): "needs" | "consider" | "covered" {
+): Urgency {
   if (!assignment?.t1) return "needs";
   // A large session without a second teacher is worth a nudge — unless an admin
   // has already decided it doesn't need one. Continuing to flag a deliberately
@@ -157,6 +186,7 @@ export default function CoverageDashboard({
   duties,
   flexDayId,
   clashes,
+  summary,
   flexDayLabel,
 }: {
   clubs: CoverageClub[];
@@ -164,6 +194,7 @@ export default function CoverageDashboard({
   duties: CoverageDuty[];
   flexDayId: string;
   clashes: CoverageClash[];
+  summary: CoverageSummary;
   flexDayLabel: string;
 }) {
   const router = useRouter();
@@ -183,6 +214,10 @@ export default function CoverageDashboard({
     Object.fromEntries(duties.map((d) => [d.dutyPostId, { ...d.assignments }]))
   );
   const [dutySaveStatus, setDutySaveStatus] = useState<SaveStatuses>({});
+
+  // Keyed `teacherId:rotation`, matching how the banner lists clashes.
+  const [clashBusy, setClashBusy] = useState<string | null>(null);
+  const [clashError, setClashError] = useState<string | null>(null);
 
   // Number of saves in flight. Not state we render — state we *wait* on; see the
   // effect below.
@@ -366,37 +401,17 @@ export default function CoverageDashboard({
     rotation: RotationSlot,
     slot: "t1" | "t2"
   ): CoverageTeacher[] {
-    const available = getAvailableTeachers(club.sessionId, rotation, slot);
+    const available = availableTeachersFor(rotation, {
+      kind: "club",
+      sessionId: club.sessionId,
+      slot,
+    });
     if (club.poolTeacherIds.length === 0) return available;
     const pool = new Set(club.poolTeacherIds);
     return [
       ...available.filter((t) => pool.has(t.id)),
       ...available.filter((t) => !pool.has(t.id)),
     ];
-  }
-
-  // Teachers available for a given slot, filtered by rotation conflicts
-  function getAvailableTeachers(
-    sessionId: string,
-    rotation: RotationSlot,
-    slot: "t1" | "t2"
-  ): CoverageTeacher[] {
-    const taken = new Set<string>();
-    const sessionsInRotation = clubs.filter((c) =>
-      c.rotations.includes(rotation)
-    );
-    for (const s of sessionsInRotation) {
-      const a = assignments[s.sessionId]?.[rotation];
-      if (s.sessionId === sessionId) {
-        // Exclude the sibling slot in the same card
-        const other = slot === "t1" ? a?.t2 : a?.t1;
-        if (other) taken.add(other);
-      } else {
-        if (a?.t1) taken.add(a.t1);
-        if (a?.t2) taken.add(a.t2);
-      }
-    }
-    return teachers.filter((t) => !taken.has(t.id));
   }
 
   // Derive teacher sidebar data from current assignments
@@ -422,48 +437,150 @@ export default function CoverageDashboard({
   }, [teachers, clubs, assignments]);
 
   /**
-   * Teachers offerable for a duty slot.
+   * Record (or lift) a teacher's absence from one rotation of one club session.
    *
-   * Filtered the same way the club dropdowns are: anyone already covering a club
-   * or another duty post in this rotation is left out, so the workflow an admin
-   * actually uses — clear the teacher off the club, then put them on duty — reads
-   * the way it behaves. Until the club slot is genuinely cleared, that teacher
-   * simply is not in the list.
-   *
-   * The currently-assigned teacher is always kept, so an existing assignment
-   * never silently disappears from its own dropdown.
+   * One handler rather than a component per button: the clash banner and the
+   * card's undo do the same thing, and this component already holds
+   * `router.refresh()`. An absence changes what src/lib/coverage.ts resolves, so
+   * the server re-renders rather than this guessing the new state.
    */
-  function availableDutyTeachers(
+  const setAbsence = useCallback(
+    async (sessionId: string, rotation: RotationSlot, teacherId: string, absent: boolean) => {
+      const res = await fetch(`/api/club-sessions/${sessionId}/absence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId,
+          rotations: [rotation],
+          absent,
+          reason: absent
+            ? "Double-booked — assigned elsewhere this rotation"
+            : undefined,
+        }),
+      });
+      return res.ok;
+    },
+    []
+  );
+
+  /**
+   * Resolve a clash by saying where the teacher will actually be.
+   *
+   * The banner already names the person and every place expecting them, so it can
+   * ask the real question instead of stating a fact. Choosing one placement clears
+   * them from all the others in that rotation — the same interaction
+   * RotationClashNotice offers the teacher on their own dashboard.
+   *
+   * The two kinds of placement need different endpoints, because a duty post
+   * cannot carry a SessionTeacherAbsence: that row is keyed to a ClubSession. The
+   * placement id says which is which — duty ids are `duty:<postId>:<rotation>`.
+   */
+  const resolveClash = useCallback(
+    async (clash: CoverageClash, keepPlacementId: string) => {
+      setClashBusy(`${clash.teacherId}:${clash.rotation}`);
+      try {
+        const results = await Promise.all(
+          clash.placements
+            .filter((p) => p.id !== keepPlacementId)
+            .map((p) => {
+              const duty = p.id.startsWith("duty:");
+              if (duty) {
+                const dutyPostId = p.id.split(":")[1];
+                return fetch("/api/admin/duty-assignments", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    dutyPostId,
+                    flexDayId,
+                    rotation: clash.rotation,
+                    teacherId: null,
+                  }),
+                }).then((r) => r.ok);
+              }
+              return setAbsence(p.id, clash.rotation, clash.teacherId, true);
+            })
+        );
+        if (results.every(Boolean)) {
+          router.refresh();
+        } else {
+          setClashError(`${clash.teacherId}:${clash.rotation}`);
+        }
+      } finally {
+        setClashBusy(null);
+      }
+    },
+    [flexDayId, router, setAbsence]
+  );
+
+  /** Lift every absence on one card's rotation, from the card's own undo. */
+  const undoAbsences = useCallback(
+    async (sessionId: string, rotation: RotationSlot, teacherIds: string[]) => {
+      const results = await Promise.all(
+        teacherIds.map((id) => setAbsence(sessionId, rotation, id, false))
+      );
+      if (results.every(Boolean)) router.refresh();
+    },
+    [router, setAbsence]
+  );
+
+  /**
+   * Who can still be offered for a slot in this rotation.
+   *
+   * One function for clubs and duty posts, because they are one question:
+   * nobody can be in two rooms at once, so anyone already expected somewhere in
+   * this rotation is not on offer anywhere else in it.
+   *
+   * It was two functions, and they drifted — the duty one excluded teachers busy
+   * on clubs *and* duty, the club one only looked at clubs. So a teacher on
+   * cafeteria duty in Flex 1 was still offered as a club's T1 in Flex 1. That was
+   * invisible while duty lived in its own region at the bottom of the page and
+   * indefensible once the two sit in the same column. Written once, it cannot
+   * drift again.
+   *
+   * `exclude` is the slot being edited, so a card never competes with itself: the
+   * teacher currently in this very slot stays on offer, while the sibling slot on
+   * the same club card does not (T1 and T2 must be two different people).
+   */
+  function availableTeachersFor(
     rotation: RotationSlot,
-    currentTeacherId: string | null
+    exclude:
+      | { kind: "club"; sessionId: string; slot: "t1" | "t2" }
+      | { kind: "duty"; dutyPostId: string }
   ): CoverageTeacher[] {
     const taken = new Set<string>();
+
     for (const club of clubs) {
       if (!club.rotations.includes(rotation)) continue;
       const a = assignments[club.sessionId]?.[rotation];
+      if (exclude.kind === "club" && club.sessionId === exclude.sessionId) {
+        // Only the sibling slot on this card blocks; this slot's own occupant
+        // must stay selectable or it vanishes from its own dropdown.
+        const sibling = exclude.slot === "t1" ? a?.t2 : a?.t1;
+        if (sibling) taken.add(sibling);
+        continue;
+      }
       if (a?.t1) taken.add(a.t1);
       if (a?.t2) taken.add(a.t2);
     }
+
     for (const duty of duties) {
+      if (exclude.kind === "duty" && duty.dutyPostId === exclude.dutyPostId) {
+        continue;
+      }
       const assigned = dutyAssignments[duty.dutyPostId]?.[rotation] ?? null;
       if (assigned) taken.add(assigned);
     }
-    if (currentTeacherId) taken.delete(currentTeacherId);
+
     return teachers.filter((t) => !taken.has(t.id));
   }
 
-  // How much of the building is unstaffed — the single number that answers
-  // "does the building have adequate eyes". Counts only required rotations, so a
-  // post that needs no cover in Flex 2 is not counted as a gap there.
-  const totalDutySlots = duties.reduce((n, d) => n + d.rotations.length, 0);
-  const unstaffedDutyCount = duties.reduce(
-    (n, d) =>
-      n +
-      d.rotations.filter(
-        (r) => !(dutyAssignments[d.dutyPostId]?.[r] ?? null)
-      ).length,
-    0
-  );
+  /** Duty slots draw from the same pool; kept as a name the call site reads well. */
+  function availableDutyTeachers(
+    rotation: RotationSlot,
+    dutyPostId: string
+  ): CoverageTeacher[] {
+    return availableTeachersFor(rotation, { kind: "duty", dutyPostId });
+  }
 
   // sessionId+rotation -> the names of teachers double-booked there, so a card
   // can badge itself without re-deriving anything.
@@ -480,18 +597,76 @@ export default function CoverageDashboard({
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Coverage
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {flexDayLabel}
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Coverage
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {flexDayLabel}
+          </p>
+        </div>
+        {/* Duty posts are defined elsewhere but staffed here, so the page they
+            are defined on has to be reachable from the page they are used on. */}
+        <a
+          href="/admin/duty-posts"
+          className="shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+        >
+          Manage duty posts →
+        </a>
       </div>
 
+      {/* The answer to "is anything wrong today?", before any scrolling. Zero is
+          never red anywhere in this app — a screen scanned for problems should
+          show colour only where there is one. */}
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <StatTile
+          value={summary.sessionsNeedingTeacher}
+          label="need a teacher"
+          hint={`of ${summary.totalSessions} ${
+            summary.totalSessions === 1 ? "session" : "sessions"
+          }`}
+          tone={summary.sessionsNeedingTeacher > 0 ? "bad" : "neutral"}
+        />
+        <StatTile
+          value={summary.dutySlotsUnstaffed}
+          label="building slots open"
+          hint={
+            summary.hasDutyPosts
+              ? `of ${summary.totalDutySlots} ${
+                  summary.totalDutySlots === 1 ? "slot" : "slots"
+                }`
+              : "no duty posts set up"
+          }
+          tone={summary.dutySlotsUnstaffed > 0 ? "bad" : "neutral"}
+        />
+        <StatTile
+          value={summary.doubleBookedTeachers}
+          label="double-booked"
+          hint={summary.doubleBookedTeachers === 1 ? "teacher" : "teachers"}
+          tone={summary.doubleBookedTeachers > 0 ? "warn" : "neutral"}
+        />
+      </div>
+
+      {/* Without duty posts in their own region any more, this is the only thing
+          that tells an admin the feature exists. */}
+      {!summary.hasDutyPosts && (
+        <p className="-mt-3 mb-5 text-xs text-gray-400 dark:text-gray-500">
+          No duty posts yet — hallways, the cafeteria, the front doors.{" "}
+          <a
+            href="/admin/duty-posts"
+            className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Set them up →
+          </a>
+        </p>
+      )}
+
       {/* Nobody can be in two rooms at once. Warn, never block — it is legitimate
-          to know about a clash and sort it out later. The fix is the "Not here"
-          control on whichever card the teacher is not attending. */}
+          to know about a clash and sort it out later.
+          This is also where the fix lives. It used to be a "Not here" button on
+          every card beside every resolved teacher; the decision is only ever made
+          when a clash appears, so it belongs here, where the clash is named. */}
       {clashes.length > 0 && (
         <div className="mb-5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
@@ -499,48 +674,90 @@ export default function CoverageDashboard({
               ? "1 teacher is expected in two places at once"
               : `${clashes.length} teachers are expected in two places at once`}
           </p>
-          <ul className="mt-1.5 space-y-1">
-            {clashes.map((clash) => (
-              <li
-                key={`${clash.teacherId}:${clash.rotation}`}
-                className="text-xs text-amber-700 dark:text-amber-300"
-              >
-                <span className="font-medium">{clash.teacherName}</span> in{" "}
-                {ROTATION_LABELS[clash.rotation]} —{" "}
-                {clash.placements.map((p) => p.name).join(" and ")}
-              </li>
-            ))}
+          <ul className="mt-2 space-y-2">
+            {clashes.map((clash) => {
+              const key = `${clash.teacherId}:${clash.rotation}`;
+              const busy = clashBusy === key;
+              return (
+                <li key={key} className="text-xs text-amber-700 dark:text-amber-300">
+                  <span className="font-medium">{clash.teacherName}</span> in{" "}
+                  {ROTATION_LABELS[clash.rotation]} —{" "}
+                  {clash.placements.map((p) => p.name).join(" and ")}
+                  {/* The decision, asked where it is noticed. Picking one clears
+                      this teacher from every other place expecting them this
+                      rotation; those keep running and show as needing cover. */}
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px]">Where will they be?</span>
+                    {clash.placements.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => resolveClash(clash, p.id)}
+                        disabled={busy}
+                        className="rounded border border-amber-400 dark:border-amber-600 bg-white/60 dark:bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 transition-colors"
+                      >
+                        {busy ? "Saving…" : p.name}
+                      </button>
+                    ))}
+                  </span>
+                  {clashError === key && (
+                    <span className="mt-1 block text-[11px] text-red-600 dark:text-red-400">
+                      Could not save that. Please try again.
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-          <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
-            Use <span className="font-medium">Not here</span> on the session they
-            will not attend. It keeps running and shows as needing cover.
-          </p>
         </div>
       )}
 
       <div className="flex gap-5">
         {/* ── Three rotation columns ─────────────────────────────────── */}
-        <div className="flex-1 grid grid-cols-3 gap-4 min-w-0">
+        {/* lg:, matching the other three rotation grids in the app. Below that
+            the columns stack rather than becoming three ~90px lanes of selects. */}
+        <div className="flex-1 grid gap-4 lg:grid-cols-3 min-w-0">
           {ALL_ROTATIONS.map((rotation) => {
-            const sessionsInRotation = clubs.filter((c) =>
-              c.rotations.includes(rotation)
-            );
+            // Clubs and duty posts on one axis.
+            //
+            // Duty used to be a separate region below the columns, laid out
+            // post-major (a card per post, rotations nested inside) — the
+            // transpose of the columns above it, so the page read as two
+            // unrelated screens stacked. A duty slot *is* "someone must be here
+            // during Flex 1", the same shape as a club session, so it belongs in
+            // that rotation's column and in the same urgency banding. An
+            // unstaffed cafeteria now surfaces under "Needs teacher" at the top
+            // of its column instead of below the fold.
+            const items: ColumnItem[] = [
+              ...clubs
+                .filter((c) => c.rotations.includes(rotation))
+                .map((club) => ({
+                  kind: "club" as const,
+                  key: club.sessionId,
+                  club,
+                  urgency: urgencyOf(club, assignments[club.sessionId]?.[rotation]),
+                })),
+              // Duty after clubs within each band, so the building posts stay
+              // clustered and scannable while still sorting by urgency.
+              ...duties
+                .filter((d) => d.rotations.includes(rotation))
+                .map((duty) => ({
+                  kind: "duty" as const,
+                  key: `duty:${duty.dutyPostId}`,
+                  duty,
+                  // Never "consider": that is a second-teacher judgement and a
+                  // duty post has no second teacher.
+                  urgency: (dutyAssignments[duty.dutyPostId]?.[rotation]
+                    ? "covered"
+                    : "needs") as Urgency,
+                })),
+            ];
+
             const grouped = {
-              needs: sessionsInRotation.filter(
-                (c) =>
-                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) === "needs"
-              ),
-              consider: sessionsInRotation.filter(
-                (c) =>
-                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) ===
-                  "consider"
-              ),
-              covered: sessionsInRotation.filter(
-                (c) =>
-                  urgencyOf(c, assignments[c.sessionId]?.[rotation]) ===
-                  "covered"
-              ),
+              needs: items.filter((i) => i.urgency === "needs"),
+              consider: items.filter((i) => i.urgency === "consider"),
+              covered: items.filter((i) => i.urgency === "covered"),
             };
+            // Counts duty too, or the header would contradict the cards under it.
             const uncoveredCount = grouped.needs.length;
 
             return (
@@ -568,118 +785,96 @@ export default function CoverageDashboard({
 
                 {/* Cards */}
                 <div className="flex-1 overflow-y-auto">
-                  {sessionsInRotation.length === 0 ? (
+                  {items.length === 0 ? (
                     <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500 italic">
-                      No clubs scheduled.
+                      Nothing scheduled.
                     </p>
                   ) : (
-                    <>
-                      {grouped.needs.length > 0 && (
-                        <>
-                          <SectionLabel label="Needs teacher" color="red" />
-                          {grouped.needs.map((club) => (
-                            <ClubCard
-                              key={club.sessionId}
-                              club={club}
-                              rotation={rotation}
-                              assignment={
-                                assignments[club.sessionId]?.[rotation] ?? EMPTY_ASSIGNMENT
-                              }
-                              clashingTeachers={
-                                clashesByCard.get(
-                                  `${club.sessionId}:${rotation}`
-                                ) ?? []
-                              }
-                              saveStatus={
-                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
-                              }
-                              teachers={teachers}
-                              availableTeachers={(slot) =>
-                                getAvailableTeachersForClub(
-                                  club,
+                    // One loop over the three urgency bands rather than three
+                    // near-identical copies of the same forty lines — which is
+                    // what made adding a second card type worth doing properly.
+                    BANDS.map(({ urgency, label, color }) =>
+                      grouped[urgency].length === 0 ? null : (
+                        <div key={urgency}>
+                          <SectionLabel label={label} color={color} />
+                          {grouped[urgency].map((item) =>
+                            item.kind === "club" ? (
+                              <ClubCard
+                                key={item.key}
+                                club={item.club}
+                                rotation={rotation}
+                                assignment={
+                                  assignments[item.club.sessionId]?.[rotation] ??
+                                  EMPTY_ASSIGNMENT
+                                }
+                                clashingTeachers={
+                                  clashesByCard.get(
+                                    `${item.club.sessionId}:${rotation}`
+                                  ) ?? []
+                                }
+                                onUndoAbsence={() =>
+                                  undoAbsences(
+                                    item.club.sessionId,
+                                    rotation,
+                                    assignments[item.club.sessionId]?.[rotation]
+                                      ?.absentTeacherIds ?? []
+                                  )
+                                }
+                                saveStatus={
+                                  saveStatus[item.club.sessionId]?.[rotation] ??
+                                  "idle"
+                                }
+                                teachers={teachers}
+                                availableTeachers={(slot) =>
+                                  getAvailableTeachersForClub(
+                                    item.club,
+                                    rotation,
+                                    slot
+                                  )
+                                }
+                                urgency={item.urgency}
+                                onAssign={(slot, val) =>
+                                  assign(item.club.sessionId, rotation, slot, val)
+                                }
+                              />
+                            ) : (
+                              <DutyCard
+                                key={item.key}
+                                duty={item.duty}
+                                rotation={rotation}
+                                teacherId={
+                                  dutyAssignments[item.duty.dutyPostId]?.[
+                                    rotation
+                                  ] ?? null
+                                }
+                                clashingTeachers={
+                                  clashesByCard.get(
+                                    `duty:${item.duty.dutyPostId}:${rotation}`
+                                  ) ?? []
+                                }
+                                saveStatus={
+                                  dutySaveStatus[item.duty.dutyPostId]?.[
+                                    rotation
+                                  ] ?? "idle"
+                                }
+                                options={availableDutyTeachers(
                                   rotation,
-                                  slot
-                                )
-                              }
-                              urgency="needs"
-                              onAssign={(slot, val) =>
-                                assign(club.sessionId, rotation, slot, val)
-                              }
-                            />
-                          ))}
-                        </>
-                      )}
-                      {grouped.consider.length > 0 && (
-                        <>
-                          <SectionLabel label="Consider 2nd" color="amber" />
-                          {grouped.consider.map((club) => (
-                            <ClubCard
-                              key={club.sessionId}
-                              club={club}
-                              rotation={rotation}
-                              assignment={
-                                assignments[club.sessionId]?.[rotation] ?? EMPTY_ASSIGNMENT
-                              }
-                              clashingTeachers={
-                                clashesByCard.get(
-                                  `${club.sessionId}:${rotation}`
-                                ) ?? []
-                              }
-                              saveStatus={
-                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
-                              }
-                              teachers={teachers}
-                              availableTeachers={(slot) =>
-                                getAvailableTeachersForClub(
-                                  club,
-                                  rotation,
-                                  slot
-                                )
-                              }
-                              urgency="consider"
-                              onAssign={(slot, val) =>
-                                assign(club.sessionId, rotation, slot, val)
-                              }
-                            />
-                          ))}
-                        </>
-                      )}
-                      {grouped.covered.length > 0 && (
-                        <>
-                          <SectionLabel label="Covered" color="gray" />
-                          {grouped.covered.map((club) => (
-                            <ClubCard
-                              key={club.sessionId}
-                              club={club}
-                              rotation={rotation}
-                              assignment={
-                                assignments[club.sessionId]?.[rotation] ?? EMPTY_ASSIGNMENT
-                              }
-                              clashingTeachers={
-                                clashesByCard.get(
-                                  `${club.sessionId}:${rotation}`
-                                ) ?? []
-                              }
-                              saveStatus={
-                                saveStatus[club.sessionId]?.[rotation] ?? "idle"
-                              }
-                              teachers={teachers}
-                              availableTeachers={(slot) =>
-                                getAvailableTeachersForClub(
-                                  club,
-                                  rotation,
-                                  slot
-                                )
-                              }
-                              urgency="covered"
-                              onAssign={(slot, val) =>
-                                assign(club.sessionId, rotation, slot, val)
-                              }
-                            />
-                          ))}
-                        </>
-                      )}
-                    </>
+                                  item.duty.dutyPostId
+                                )}
+                                teachers={teachers}
+                                onAssign={(teacherId) =>
+                                  assignDuty(
+                                    item.duty.dutyPostId,
+                                    rotation,
+                                    teacherId
+                                  )
+                                }
+                              />
+                            )
+                          )}
+                        </div>
+                      )
+                    )
                   )}
                 </div>
               </div>
@@ -749,147 +944,6 @@ export default function CoverageDashboard({
         </div>
       </div>
 
-      {/* ── Building coverage ───────────────────────────────────────────
-          Supervision that isn't a club. A separate group rather than a fourth
-          column: these aren't scheduled against rotations the way clubs are —
-          each post declares which rotations it must be staffed for, and only
-          those get a slot, so a blank always means "needs someone". */}
-      <div className="mt-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-            Building coverage
-          </h2>
-          {duties.length > 0 && (
-            <span
-              className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                unstaffedDutyCount === 0
-                  ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                  : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
-              }`}
-            >
-              {unstaffedDutyCount === 0
-                ? `All ${totalDutySlots} staffed`
-                : `${unstaffedDutyCount} of ${totalDutySlots} unstaffed`}
-            </span>
-          )}
-        </div>
-
-        {duties.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No duty posts set up yet.
-            </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              Hallways, the cafeteria, the front doors — the spots that need eyes
-              on them but aren&apos;t clubs.
-            </p>
-            <a
-              href="/admin/duty-posts"
-              className="mt-2 inline-block text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              Set up duty posts →
-            </a>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {duties.map((duty) => (
-              <div
-                key={duty.dutyPostId}
-                className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4"
-              >
-                <div className="mb-2">
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">
-                    {duty.name}
-                  </div>
-                  {duty.location && (
-                    <div className="text-xs text-gray-400 dark:text-gray-500">
-                      {duty.location}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {duty.rotations.map((rotation) => {
-                    const teacherId =
-                      dutyAssignments[duty.dutyPostId]?.[rotation] ?? null;
-                    const status =
-                      dutySaveStatus[duty.dutyPostId]?.[rotation] ?? "idle";
-                    const clashing =
-                      clashesByCard.get(`duty:${duty.dutyPostId}:${rotation}`) ??
-                      [];
-                    return (
-                      <div key={rotation}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-5 shrink-0">
-                            {SHORT_LABELS[rotation]}
-                          </span>
-                          <select
-                            aria-label={`${duty.name} — ${ROTATION_LABELS[rotation]}`}
-                            className={`flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
-                              teacherId
-                                ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
-                                : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
-                            }`}
-                            value={teacherId ?? ""}
-                            onChange={(e) =>
-                              assignDuty(
-                                duty.dutyPostId,
-                                rotation,
-                                e.target.value === "" ? null : e.target.value
-                              )
-                            }
-                          >
-                            <option value="">Unstaffed</option>
-                            {/* Same availability filter the club dropdowns use, so
-                                a teacher already covering a club this rotation is
-                                simply not offered — which is what makes the usual
-                                flow (clear the club slot first, then assign the
-                                duty) read the way it behaves. */}
-                            {availableDutyTeachers(rotation, teacherId).map(
-                              (t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name}
-                                </option>
-                              )
-                            )}
-                          </select>
-                        </div>
-                        {(status !== "idle" || clashing.length > 0) && (
-                          <div className="mt-0.5 pl-7 flex items-center gap-2">
-                            {status === "saving" && (
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500 animate-pulse">
-                                Saving…
-                              </span>
-                            )}
-                            {status === "saved" && (
-                              <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">
-                                Saved ✓
-                              </span>
-                            )}
-                            {status === "error" && (
-                              <span className="text-[10px] text-red-500 dark:text-red-400 font-medium">
-                                Error — retry
-                              </span>
-                            )}
-                            {clashing.length > 0 && (
-                              <span
-                                title={`${clashing.join(", ")} is also expected elsewhere this rotation`}
-                                className="text-[10px] text-amber-700 dark:text-amber-300 font-medium"
-                              >
-                                Double-booked
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }
@@ -923,6 +977,7 @@ function ClubCard({
   rotation,
   assignment,
   clashingTeachers,
+  onUndoAbsence,
   saveStatus,
   teachers,
   availableTeachers,
@@ -934,6 +989,8 @@ function ClubCard({
   assignment: Assignment;
   /** Names of teachers this card double-books in this rotation; usually empty. */
   clashingTeachers: string[];
+  /** Lifts every absence recorded on this card's rotation. */
+  onUndoAbsence: () => void;
   saveStatus: SaveStatus;
   teachers: CoverageTeacher[];
   availableTeachers: (slot: "t1" | "t2") => CoverageTeacher[];
@@ -964,19 +1021,19 @@ function ClubCard({
       </span>
     ) : null;
 
-  // Everyone this rotation currently has in the room, plus anyone already marked
-  // absent from it. The absent are resolved *out* of t1/t2 by
-  // src/lib/coverage.ts, so without adding them back here the control that set
-  // the mark would vanish along with it and there would be no way to undo.
-  const nameOf = (id: string) =>
-    teachers.find((t) => t.id === id)?.name ?? "This teacher";
-  const absenceTargets = [
-    ...new Set(
-      [assignment.t1, assignment.t2, ...assignment.absentTeacherIds].filter(
-        (id): id is string => Boolean(id)
-      )
-    ),
-  ].map((id) => ({ id, name: nameOf(id) }));
+  // Anyone recorded as not attending this rotation. This is *state*, not an
+  // offered action: the control that set it lives in the clash banner, where the
+  // decision is actually made. It used to be a "Not here" button beside every
+  // resolved teacher on every card — roughly twenty buttons on a normal day for
+  // something used once or twice, which made a card look like it was asking far
+  // more of the admin than it was.
+  //
+  // Absent teachers are resolved *out* of t1/t2 by src/lib/coverage.ts, so
+  // without this line an admin would see an empty slot with no way to tell why
+  // and no way back.
+  const absentHere = assignment.absentTeacherIds.map(
+    (id) => teachers.find((t) => t.id === id)?.name ?? "A teacher"
+  );
 
   return (
     <div
@@ -1017,6 +1074,7 @@ function ClubCard({
       <div className="space-y-1.5">
         <TeacherDropdown
           label="T1"
+          ariaLabel={`${club.name} — ${ROTATION_LABELS[rotation]} primary teacher`}
           value={assignment.t1Cleared ? CLEARED : assignment.t1}
           options={availableTeachers("t1")}
           currentTeacher={
@@ -1036,6 +1094,7 @@ function ClubCard({
         />
         <TeacherDropdown
           label="T2"
+          ariaLabel={`${club.name} — ${ROTATION_LABELS[rotation]} second teacher`}
           value={assignment.t2Cleared ? CLEARED : assignment.t2}
           options={availableTeachers("t2")}
           currentTeacher={
@@ -1055,35 +1114,151 @@ function ClubCard({
         />
       </div>
 
-      {/* Taking a specific person out of this rotation, as distinct from emptying
-          the slot. Offered for whoever actually resolved into T1/T2 — including a
-          teacher who is only there by owner/cosponsor fallback, which is exactly
-          the case an admin could not previously undo. Also lists anyone already
-          marked absent, so the mark can be lifted after it stops applying. */}
-      {absenceTargets.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          {absenceTargets.map((t) => (
-            <span key={t.id} className="inline-flex items-center gap-1">
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {t.name}
-              </span>
-              <CoverageAbsenceButton
-                sessionId={club.sessionId}
-                rotation={rotation}
-                teacherId={t.id}
-                teacherName={t.name}
-                isAbsent={assignment.absentTeacherIds.includes(t.id)}
-              />
-            </span>
-          ))}
-        </div>
+      {absentHere.length > 0 && (
+        <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          {absentHere.join(", ")} not attending{" "}
+          <button
+            onClick={onUndoAbsence}
+            className="font-medium underline hover:no-underline"
+          >
+            undo
+          </button>
+        </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * One duty post's slot for one rotation.
+ *
+ * Shares ClubCard's grammar exactly — the same row shell, the same left-border
+ * urgency accent, the same save micro-labels, the same select colouring including
+ * the opaque `dark:bg-*-950` a translucent fill would wash out — and differs only
+ * where the data does. A duty post has no second teacher, no students, and no
+ * owner to fall back to, so there is one dropdown and no cleared-vs-default
+ * ambiguity: empty simply means unstaffed.
+ *
+ * A post required in Flex 1 and Flex 3 renders two of these, one per column.
+ * That is the point: a slot is a thing that lives in its rotation, not a row
+ * nested inside a post.
+ */
+function DutyCard({
+  duty,
+  rotation,
+  teacherId,
+  clashingTeachers,
+  saveStatus,
+  options,
+  teachers,
+  onAssign,
+}: {
+  duty: CoverageDuty;
+  rotation: RotationSlot;
+  teacherId: string | null;
+  clashingTeachers: string[];
+  saveStatus: SaveStatus;
+  options: CoverageTeacher[];
+  teachers: CoverageTeacher[];
+  onAssign: (teacherId: string | null) => void;
+}) {
+  const assigned = teacherId !== null;
+
+  // Always offer whoever is currently assigned, even when the availability
+  // filter would exclude them — otherwise an existing assignment vanishes from
+  // its own dropdown.
+  const current = assigned
+    ? (teachers.find((t) => t.id === teacherId) ?? null)
+    : null;
+  const inOptions = current !== null && options.some((t) => t.id === current.id);
+
+  return (
+    <div
+      className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${
+        assigned ? "border-l-transparent" : "border-l-red-400"
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <span className="min-w-0">
+          <span
+            className="block text-sm font-medium text-gray-900 dark:text-white truncate"
+            title={duty.name}
+          >
+            {duty.name}
+          </span>
+          {duty.location && (
+            <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">
+              {duty.location}
+            </span>
+          )}
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {clashingTeachers.length > 0 && (
+            <span
+              title={`${clashingTeachers.join(", ")} ${
+                clashingTeachers.length === 1 ? "is" : "are"
+              } also expected elsewhere this rotation`}
+              className="rounded-full border border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+            >
+              Double-booked
+            </span>
+          )}
+          {saveStatus === "saving" && (
+            <span className="text-gray-400 dark:text-gray-500 text-xs animate-pulse">
+              Saving…
+            </span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="text-green-600 dark:text-green-400 text-xs font-medium">
+              Saved ✓
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-red-500 dark:text-red-400 text-xs font-medium">
+              Error — retry
+            </span>
+          )}
+          {/* Marks this as building supervision rather than a club, in the pill
+              vocabulary the rest of the app uses — not an emoji, which renders
+              differently on every platform. */}
+          <span className="rounded-full border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+            Duty
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-5 shrink-0">
+          {SHORT_LABELS[rotation]}
+        </span>
+        <select
+          aria-label={`${duty.name} — ${ROTATION_LABELS[rotation]} teacher`}
+          className={`flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+            assigned
+              ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
+              : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
+          }`}
+          value={teacherId ?? ""}
+          onChange={(e) => onAssign(e.target.value === "" ? null : e.target.value)}
+        >
+          <option value="">Unstaffed</option>
+          {current && !inOptions && (
+            <option value={current.id}>{current.name}</option>
+          )}
+          {options.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
 
 function TeacherDropdown({
   label,
+  ariaLabel,
   value,
   options,
   currentTeacher,
@@ -1093,6 +1268,12 @@ function TeacherDropdown({
   onChange,
 }: {
   label: string;
+  /**
+   * What a screen reader announces. The visible "T1"/"T2" is a bare span next to
+   * the control, not a <label>, and on its own it says nothing about which club
+   * or rotation is being edited — on a page of thirty near-identical selects.
+   */
+  ariaLabel: string;
   value: string | null;
   options: CoverageTeacher[];
   currentTeacher: CoverageTeacher | null;
@@ -1129,6 +1310,7 @@ function TeacherDropdown({
         {label}
       </span>
       <select
+        aria-label={ariaLabel}
         className={`flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${selectClass}`}
         value={value ?? ""}
         onChange={(e) =>
