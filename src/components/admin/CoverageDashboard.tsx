@@ -157,6 +157,15 @@ const BANDS = [
   color: "red" | "amber" | "gray";
 }[];
 
+/** A teacher expected in one rotation, and what put them there. */
+type ExpectedPlacement = {
+  teacherId: string;
+  rotation: RotationSlot;
+  source:
+    | { kind: "club"; sessionId: string; slot: "t1" | "t2" }
+    | { kind: "duty"; dutyPostId: string };
+};
+
 type ColumnItem =
   | { kind: "club"; key: string; club: CoverageClub; urgency: Urgency }
   | { kind: "duty"; key: string; duty: CoverageDuty; urgency: Urgency };
@@ -390,6 +399,56 @@ export default function CoverageDashboard({
   );
 
   /**
+   * Every teacher expected somewhere, in one list, with what put them there.
+   *
+   * Three separate places used to answer "is this teacher busy in this
+   * rotation?" — the club dropdowns, the duty dropdowns, and the teacher panel —
+   * and all three drifted apart. The dropdowns disagreed with each other until
+   * they were merged; the panel was missed and went on counting a teacher on
+   * hallway duty as having all three rotations open, on the very list an admin
+   * scans to find someone free. Derived once here, every consumer agrees by
+   * construction.
+   *
+   * Absences need no special handling: the server resolves an absent teacher out
+   * of t1/t2 before this sees them.
+   */
+  const expectedPlacements = useMemo<ExpectedPlacement[]>(() => {
+    const out: ExpectedPlacement[] = [];
+
+    for (const club of clubs) {
+      for (const rotation of club.rotations) {
+        const a = assignments[club.sessionId]?.[rotation];
+        if (a?.t1)
+          out.push({
+            teacherId: a.t1,
+            rotation,
+            source: { kind: "club", sessionId: club.sessionId, slot: "t1" },
+          });
+        if (a?.t2)
+          out.push({
+            teacherId: a.t2,
+            rotation,
+            source: { kind: "club", sessionId: club.sessionId, slot: "t2" },
+          });
+      }
+    }
+
+    for (const duty of duties) {
+      for (const rotation of duty.rotations) {
+        const teacherId = dutyAssignments[duty.dutyPostId]?.[rotation] ?? null;
+        if (teacherId)
+          out.push({
+            teacherId,
+            rotation,
+            source: { kind: "duty", dutyPostId: duty.dutyPostId },
+          });
+      }
+    }
+
+    return out;
+  }, [clubs, duties, assignments, dutyAssignments]);
+
+  /**
    * Teachers available for a slot, with the club's own pool first.
    *
    * For a club run by a rotation of teachers, the pool is almost always the right
@@ -414,27 +473,28 @@ export default function CoverageDashboard({
     ];
   }
 
-  // Derive teacher sidebar data from current assignments
+  // The teacher panel, from the same list the dropdowns use. It used to walk
+  // `clubs` alone, so assigning someone to a duty post removed them from every
+  // dropdown while this still filed them under "All 3 open" — and a reload did
+  // not help, because the omission was in the derivation, not in stale state.
   const teacherRows = useMemo(() => {
+    const busy = new Map<string, Set<RotationSlot>>();
+    for (const p of expectedPlacements) {
+      const set = busy.get(p.teacherId) ?? new Set<RotationSlot>();
+      set.add(p.rotation);
+      busy.set(p.teacherId, set);
+    }
+
     return teachers
       .map((t) => {
-        const assignedRotations = new Set<RotationSlot>();
-        for (const club of clubs) {
-          for (const [r, a] of Object.entries(
-            assignments[club.sessionId] ?? {}
-          ) as [RotationSlot, Assignment][]) {
-            if (a.t1 === t.id || a.t2 === t.id) {
-              assignedRotations.add(r);
-            }
-          }
-        }
+        const assignedRotations = busy.get(t.id) ?? new Set<RotationSlot>();
         const freeCount = ALL_ROTATIONS.filter(
           (r) => !assignedRotations.has(r)
         ).length;
         return { ...t, freeCount, assignedRotations };
       })
       .sort((a, b) => b.freeCount - a.freeCount);
-  }, [teachers, clubs, assignments]);
+  }, [teachers, expectedPlacements]);
 
   /**
    * Record (or lift) a teacher's absence from one rotation of one club session.
@@ -526,20 +586,13 @@ export default function CoverageDashboard({
   /**
    * Who can still be offered for a slot in this rotation.
    *
-   * One function for clubs and duty posts, because they are one question:
-   * nobody can be in two rooms at once, so anyone already expected somewhere in
-   * this rotation is not on offer anywhere else in it.
+   * One question for clubs and duty posts alike: nobody can be in two rooms at
+   * once, so anyone already expected somewhere in this rotation is not on offer
+   * anywhere else in it.
    *
-   * It was two functions, and they drifted — the duty one excluded teachers busy
-   * on clubs *and* duty, the club one only looked at clubs. So a teacher on
-   * cafeteria duty in Flex 1 was still offered as a club's T1 in Flex 1. That was
-   * invisible while duty lived in its own region at the bottom of the page and
-   * indefensible once the two sit in the same column. Written once, it cannot
-   * drift again.
-   *
-   * `exclude` is the slot being edited, so a card never competes with itself: the
-   * teacher currently in this very slot stays on offer, while the sibling slot on
-   * the same club card does not (T1 and T2 must be two different people).
+   * `exclude` is the slot being edited, so a card never competes with itself —
+   * the teacher currently in this very slot stays on offer, while the sibling
+   * slot on the same club card does not, since T1 and T2 must be two people.
    */
   function availableTeachersFor(
     rotation: RotationSlot,
@@ -547,29 +600,18 @@ export default function CoverageDashboard({
       | { kind: "club"; sessionId: string; slot: "t1" | "t2" }
       | { kind: "duty"; dutyPostId: string }
   ): CoverageTeacher[] {
-    const taken = new Set<string>();
+    const isExcluded = (source: ExpectedPlacement["source"]) =>
+      source.kind === "club" && exclude.kind === "club"
+        ? source.sessionId === exclude.sessionId && source.slot === exclude.slot
+        : source.kind === "duty" && exclude.kind === "duty"
+          ? source.dutyPostId === exclude.dutyPostId
+          : false;
 
-    for (const club of clubs) {
-      if (!club.rotations.includes(rotation)) continue;
-      const a = assignments[club.sessionId]?.[rotation];
-      if (exclude.kind === "club" && club.sessionId === exclude.sessionId) {
-        // Only the sibling slot on this card blocks; this slot's own occupant
-        // must stay selectable or it vanishes from its own dropdown.
-        const sibling = exclude.slot === "t1" ? a?.t2 : a?.t1;
-        if (sibling) taken.add(sibling);
-        continue;
-      }
-      if (a?.t1) taken.add(a.t1);
-      if (a?.t2) taken.add(a.t2);
-    }
-
-    for (const duty of duties) {
-      if (exclude.kind === "duty" && duty.dutyPostId === exclude.dutyPostId) {
-        continue;
-      }
-      const assigned = dutyAssignments[duty.dutyPostId]?.[rotation] ?? null;
-      if (assigned) taken.add(assigned);
-    }
+    const taken = new Set(
+      expectedPlacements
+        .filter((p) => p.rotation === rotation && !isExcluded(p.source))
+        .map((p) => p.teacherId)
+    );
 
     return teachers.filter((t) => !taken.has(t.id));
   }
