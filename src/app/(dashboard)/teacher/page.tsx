@@ -9,8 +9,8 @@ import RotationClashNotice from "@/components/sessions/RotationClashNotice";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
-  rotationsExpectingTeacher,
-  sessionRef,
+  findTeacherClashes,
+  sessionPlacement,
 } from "@/lib/coverage";
 
 export default async function TeacherDashboard() {
@@ -72,31 +72,50 @@ export default async function TeacherDashboard() {
 
   type TeacherSession = NonNullable<typeof nextFlexDay>["clubSessions"][number];
 
-  /**
-   * Rotations of a session where this teacher is actually expected — resolved
-   * coverage with their own absences already subtracted. A session they've stepped
-   * back from still appears on the dashboard (so they can undo it) but no longer
-   * counts toward a clash.
-   */
-  const expectedRotations = (cs: TeacherSession) =>
-    rotationsExpectingTeacher(
-      sessionRef(cs),
-      cs.rotationCoverage,
-      cs.rotations,
-      cs.teacherAbsences,
-      me
-    );
+  // Duty posts this teacher is on for that day. Read-only here: a teacher who
+  // doesn't know they're on hallway duty won't turn up, which defeats the point
+  // of tracking it, but changing an assignment is an admin's job on the Coverage
+  // page — a duty post has no equivalent of stepping back from a club.
+  const myDuties = nextFlexDay
+    ? await prisma.dutyAssignment.findMany({
+        where: { flexDayId: nextFlexDay.id, teacherId: me },
+        select: {
+          rotation: true,
+          dutyPost: { select: { name: true, location: true } },
+        },
+      })
+    : [];
+  const dutyByRotation = new Map(myDuties.map((d) => [d.rotation, d.dutyPost]));
 
   const iAmAbsentFrom = (cs: TeacherSession, slot: RotationSlot) =>
     cs.teacherAbsences.some((a) => a.teacherId === me && a.rotation === slot);
 
   // A teacher expected by two sessions in the same rotation cannot attend both.
+  //
+  // Shares its implementation with the admin Coverage page, which grew the same
+  // warning later. Two hand-rolled groupings would be two chances to disagree
+  // about who is double-booked — the same argument the module header makes about
+  // resolving coverage itself. Filtered to this teacher because the query above
+  // is already scoped to sessions they are attached to.
+  //
+  // Absences are subtracted inside resolveSessionCoverage, so a session this
+  // teacher has already stepped back from still shows on the dashboard (they can
+  // undo it) but stops counting toward a clash.
+  const sessionsById = new Map(
+    (nextFlexDay?.clubSessions ?? []).map((cs) => [cs.id, cs])
+  );
   const clashes = new Map<RotationSlot, TeacherSession[]>();
-  for (const slot of ALL_ROTATIONS as RotationSlot[]) {
-    const expecting = (nextFlexDay?.clubSessions ?? []).filter((cs) =>
-      expectedRotations(cs).includes(slot)
+  for (const clash of findTeacherClashes(
+    (nextFlexDay?.clubSessions ?? []).map(sessionPlacement),
+    ALL_ROTATIONS as RotationSlot[]
+  )) {
+    if (clash.teacherId !== me) continue;
+    clashes.set(
+      clash.rotation,
+      clash.placements
+        .map((p) => sessionsById.get(p.id))
+        .filter((cs): cs is TeacherSession => cs !== undefined)
     );
-    if (expecting.length > 1) clashes.set(slot, expecting);
   }
 
   const isToday = nextFlexDay
@@ -160,6 +179,21 @@ export default async function TeacherDashboard() {
                     >
                       {ROTATION_LABELS[slot]}
                     </div>
+
+                    {dutyByRotation.has(slot) && (
+                      <div className="px-4 pt-3">
+                        <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2">
+                          <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">
+                            On duty: {dutyByRotation.get(slot)!.name}
+                          </p>
+                          {dutyByRotation.get(slot)!.location && (
+                            <p className="mt-0.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+                              {dutyByRotation.get(slot)!.location}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {clashes.has(slot) && (
                       <div className="px-4 pt-3">

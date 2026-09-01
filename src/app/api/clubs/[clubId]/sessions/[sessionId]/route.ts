@@ -92,7 +92,17 @@ export async function PUT(
   }
 
   // If rotations are being changed, re-run teacher conflict check (excluding this session)
-  if (parsed.data.rotations) {
+  // Skipped for a club with no owner. `ownerId: null` becomes `IS NULL` in the
+  // generated SQL, so this matched every *other* ownerless club's session in the
+  // same rotations and refused legitimate scheduling — a club run by a rotation of
+  // teachers has no single owner to double-book in the first place.
+  //
+  // Deliberately still owner-only otherwise, and deliberately still the only
+  // blocking check: it cannot see cosponsors, per-rotation coverage or one-off
+  // owners, and the clashes that matter most arise from those. Those are warned
+  // about on the admin Coverage page by findTeacherClashes rather than blocked
+  // here, so a legitimate double-booking can be recorded and resolved.
+  if (parsed.data.rotations && club.ownerId) {
     const teacherConflict = await prisma.clubSession.findFirst({
       where: {
         id: { not: sessionId },

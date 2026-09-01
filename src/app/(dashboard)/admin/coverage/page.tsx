@@ -3,7 +3,9 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import CoverageDashboard from "@/components/admin/CoverageDashboard";
 import type {
+  CoverageClash,
   CoverageClub,
+  CoverageDuty,
   CoverageTeacher,
   ResolvedAssignment,
 } from "@/components/admin/CoverageDashboard";
@@ -11,9 +13,12 @@ import type { RotationSlot } from "@prisma/client";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
+  findTeacherClashes,
   resolveSessionCoverage,
+  sessionPlacement,
   sessionRef,
 } from "@/lib/coverage";
+import { ALL_ROTATIONS } from "@/types";
 
 export default async function AdminCoveragePage() {
   const session = await auth();
@@ -74,6 +79,21 @@ export default async function AdminCoveragePage() {
     );
   }
 
+  // Duty posts are a separate model from ClubSession on purpose — see the note on
+  // DutyPost in the schema. That is why nothing student-facing had to change to
+  // add them; it also means they have to be loaded and merged in explicitly here.
+  const dutyPosts = await prisma.dutyPost.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    include: {
+      assignments: {
+        where: { flexDayId: nextFlexDay.id },
+        select: { rotation: true, teacherId: true },
+      },
+    },
+  });
+
+
   // Coverage is resolved here, on the server, through the same function finalize
   // and the teacher dashboard use. It used to be re-derived inside the client
   // component from owner/cosponsor fallbacks, which is why absences never showed
@@ -94,7 +114,11 @@ export default async function AdminCoveragePage() {
           {
             t1: resolved.primaryTeacherId,
             t2: resolved.secondaryTeacherId,
+            t1Cleared: row?.primaryCleared ?? false,
             t2Cleared: row?.secondaryCleared ?? false,
+            absentTeacherIds: cs.teacherAbsences
+              .filter((a) => a.rotation === rotation)
+              .map((a) => a.teacherId),
           } satisfies ResolvedAssignment,
         ];
       })
@@ -105,7 +129,8 @@ export default async function AdminCoveragePage() {
       // One-off sessions have no club; they are still real sessions in real rooms
       // whose teacher can be absent or double-booked, so they belong here.
       name: cs.title ?? cs.club?.name ?? "Session",
-      // Only used to label the "fall back to the cosponsor" option.
+      // Only used to label the "fall back to the owner/cosponsor" options.
+      ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
       cosponsorName: cs.club?.cosponsor?.name ?? null,
       poolTeacherIds: cs.club?.teachers.map((t) => t.teacherId) ?? [],
       rotations: cs.rotations,
@@ -113,6 +138,55 @@ export default async function AdminCoveragePage() {
       assignments,
     };
   });
+
+  const duties: CoverageDuty[] = dutyPosts.map((post) => ({
+    dutyPostId: post.id,
+    name: post.name,
+    location: post.location,
+    // Only the rotations the post actually needs staffing for get a slot, so an
+    // empty slot always means "needs someone" and never "not needed here".
+    rotations: post.requiredRotations,
+    assignments: Object.fromEntries(
+      post.requiredRotations.map((rotation) => [
+        rotation,
+        post.assignments.find((a) => a.rotation === rotation)?.teacherId ?? null,
+      ])
+    ) as Partial<Record<RotationSlot, string | null>>,
+  }));
+
+  // Teachers expected in two places at once. Computed here, on the server, from
+  // the same resolution the cards are built from — so a clash can never be a
+  // second opinion that disagrees with what the page shows.
+  //
+  // Duty posts join the club sessions as placements. A duty assignment is already
+  // an explicit decision with no owner or cosponsor to derive from, so it carries
+  // no coverage rows and no absences — the assigned teacher goes straight into the
+  // `ownerId` slot that resolveSessionCoverage reads as T1.
+  const dutyPlacements = dutyPosts.flatMap((post) =>
+    post.assignments
+      .filter((a) => a.teacherId !== null && post.requiredRotations.includes(a.rotation))
+      .map((a) => ({
+        id: `duty:${post.id}:${a.rotation}`,
+        name: post.name,
+        rotations: [a.rotation],
+        session: { ownerId: a.teacherId },
+        rows: [],
+        absences: [],
+      }))
+  );
+
+  const clashes = findTeacherClashes(
+    [...nextFlexDay.clubSessions.map(sessionPlacement), ...dutyPlacements],
+    ALL_ROTATIONS
+  );
+
+  const teacherNameById = new Map(teacherUsers.map((u) => [u.id, u.name]));
+  const clashWarnings: CoverageClash[] = clashes.map((clash) => ({
+    rotation: clash.rotation,
+    teacherId: clash.teacherId,
+    teacherName: teacherNameById.get(clash.teacherId) ?? "A teacher",
+    placements: clash.placements,
+  }));
 
   const flexDayLabel = nextFlexDay.label
     ? nextFlexDay.label
@@ -128,6 +202,9 @@ export default async function AdminCoveragePage() {
     <CoverageDashboard
       clubs={clubs}
       teachers={teachers}
+      duties={duties}
+      flexDayId={nextFlexDay.id}
+      clashes={clashWarnings}
       flexDayLabel={flexDayLabel}
     />
   );

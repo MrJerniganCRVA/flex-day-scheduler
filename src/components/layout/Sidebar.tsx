@@ -22,6 +22,7 @@ const adminNav: NavItem[] = [
   { label: "Flex Days", href: "/admin/flex-days" },
   { label: "Coverage", href: "/admin/coverage" },
   { label: "Rooms", href: "/admin/rooms" },
+  { label: "Duty Posts", href: "/admin/duty-posts" },
   { label: "Users", href: "/admin/users" },
   { label: "Clubs", href: "/admin/clubs" },
   { label: "Student View", href: "/student", exact: true },

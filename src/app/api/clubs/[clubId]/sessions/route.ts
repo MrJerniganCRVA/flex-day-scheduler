@@ -82,14 +82,26 @@ export async function POST(
   }
 
   // Prevent teacher from being scheduled in the same rotation twice on the same flex day
-  const teacherConflict = await prisma.clubSession.findFirst({
-    where: {
-      flexDayId,
-      club: { ownerId: club.ownerId },
-      rotations: { hasSome: rotations },
-    },
-    include: { club: { select: { name: true } } },
-  });
+  // Skipped for a club with no owner. `ownerId: null` becomes `IS NULL` in the
+  // generated SQL, so this matched every *other* ownerless club's session in the
+  // same rotations and refused legitimate scheduling — a club run by a rotation of
+  // teachers has no single owner to double-book in the first place.
+  //
+  // Deliberately still owner-only otherwise, and deliberately still the only
+  // blocking check: it cannot see cosponsors, per-rotation coverage or one-off
+  // owners, and the clashes that matter most arise from those. Those are warned
+  // about on the admin Coverage page by findTeacherClashes rather than blocked
+  // here, so a legitimate double-booking can be recorded and resolved.
+  const teacherConflict = club.ownerId
+    ? await prisma.clubSession.findFirst({
+        where: {
+          flexDayId,
+          club: { ownerId: club.ownerId },
+          rotations: { hasSome: rotations },
+        },
+        include: { club: { select: { name: true } } },
+      })
+    : null;
   if (teacherConflict) {
     return NextResponse.json(
       {

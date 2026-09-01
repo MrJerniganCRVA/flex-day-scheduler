@@ -102,7 +102,9 @@ Admins can promote any user to ADMIN (or change roles) from the admin panel. The
 
 **Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits. Signups close at a configurable deadline before the flex day.
 
-**Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time.
+**Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time, and anyone expected in two places at once is flagged.
+
+**Duty posts** are supervision spots that aren't clubs — hallways, the cafeteria, the front doors. Admins define them under **Duty Posts** and staff them per rotation from the Coverage page.
 
 **Finalization** triggers a Google Calendar sync: attendees (students + assigned teachers) are added to each session's calendar event. The flex day can be unfinalized to make corrections and re-send.
 
@@ -193,6 +195,59 @@ internal cuid would be meaningless outside this database. `grade_level` is a
 placeholder constant so the column is present and populated for downstream
 invite tooling. Both are computed in `src/lib/csv-export.ts` and are the two
 things to revisit if the app ever gains real student records.
+
+## Coverage, and Taking a Teacher Off a Session
+
+Who is in the room is *derived*, not stored: with no explicit assignment, T1 falls
+back to the club's owner (or a one-off's creator) and T2 to the cosponsor. That is
+what keeps coverage correct when a club changes hands, but it means an empty slot
+is ambiguous, so each slot carries a "cleared" flag alongside its teacher id:
+
+| T1 shows | Meaning |
+|---|---|
+| a teacher | explicitly assigned |
+| `Owner (name)` | nobody assigned — fall back to the club's owner |
+| `None — needs cover` | deliberately nobody; the rotation is flagged as needing cover |
+
+Without that third state, choosing "None" wrote a null the owner fallback
+immediately undid — the page reported **Saved ✓** and reverted on reload, and an
+admin had no way to take a double-booked teacher off one of their two clubs.
+
+There are two ways to remove someone, and they mean different things:
+
+- **`None — needs cover`** empties *the slot*. It survives a change of club owner
+  (the new owner isn't defaulted in either).
+- **`Not here`** records that *this person* isn't attending, as a
+  `SessionTeacherAbsence`. Better for a double-booking: it names who and why, shows
+  on that teacher's own dashboard so they can see and undo it, and lets a new owner
+  default in normally.
+
+Either one resolves a clash. Clashes are **warned about, never blocked** — it is
+legitimate to know about one and sort it out later.
+
+## Duty Posts
+
+Supervision that isn't a club. Defined under **Duty Posts** (admin only) with a
+name, an optional location, and the rotations it must be staffed for; teachers are
+assigned to them per Flex Day from the Coverage page, under **Building coverage**.
+
+Only the required rotations get a slot, so a blank always means "needs someone"
+rather than "not needed here", and the group header carries the count that answers
+the actual question — `2 of 7 unstaffed`.
+
+Duty posts are a separate model from `ClubSession` on purpose. Everything
+student-facing reaches sessions through `flexDay.clubSessions` or
+`signup.clubSession` — the student pages, signups, the roster CSV, auto-assign and
+calendar finalize — so a separate table is invisible to all of them with no changes
+to any of those queries. A duty post modelled as a club with a flag would have
+needed a correct exclusion in every one of them, and the first one missed would
+have offered a hallway to students to sign up for, or auto-assigned a student into
+it (`Club.allowRandomAssignment` defaults to true).
+
+Duty assignments count toward double-booking detection, and a teacher already
+covering a club in a rotation is not offered for duty in it. Retire a post with
+**Deactivate**, which keeps the record of who covered it; **Delete** cascades those
+records away.
 
 ## Changing a Roster After Invites Are Sent
 

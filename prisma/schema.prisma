@@ -104,6 +104,7 @@ model User {
   auditsAbout      SignupAudit[]             @relation("SignupAuditStudent")
   clubTeacherPools ClubTeacher[]             @relation("ClubTeacherPool")
   sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
+  dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
 
   @@index([email])
 }
@@ -117,7 +118,8 @@ model FlexDay {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  clubSessions ClubSession[]
+  clubSessions    ClubSession[]
+  dutyAssignments DutyAssignment[]
 
   @@unique([date])
   @@index([date])
@@ -239,6 +241,21 @@ model SessionRotationCoverage {
   /// to clear T2 on a club that has a cosponsor — the fallback re-derives them.
   secondaryCleared Boolean @default(false)
 
+  /// The same decision for T1: this rotation's primary teacher is nobody.
+  ///
+  /// Added after the flag above, for a bug with the identical shape one slot over.
+  /// `primaryTeacherId = null` means "nobody assigned — use the club's owner", so
+  /// clearing T1 on a club that has an owner was impossible: the Coverage page
+  /// saved the null happily and the fallback put the owner straight back on the
+  /// next load. That left an admin no way to take a double-booked teacher off one
+  /// of the two clubs they were expected at simultaneously.
+  ///
+  /// Use this when the *slot* should be empty and the rotation should show as
+  /// needing cover. When a specific person simply is not attending — the usual
+  /// case for a double-booking — a SessionTeacherAbsence is the better record: it
+  /// names who and why, and survives a change of club owner.
+  primaryCleared Boolean @default(false)
+
   session          ClubSession @relation(fields: [sessionId],          references: [id], onDelete: Cascade)
   primaryTeacher   User?       @relation("RotCovPrimary",   fields: [primaryTeacherId],   references: [id], onDelete: SetNull)
   secondaryTeacher User?       @relation("RotCovSecondary", fields: [secondaryTeacherId], references: [id], onDelete: SetNull)
@@ -336,4 +353,67 @@ model SignupAudit {
   @@index([flexDayId])
   @@index([studentId])
   @@index([createdAt])
+}
+
+/// A supervision post that is not a club: a hallway, the cafeteria, the front
+/// doors. Somewhere a teacher has to stand so the building has adequate eyes.
+///
+/// Deliberately NOT a ClubSession. Everything student-facing reaches sessions
+/// through `flexDay.clubSessions` or `signup.clubSession` — the student pages,
+/// signups, the roster CSV export, auto-assign and calendar finalize — so a
+/// separate model is invisible to all of them with no changes to any of those
+/// queries. Modelling duty as a club with a flag would instead require a correct
+/// exclusion in every one of those places, and the first one missed would offer a
+/// hallway to students as something to sign up for, or auto-assign a student into
+/// it: Club.allowRandomAssignment defaults to true.
+model DutyPost {
+  id   String  @id @default(cuid())
+  name String  @unique
+  /// Free text ("2nd floor hallway", "front doors"). Deliberately not a Room
+  /// relation: most duty spots are corridors and doors, not bookable rooms.
+  location String?
+
+  /// Rotations this post MUST be staffed for.
+  ///
+  /// Not a "default" that gets copied onto each day the way Club.defaultRotations
+  /// is — it is the standing requirement, read live. It is what lets an unstaffed
+  /// cafeteria show as a gap without an admin having to remember the cafeteria
+  /// should be staffed, and it keeps "nobody needed here in Flex 2" distinct from
+  /// "nobody assigned yet in Flex 2". That distinction is the same one whose
+  /// absence caused the coverage T1 bug — see SessionRotationCoverage.
+  requiredRotations RotationSlot[]
+
+  /// Retirement path. Deleting a post cascades its assignments and erases the
+  /// record of who covered it; deactivating stops it appearing on future Flex
+  /// Days and keeps the history. Mirrors Room.isActive.
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments DutyAssignment[]
+}
+
+/// Who is covering one duty post, for one rotation of one Flex Day.
+///
+/// Unlike SessionRotationCoverage there is no fallback chain here: a duty post
+/// has no owner or cosponsor to derive from, so a null teacher unambiguously
+/// means "unstaffed" and no `cleared` flag is needed.
+model DutyAssignment {
+  id         String       @id @default(cuid())
+  dutyPostId String
+  flexDayId  String
+  rotation   RotationSlot
+  teacherId  String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  dutyPost DutyPost @relation(fields: [dutyPostId], references: [id], onDelete: Cascade)
+  flexDay  FlexDay  @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: deleting a teacher must leave the post visibly
+  /// unstaffed rather than silently dropping the requirement to staff it.
+  teacher  User?    @relation("DutyTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@unique([dutyPostId, flexDayId, rotation])
+  @@index([flexDayId])
+  @@index([teacherId])
 }

@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  findTeacherClashes,
   resolveSessionCoverage,
   resolveSessionTeacherIds,
   rotationsExpectingTeacher,
   sessionRef,
   type CoverageRow,
+  type ExpectedPlacement,
 } from "./coverage";
 
 /**
@@ -20,12 +22,14 @@ const row = (
   rotation: CoverageRow["rotation"],
   primary: string | null,
   secondary: string | null,
-  secondaryCleared = false
+  secondaryCleared = false,
+  primaryCleared = false
 ): CoverageRow => ({
   rotation,
   primaryTeacherId: primary,
   secondaryTeacherId: secondary,
   secondaryCleared,
+  primaryCleared,
 });
 
 describe("resolveSessionCoverage", () => {
@@ -234,11 +238,93 @@ describe("resolveSessionCoverage with a cleared T2", () => {
     expect([...ids]).toEqual(["owner"]);
   });
 
-  it("treats an absent row's flag as false when omitted", () => {
-    // CoverageRow.secondaryCleared is optional for callers that don't select it.
+  it("falls back to the cosponsor when there is no row at all", () => {
+    // No row means nothing has been decided, which is not the same as a row whose
+    // flag is set. CoverageRow.secondaryCleared is required precisely so a query
+    // cannot omit the column and land here by accident.
     expect(
       resolveSessionCoverage(club, [], "FLEX_1", []).secondaryTeacherId
     ).toBe("cosponsor");
+  });
+});
+
+/**
+ * The reported bug: an admin could not take a teacher off a club they owned. A
+ * teacher owning one club in Flex 1 and another spanning Flex 2+3 was expected in
+ * two places once an extra Flex 1 session appeared, and clearing T1 on one of them
+ * did nothing — `primaryTeacherId = null` was saved faithfully and then overwritten
+ * by the owner fallback on the next read, so the Coverage page reported "Saved" and
+ * reverted.
+ *
+ * These mirror the secondaryCleared suite above, one slot over.
+ */
+describe("resolveSessionCoverage — primaryCleared", () => {
+  const cleared = (rotation: CoverageRow["rotation"] = "FLEX_1") =>
+    row(rotation, null, null, false, true);
+
+  it("suppresses the owner fallback", () => {
+    expect(
+      resolveSessionCoverage(club, [cleared()], "FLEX_1", []).primaryTeacherId
+    ).toBeNull();
+  });
+
+  it("suppresses the one-off creator fallback too", () => {
+    const oneOff = { ownerId: null, cosponsorId: null, oneOffOwnerId: "creator" };
+    expect(
+      resolveSessionCoverage(oneOff, [cleared()], "FLEX_1", []).primaryTeacherId
+    ).toBeNull();
+  });
+
+  it("keeps the owner fallback when the flag is false", () => {
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, null)], "FLEX_1", [])
+        .primaryTeacherId
+    ).toBe("owner");
+  });
+
+  it("still resolves to the owner for a row created by setting T2 only", () => {
+    // The mirror of the T2 case: rows are upserted per field, so assigning T2
+    // leaves a null primary behind that must keep meaning "not set".
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, "sub2")], "FLEX_1", [])
+    ).toEqual({ primaryTeacherId: "owner", secondaryTeacherId: "sub2" });
+  });
+
+  it("lets an explicit teacher win over the cleared flag", () => {
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", "sub1", null, false, true)], "FLEX_1", [])
+        .primaryTeacherId
+    ).toBe("sub1");
+  });
+
+  it("only clears the rotation whose row carries the flag", () => {
+    const rows = [cleared("FLEX_1")];
+    expect(
+      resolveSessionCoverage(club, rows, "FLEX_1", []).primaryTeacherId
+    ).toBeNull();
+    expect(
+      resolveSessionCoverage(club, rows, "FLEX_2", []).primaryTeacherId
+    ).toBe("owner");
+  });
+
+  it("leaves T2 alone", () => {
+    // The two slots are independent; clearing one must not disturb the other.
+    expect(
+      resolveSessionCoverage(club, [cleared()], "FLEX_1", []).secondaryTeacherId
+    ).toBe("cosponsor");
+  });
+
+  it("keeps a cleared owner off the calendar invite", () => {
+    const ids = resolveSessionTeacherIds(club, [cleared()], ["FLEX_1"], []);
+    expect([...ids]).toEqual(["cosponsor"]);
+  });
+
+  it("stops the owner being expected in a rotation they were cleared from", () => {
+    // The end of the reported bug: this is what lets the admin resolve a
+    // double-booking by taking the owner off one of the two sessions.
+    expect(
+      rotationsExpectingTeacher(club, [cleared()], ["FLEX_1", "FLEX_2"], [], "owner")
+    ).toEqual(["FLEX_2"]);
   });
 });
 
@@ -348,5 +434,192 @@ describe("sessionRef", () => {
     expect(resolveSessionCoverage(ref, [], "FLEX_3", []).primaryTeacherId).toBe(
       "creator"
     );
+  });
+});
+
+/**
+ * Nobody can be in two rooms at once. Until findTeacherClashes existed, no admin
+ * was ever told when that had happened — the warning lived only on the teacher's
+ * own dashboard, scoped to the logged-in user.
+ */
+describe("findTeacherClashes", () => {
+  const ALL = ["FLEX_1", "FLEX_2", "FLEX_3"] as const;
+
+  /** A club session with no coverage rows — everything resolves by fallback. */
+  const place = (
+    id: string,
+    rotations: ExpectedPlacement["rotations"],
+    session: ExpectedPlacement["session"],
+    rows: CoverageRow[] = [],
+    absences: ExpectedPlacement["absences"] = []
+  ): ExpectedPlacement => ({ id, name: id, rotations, session, rows, absences });
+
+  /** A duty post: an explicit teacher, no fallbacks to derive. */
+  const duty = (id: string, rotation: CoverageRow["rotation"], teacherId: string) =>
+    place(id, [rotation], { ownerId: teacherId });
+
+  it("reports nothing when every teacher is in one place", () => {
+    expect(
+      findTeacherClashes(
+        [
+          place("chess", ["FLEX_1"], { ownerId: "ann" }),
+          place("robotics", ["FLEX_1"], { ownerId: "bob" }),
+        ],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("catches a teacher who owns two clubs scheduled in the same rotation", () => {
+    // The reported bug, and the case no dropdown was ever touched to create:
+    // both sessions resolve T1 to the same owner purely by fallback.
+    const clashes = findTeacherClashes(
+      [
+        place("chess", ["FLEX_1"], { ownerId: "ann" }),
+        place("esports", ["FLEX_1"], { ownerId: "ann" }),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes).toHaveLength(1);
+    expect(clashes[0].rotation).toBe("FLEX_1");
+    expect(clashes[0].teacherId).toBe("ann");
+    expect(clashes[0].placements.map((p) => p.id)).toEqual(["chess", "esports"]);
+  });
+
+  it("reports the exact reported scenario across a linked session", () => {
+    // Teacher A owns a Flex 1 club and a club linked across Flex 2+3. An extra
+    // Flex 1 session for the second club makes A the fallback T1 twice in Flex 1,
+    // and only in Flex 1.
+    const clashes = findTeacherClashes(
+      [
+        place("club-one-f1", ["FLEX_1"], { ownerId: "teacherA" }),
+        place("club-two-linked", ["FLEX_2", "FLEX_3"], { ownerId: "teacherA" }),
+        place("club-two-extra-f1", ["FLEX_1"], { ownerId: "teacherA" }),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes.map((c) => c.rotation)).toEqual(["FLEX_1"]);
+    expect(clashes[0].placements.map((p) => p.id)).toEqual([
+      "club-one-f1",
+      "club-two-extra-f1",
+    ]);
+  });
+
+  it("clears once one side is marked absent", () => {
+    // What makes "Not here" the natural fix to offer beside the warning.
+    expect(
+      findTeacherClashes(
+        [
+          place("chess", ["FLEX_1"], { ownerId: "ann" }),
+          place("esports", ["FLEX_1"], { ownerId: "ann" }, [], [
+            { teacherId: "ann", rotation: "FLEX_1" },
+          ]),
+        ],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("clears once one side's T1 is cleared", () => {
+    expect(
+      findTeacherClashes(
+        [
+          place("chess", ["FLEX_1"], { ownerId: "ann" }),
+          place("esports", ["FLEX_1"], { ownerId: "ann" }, [
+            row("FLEX_1", null, null, false, true),
+          ]),
+        ],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("catches a club session clashing with a duty post", () => {
+    const clashes = findTeacherClashes(
+      [
+        place("chess", ["FLEX_1"], { ownerId: "ann" }),
+        duty("cafeteria", "FLEX_1", "ann"),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes).toHaveLength(1);
+    expect(clashes[0].placements.map((p) => p.id)).toEqual(["chess", "cafeteria"]);
+  });
+
+  it("reports a linked session only in the rotations that actually overlap", () => {
+    const clashes = findTeacherClashes(
+      [
+        place("linked", ["FLEX_1", "FLEX_2", "FLEX_3"], { ownerId: "ann" }),
+        place("chess", ["FLEX_2"], { ownerId: "ann" }),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes.map((c) => c.rotation)).toEqual(["FLEX_2"]);
+  });
+
+  it("counts a T2 against a T1", () => {
+    // Being someone's second teacher still puts you in that room.
+    const clashes = findTeacherClashes(
+      [
+        place("chess", ["FLEX_1"], { ownerId: "ann" }),
+        place("robotics", ["FLEX_1"], { ownerId: "bob", cosponsorId: "ann" }),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes).toHaveLength(1);
+    expect(clashes[0].teacherId).toBe("ann");
+  });
+
+  it("does not report a teacher filling both slots of one session", () => {
+    // T1 and T2 of the same session is one room, not two.
+    expect(
+      findTeacherClashes(
+        [place("chess", ["FLEX_1"], { ownerId: "ann", cosponsorId: "ann" })],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("never reports two different teachers as a clash", () => {
+    expect(
+      findTeacherClashes(
+        [
+          place("chess", ["FLEX_1"], { ownerId: "ann", cosponsorId: "bob" }),
+          place("robotics", ["FLEX_2"], { ownerId: "ann", cosponsorId: "bob" }),
+        ],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("ignores a club with no owner rather than colliding the nulls", () => {
+    // Two ownerless clubs resolve T1 to null, which is nobody — not the same
+    // person twice. The scheduling guard got this wrong; this must not.
+    expect(
+      findTeacherClashes(
+        [
+          place("teacherless-a", ["FLEX_1"], { ownerId: null }),
+          place("teacherless-b", ["FLEX_1"], { ownerId: null }),
+        ],
+        [...ALL]
+      )
+    ).toEqual([]);
+  });
+
+  it("reports one clash per rotation when a teacher is doubled in several", () => {
+    const clashes = findTeacherClashes(
+      [
+        place("linked-a", ["FLEX_1", "FLEX_2"], { ownerId: "ann" }),
+        place("linked-b", ["FLEX_1", "FLEX_2"], { ownerId: "ann" }),
+      ],
+      [...ALL]
+    );
+
+    expect(clashes.map((c) => c.rotation)).toEqual(["FLEX_1", "FLEX_2"]);
   });
 });
