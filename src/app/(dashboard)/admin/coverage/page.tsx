@@ -7,6 +7,7 @@ import type {
   CoverageClub,
   CoverageDuty,
   CoverageSummary,
+  CoverageTab,
   CoverageTeacher,
   ResolvedAssignment,
 } from "@/components/admin/CoverageDashboard";
@@ -21,9 +22,18 @@ import {
 } from "@/lib/coverage";
 import { ALL_ROTATIONS } from "@/types";
 
-export default async function AdminCoveragePage() {
+export default async function AdminCoveragePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
+
+  // Validated rather than trusted, the way the Users page does it: a junk value
+  // in the URL should land on Clubs, not render an empty page.
+  const { tab: rawTab } = await searchParams;
+  const tab: CoverageTab = rawTab === "building" ? "building" : "clubs";
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -221,6 +231,12 @@ export default async function AdminCoveragePage() {
 
   return (
     <CoverageDashboard
+      // Keyed on the tab so switching remounts the component. A same-route
+      // search-param navigation does not reliably do that on its own, and the
+      // frozen band order below is mount-scoped — this is what makes "switching
+      // tabs re-sorts the columns" true rather than incidental.
+      key={tab}
+      tab={tab}
       clubs={clubs}
       teachers={teachers}
       duties={duties}

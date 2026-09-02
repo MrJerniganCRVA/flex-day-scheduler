@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import StatTile from "@/components/admin/StatTile";
 import type { RotationSlot } from "@prisma/client";
@@ -135,6 +136,11 @@ const EMPTY_ASSIGNMENT: Assignment = {
   absentTeacherIds: [],
 };
 type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
+/** dutyPostId -> rotation -> teacherId, or null for unstaffed. */
+type DutyAssignments = Record<
+  string,
+  Partial<Record<RotationSlot, string | null>>
+>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type SaveStatuses = Record<string, Partial<Record<RotationSlot, SaveStatus>>>;
 
@@ -146,6 +152,51 @@ type Urgency = "needs" | "consider" | "covered";
  * no second teacher, no students and no absences — so they stay separate shapes
  * rather than one type full of nullable fields.
  */
+/**
+ * Which band every item belongs in, keyed `${rotation}:${itemKey}`.
+ *
+ * Module-level and pure so the snapshot taken on mount and the one taken by
+ * Re-sort cannot disagree — the same reasoning that collapsed three copies of
+ * "is this teacher busy" into one list after they drifted apart.
+ *
+ * Covers both tabs regardless of which is showing, so switching tabs does not
+ * need a fresh snapshot to have an answer for the other side.
+ */
+function computeBands(
+  clubs: CoverageClub[],
+  duties: CoverageDuty[],
+  assignments: Assignments,
+  dutyAssignments: DutyAssignments
+): Record<string, Urgency> {
+  const bands: Record<string, Urgency> = {};
+
+  for (const club of clubs) {
+    for (const rotation of club.rotations) {
+      bands[`${rotation}:${club.sessionId}`] = urgencyOf(
+        club,
+        assignments[club.sessionId]?.[rotation]
+      );
+    }
+  }
+
+  for (const duty of duties) {
+    for (const rotation of duty.rotations) {
+      bands[`${rotation}:duty:${duty.dutyPostId}`] = dutyAssignments[
+        duty.dutyPostId
+      ]?.[rotation]
+        ? "covered"
+        : "needs";
+    }
+  }
+
+  return bands;
+}
+
+const TABS = [
+  { key: "clubs", label: "Clubs" },
+  { key: "building", label: "Building" },
+] as const satisfies readonly { key: CoverageTab; label: string }[];
+
 /** The urgency bands a column renders, worst first — gaps float to the top. */
 const BANDS = [
   { urgency: "needs", label: "Needs teacher", color: "red" },
@@ -156,6 +207,16 @@ const BANDS = [
   label: string;
   color: "red" | "amber" | "gray";
 }[];
+
+/**
+ * Which half of the page's job is on screen.
+ *
+ * "Is every club staffed?" and "does the building have eyes?" are different
+ * questions asked at different moments, and the columns got long enough that
+ * doing both at once was a scroll. Only the columns are tabbed — the summary,
+ * the clash banner and the teacher panel sit outside and answer for both.
+ */
+export type CoverageTab = "clubs" | "building";
 
 /** A teacher expected in one rotation, and what put them there. */
 type ExpectedPlacement = {
@@ -197,6 +258,7 @@ export default function CoverageDashboard({
   clashes,
   summary,
   flexDayLabel,
+  tab,
 }: {
   clubs: CoverageClub[];
   teachers: CoverageTeacher[];
@@ -205,6 +267,7 @@ export default function CoverageDashboard({
   clashes: CoverageClash[];
   summary: CoverageSummary;
   flexDayLabel: string;
+  tab: CoverageTab;
 }) {
   const router = useRouter();
 
@@ -219,10 +282,39 @@ export default function CoverageDashboard({
   // dutyAssignments[dutyPostId][rotation] — teacherId, or null for unstaffed.
   // Simpler than the club equivalent because a duty post has no owner to fall
   // back to, so there is no third state to carry.
-  const [dutyAssignments, setDutyAssignments] = useState(() =>
+  const [dutyAssignments, setDutyAssignments] = useState<DutyAssignments>(() =>
     Object.fromEntries(duties.map((d) => [d.dutyPostId, { ...d.assignments }]))
   );
   const [dutySaveStatus, setDutySaveStatus] = useState<SaveStatuses>({});
+
+  // The band each item sits in, fixed when the page arrives and held while the
+  // admin works. Deliberately mount-scoped: it is what stops a card moving out
+  // from under the person who just edited it. Re-taken by Re-sort below, and for
+  // free on tab switch (the component is keyed on the tab), on changing Flex Day
+  // and on reload.
+  const [bandSnapshot, setBandSnapshot] = useState<Record<string, Urgency>>(() =>
+    computeBands(
+      clubs,
+      duties,
+      Object.fromEntries(clubs.map((c) => [c.sessionId, { ...c.assignments }])),
+      Object.fromEntries(duties.map((d) => [d.dutyPostId, { ...d.assignments }]))
+    )
+  );
+
+  // Whether anything has drifted out of the band it is drawn in. Only then is
+  // there a Re-sort to offer — in the common case the control is not there at
+  // all, and the frozen order is something the admin chose rather than a
+  // mystery they have to notice.
+  const isStale = useMemo(() => {
+    const live = computeBands(clubs, duties, assignments, dutyAssignments);
+    return Object.keys(live).some(
+      (k) => k in bandSnapshot && live[k] !== bandSnapshot[k]
+    );
+  }, [clubs, duties, assignments, dutyAssignments, bandSnapshot]);
+
+  const resort = useCallback(() => {
+    setBandSnapshot(computeBands(clubs, duties, assignments, dutyAssignments));
+  }, [clubs, duties, assignments, dutyAssignments]);
 
   // Keyed `teacherId:rotation`, matching how the banner lists clashes.
   const [clashBusy, setClashBusy] = useState<string | null>(null);
@@ -690,20 +782,6 @@ export default function CoverageDashboard({
         />
       </div>
 
-      {/* Without duty posts in their own region any more, this is the only thing
-          that tells an admin the feature exists. */}
-      {!summary.hasDutyPosts && (
-        <p className="-mt-3 mb-5 text-xs text-gray-400 dark:text-gray-500">
-          No duty posts yet — hallways, the cafeteria, the front doors.{" "}
-          <a
-            href="/admin/duty-posts"
-            className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Set them up →
-          </a>
-        </p>
-      )}
-
       {/* Nobody can be in two rooms at once. Warn, never block — it is legitimate
           to know about a clash and sort it out later.
           This is also where the fix lives. It used to be a "Not here" button on
@@ -753,54 +831,117 @@ export default function CoverageDashboard({
         </div>
       )}
 
+      {/* Only the columns are tabbed. Everything above stays put, so a clash or
+          an open building slot is visible whichever tab you are on. */}
+      <div className="flex items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 mb-4">
+        <div className="flex gap-1">
+          {TABS.map((t) => {
+            const gaps =
+              t.key === "clubs"
+                ? summary.sessionsNeedingTeacher
+                : summary.dutySlotsUnstaffed;
+            return (
+              <Link
+                key={t.key}
+                href={`?tab=${t.key}`}
+                aria-current={tab === t.key ? "page" : undefined}
+                className={
+                  tab === t.key
+                    ? "px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px flex items-center gap-1.5"
+                    : "px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1.5"
+                }
+              >
+                {t.label}
+                {/* Only when there is something to go and do, so the inactive
+                    tab is worth a glance without being switched to. */}
+                {gaps > 0 && (
+                  <span className="rounded-full bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
+                    {gaps}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+
+        {isStale && (
+          <button
+            onClick={resort}
+            title="Move newly covered sessions down into Covered"
+            className="mb-1.5 shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Re-sort
+          </button>
+        )}
+      </div>
+
       <div className="flex gap-5">
         {/* ── Three rotation columns ─────────────────────────────────── */}
         {/* lg:, matching the other three rotation grids in the app. Below that
             the columns stack rather than becoming three ~90px lanes of selects. */}
         <div className="flex-1 grid gap-4 lg:grid-cols-3 min-w-0">
           {ALL_ROTATIONS.map((rotation) => {
-            // Clubs and duty posts on one axis.
-            //
-            // Duty used to be a separate region below the columns, laid out
-            // post-major (a card per post, rotations nested inside) — the
-            // transpose of the columns above it, so the page read as two
-            // unrelated screens stacked. A duty slot *is* "someone must be here
-            // during Flex 1", the same shape as a club session, so it belongs in
-            // that rotation's column and in the same urgency banding. An
-            // unstaffed cafeteria now surfaces under "Needs teacher" at the top
-            // of its column instead of below the fold.
+            // Clubs and duty posts sit on one axis — a duty slot *is* "someone
+            // must be here during Flex 1", the same shape as a club session. The
+            // tab only filters which of them this column shows; it does not put
+            // them back on different axes.
             const items: ColumnItem[] = [
-              ...clubs
-                .filter((c) => c.rotations.includes(rotation))
-                .map((club) => ({
-                  kind: "club" as const,
-                  key: club.sessionId,
-                  club,
-                  urgency: urgencyOf(club, assignments[club.sessionId]?.[rotation]),
-                })),
-              // Duty after clubs within each band, so the building posts stay
-              // clustered and scannable while still sorting by urgency.
-              ...duties
-                .filter((d) => d.rotations.includes(rotation))
-                .map((duty) => ({
-                  kind: "duty" as const,
-                  key: `duty:${duty.dutyPostId}`,
-                  duty,
-                  // Never "consider": that is a second-teacher judgement and a
-                  // duty post has no second teacher.
-                  urgency: (dutyAssignments[duty.dutyPostId]?.[rotation]
-                    ? "covered"
-                    : "needs") as Urgency,
-                })),
+              ...(tab === "clubs"
+                ? clubs
+                    .filter((c) => c.rotations.includes(rotation))
+                    .map((club) => ({
+                      kind: "club" as const,
+                      key: club.sessionId,
+                      club,
+                      urgency: urgencyOf(
+                        club,
+                        assignments[club.sessionId]?.[rotation]
+                      ),
+                    }))
+                : []),
+              ...(tab === "building"
+                ? duties
+                    .filter((d) => d.rotations.includes(rotation))
+                    .map((duty) => ({
+                      kind: "duty" as const,
+                      key: `duty:${duty.dutyPostId}`,
+                      duty,
+                      // Never "consider": that is a second-teacher judgement and
+                      // a duty post has no second teacher.
+                      urgency: (dutyAssignments[duty.dutyPostId]?.[rotation]
+                        ? "covered"
+                        : "needs") as Urgency,
+                    }))
+                : []),
             ];
 
+            // Grouped by the *snapshot*, styled by the live value.
+            //
+            // Deciding the band from live state meant the card an admin had just
+            // edited left "Needs teacher" and reappeared at the foot of "Covered"
+            // the instant they picked a name — losing their place, and making a
+            // mistake hard to walk back. The band is now fixed when the page
+            // arrives and holds while they work; the card stays where it is and
+            // simply turns green. `?? i.urgency` catches an item the server added
+            // mid-session, which has no snapshot entry yet.
             const grouped = {
-              needs: items.filter((i) => i.urgency === "needs"),
-              consider: items.filter((i) => i.urgency === "consider"),
-              covered: items.filter((i) => i.urgency === "covered"),
+              needs: items.filter(
+                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "needs"
+              ),
+              consider: items.filter(
+                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "consider"
+              ),
+              covered: items.filter(
+                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "covered"
+              ),
             };
-            // Counts duty too, or the header would contradict the cards under it.
-            const uncoveredCount = grouped.needs.length;
+
+            // Live, not snapshotted: the header states a fact about the day, not
+            // about the layout. It drops the moment a slot is filled, which is
+            // what confirms the action now that the card itself stays put.
+            const uncoveredCount = items.filter(
+              (i) => i.urgency === "needs"
+            ).length;
 
             return (
               <div
@@ -828,9 +969,30 @@ export default function CoverageDashboard({
                 {/* Cards */}
                 <div className="flex-1 overflow-y-auto">
                   {items.length === 0 ? (
-                    <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500 italic">
-                      Nothing scheduled.
-                    </p>
+                    tab === "building" && !summary.hasDutyPosts ? (
+                      // Duty posts have no region of their own any more, so this
+                      // is where an admin discovers the feature exists.
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          No duty posts yet.
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                          Hallways, the cafeteria, the front doors.
+                        </p>
+                        <a
+                          href="/admin/duty-posts"
+                          className="mt-2 inline-block text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          Set them up →
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500 italic">
+                        {tab === "clubs"
+                          ? "No clubs scheduled."
+                          : "No duty posts for this rotation."}
+                      </p>
+                    )
                   ) : (
                     // One loop over the three urgency bands rather than three
                     // near-identical copies of the same forty lines — which is
