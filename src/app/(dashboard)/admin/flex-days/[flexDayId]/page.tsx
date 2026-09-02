@@ -49,6 +49,7 @@ export default async function AdminFlexDayDetailPage({
             select: {
               id: true,
               attended: true,
+              forced: true,
               student: { select: { id: true, name: true, email: true } },
             },
             orderBy: { student: { name: "asc" } },
@@ -286,6 +287,19 @@ export default async function AdminFlexDayDetailPage({
                                           : "–"}
                                     </span>
                                     {s.student.name}
+                                    {/* An admin moving or removing this student
+                                        should know the club requires them —
+                                        the membership outlives the override and
+                                        will re-enroll them on the next session
+                                        the club is given. */}
+                                    {s.forced && (
+                                      <span
+                                        title="Required member of this club — removing this signup does not end the membership"
+                                        className="rounded-full border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-1.5 text-[10px] font-medium text-indigo-600 dark:text-indigo-400"
+                                      >
+                                        Required
+                                      </span>
+                                    )}
                                     {/* Overrides are only offered once invites
                                         have gone out — before that, students
                                         manage their own signups. */}

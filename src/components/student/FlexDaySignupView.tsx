@@ -14,6 +14,7 @@ export interface SessionViewData {
   enrolledCount: number;
   capacity: number;
   isMySignup: boolean;
+  isForced: boolean;
   signupId: string | undefined;
   isFull: boolean;
   isConflicted: boolean;
@@ -260,6 +261,7 @@ export default function FlexDaySignupView({
                             clubSessionId={cs.id}
                             signupId={cs.signupId}
                             isMySignup={cs.isMySignup}
+                            isForced={cs.isForced}
                             isFull={cs.isFull && !cs.isMySignup}
                             isConflicted={cs.isConflicted}
                             conflictLabel={cs.conflictLabel}
