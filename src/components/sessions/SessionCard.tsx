@@ -14,6 +14,8 @@ interface ConflictDetail {
 
 interface Signup {
   id: string;
+  /** Optional so callers that don't select it keep type-checking. */
+  forced?: boolean;
   student: { id: string; name: string; email: string };
 }
 
@@ -478,6 +480,14 @@ export default function SessionCard({
                   >
                     <span>{signup.student.name}</span>
                     <span className="text-gray-400 dark:text-gray-500">{signup.student.email}</span>
+                    {signup.forced && (
+                      <span
+                        title="Required member — cannot cancel"
+                        className="rounded-full border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-1.5 text-[10px] font-medium text-indigo-600 dark:text-indigo-400"
+                      >
+                        Required
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

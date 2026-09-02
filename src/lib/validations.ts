@@ -96,6 +96,16 @@ export const rosterOverrideSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
+/**
+ * Adding a student to a club's required-member roster. No reason field, unlike
+ * rosterOverrideSchema: this is a standing statement about who belongs to the
+ * club, not a one-off exception to the signup rules that someone will later be
+ * asked to justify.
+ */
+export const addRequiredMemberSchema = z.object({
+  studentId: z.string().cuid(),
+});
+
 export const updateUserRoleSchema = z.object({
   role: z.enum(["STUDENT", "TEACHER", "ADMIN"] as [Role, ...Role[]]),
 });

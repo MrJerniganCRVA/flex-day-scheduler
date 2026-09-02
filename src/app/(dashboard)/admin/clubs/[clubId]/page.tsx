@@ -7,6 +7,7 @@ import type { RotationSlot } from "@prisma/client";
 import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
+import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
 
 export default async function AdminClubDetailPage({
   params,
@@ -24,6 +25,14 @@ export default async function AdminClubDetailPage({
       owner: { select: { id: true, name: true, email: true } },
       cosponsor: { select: { id: true, name: true, email: true } },
       teachers: { include: { teacher: { select: { id: true, name: true } } } },
+      requiredMembers: {
+        select: {
+          id: true,
+          studentId: true,
+          student: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { student: { name: "asc" } },
+      },
       clubSessions: {
         include: {
           flexDay: { select: { id: true, date: true, label: true } },
@@ -42,6 +51,12 @@ export default async function AdminClubDetailPage({
   if (!club) notFound();
 
   const dayGroups = groupSessionsByFlexDay(club.clubSessions);
+
+  const students = await prisma.user.findMany({
+    where: { role: "STUDENT" },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div>
@@ -105,6 +120,14 @@ export default async function AdminClubDetailPage({
           </Link>
           <DeleteClubButton clubId={clubId} redirectTo="/admin/clubs" />
         </div>
+      </div>
+
+      <div className="mb-6">
+        <RequiredMembersPanel
+          clubId={clubId}
+          initialMembers={club.requiredMembers}
+          students={students}
+        />
       </div>
 
       <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Scheduled Sessions</h2>

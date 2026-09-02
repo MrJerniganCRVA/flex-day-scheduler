@@ -102,6 +102,9 @@ Admins can promote any user to ADMIN (or change roles) from the admin panel. The
 
 **Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits. Signups close at a configurable deadline before the flex day.
 
+**Required members** are students whose attendance at a club is mandatory —
+Yearbook staff, club officers. See below.
+
 **Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time, and anyone expected in two places at once is flagged.
 
 **Duty posts** are supervision spots that aren't clubs — hallways, the cafeteria, the front doors. Admins define them under **Duty Posts** and staff them per rotation from the Coverage page.
@@ -248,6 +251,38 @@ Duty assignments count toward double-booking detection, and a teacher already
 covering a club in a rotation is not offered for duty in it. Retire a post with
 **Deactivate**, which keeps the record of who covered it; **Delete** cascades those
 records away.
+
+## Required Members (mandatory attendance)
+
+Some club attendance isn't a choice. On a club's page — teacher or admin — the
+**Required Members** panel names the students who must attend: Yearbook staff,
+club officers, anyone who has to be in that room every time.
+
+A required member is signed up automatically for every upcoming session the club
+has, and for every session it is given afterwards — when a new Flex Day is
+created, when the club's rotations are edited, and when a teacher schedules one
+by hand. Their signup shows as **Required** rather than cancellable, and the API
+refuses a student's attempt to cancel it.
+
+The roster is managed by whoever manages the club (admin, owner, or cosponsor).
+Two rules are worth knowing before you use it:
+
+- **A required signup wins.** If the student had already chosen something else in
+  that rotation, that signup is cancelled for them (and recorded in the Flex
+  Day's **Changes** tab, with the club that displaced it). If the session is
+  full, they are added anyway and the panel tells you it is now over capacity.
+  A room's stated capacity does not stop a student who has to be there.
+- **Already-finalized Flex Days are left alone**, because their invites have gone
+  out. The panel says which days were skipped; add the student to those with the
+  admin roster override below.
+
+Removing a student from the roster drops their forced signups on upcoming Flex
+Days and withdraws any calendar invite already sent. Past signups stay — they are
+attendance history.
+
+If two clubs both require the same student in the same rotation, the second one
+is refused and names the first. There is no correct automatic answer to that, and
+picking one silently would hide a scheduling mistake.
 
 ## Changing a Roster After Invites Are Sent
 

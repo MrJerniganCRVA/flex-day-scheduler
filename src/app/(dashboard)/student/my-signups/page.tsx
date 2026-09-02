@@ -105,7 +105,11 @@ function SignupTable({
                 </td>
                 {showCancel && (
                   <td className="px-4 py-3">
-                    {deadlinePast ? (
+                    {signup.forced ? (
+                      <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                        Required
+                      </span>
+                    ) : deadlinePast ? (
                       <span className="inline-flex items-center rounded-full bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
                         Deadline passed
                       </span>
@@ -146,7 +150,13 @@ function SignupTable({
                 )}
                 {showCancel && (
                   <td className="px-4 py-3 text-right">
-                    <CancelButton signupId={signup.id} disabled={deadlinePast} />
+                    {signup.forced ? (
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        Ask your teacher
+                      </span>
+                    ) : (
+                      <CancelButton signupId={signup.id} disabled={deadlinePast} />
+                    )}
                   </td>
                 )}
               </tr>

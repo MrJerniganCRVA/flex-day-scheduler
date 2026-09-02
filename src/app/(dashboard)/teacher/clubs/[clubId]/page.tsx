@@ -6,6 +6,7 @@ import FlexDaySessionGroup from "@/components/sessions/FlexDaySessionGroup";
 import { isClubManager } from "@/lib/auth-helpers";
 import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
+import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
 
 export default async function ClubDetailPage({
   params,
@@ -26,6 +27,14 @@ export default async function ClubDetailPage({
       owner: { select: { id: true, name: true } },
       cosponsor: { select: { id: true, name: true } },
       teachers: { include: { teacher: { select: { id: true, name: true } } } },
+      requiredMembers: {
+        select: {
+          id: true,
+          studentId: true,
+          student: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { student: { name: "asc" } },
+      },
       defaultRoom: { select: { id: true, name: true } },
       clubSessions: {
         where: { flexDay: { date: { gte: today } } },
@@ -50,6 +59,15 @@ export default async function ClubDetailPage({
   if (!canManage) redirect("/unauthorized");
 
   const sessions = club.clubSessions;
+
+  // Loaded here rather than through an API route the browser calls: the page is
+  // already a server component with database access, and an endpoint that hands
+  // out the whole student roster is one more thing to authorize correctly.
+  const students = await prisma.user.findMany({
+    where: { role: "STUDENT" },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div>
@@ -79,6 +97,14 @@ export default async function ClubDetailPage({
         <DeleteClubButton
           clubId={clubId}
           editHref={`/teacher/clubs/${clubId}/edit`}
+        />
+      </div>
+
+      <div className="mb-6">
+        <RequiredMembersPanel
+          clubId={clubId}
+          initialMembers={club.requiredMembers}
+          students={students}
         />
       </div>
 

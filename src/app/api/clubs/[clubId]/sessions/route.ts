@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { enrollRequiredMembers } from "@/lib/required-members-io";
 import { createClubSessionSchema } from "@/lib/validations";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
@@ -135,5 +136,14 @@ export async function POST(
     },
   });
 
-  return NextResponse.json(clubSession, { status: 201 });
+  // A club's required members belong on every session it gets, including the
+  // ones a teacher schedules by hand. Reported back so the teacher sees who was
+  // added, and what it displaced, rather than discovering it on the roster.
+  const enrollment = await enrollRequiredMembers({
+    clubId,
+    sessionIds: [clubSession.id],
+    actor: { id: session.user.id ?? null, email: session.user.email ?? "unknown" },
+  });
+
+  return NextResponse.json({ ...clubSession, enrollment }, { status: 201 });
 }

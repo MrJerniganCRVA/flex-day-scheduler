@@ -7,6 +7,7 @@ interface Props {
   clubSessionId: string;
   signupId?: string;
   isMySignup: boolean;
+  isForced?: boolean;
   isFull: boolean;
   isConflicted: boolean;
   conflictLabel?: string;
@@ -19,6 +20,7 @@ export default function SignupButton({
   clubSessionId,
   signupId,
   isMySignup,
+  isForced = false,
   isFull,
   isConflicted,
   conflictLabel,
@@ -65,6 +67,22 @@ export default function SignupButton({
 
   // isMySignup always takes priority — show enrollment status regardless of deadline
   if (isMySignup) {
+    // A required signup is not the student's to cancel, before or after the
+    // deadline. Showing a Cancel button that the API refuses would be worse than
+    // showing none: the student would read the refusal as a bug rather than as
+    // the club's rule.
+    if (isForced) {
+      return (
+        <div className="space-y-1">
+          <div className="w-full rounded-md border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/30 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 text-center">
+            Required
+          </div>
+          <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+            Attendance is mandatory
+          </p>
+        </div>
+      );
+    }
     if (isPastDeadline) {
       return (
         <div className="space-y-1">

@@ -105,6 +105,7 @@ model User {
   clubTeacherPools ClubTeacher[]             @relation("ClubTeacherPool")
   sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
   dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
+  requiredIn       RequiredMember[]          @relation("RequiredMembership")
 
   @@index([email])
 }
@@ -171,6 +172,7 @@ model Club {
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
   teachers     ClubTeacher[]
+  requiredMembers RequiredMember[]
 
   @@index([ownerId])
   @@index([cosponsorId])
@@ -196,6 +198,32 @@ model ClubTeacher {
   @@unique([clubId, teacherId])
   @@index([clubId])
   @@index([teacherId])
+}
+
+/// Students whose attendance at a club is mandatory — Yearbook staff, club
+/// officers, anyone a teacher needs in the room every time.
+///
+/// Deliberately named for what it means rather than "ClubMember": ClubTeacher
+/// above is the teacher rotation pool, and a bare "member" next to it reads as
+/// "anyone in the club", which this is not. Ordinary attendance is a Signup.
+///
+/// Membership is *standing*, not a one-off placement: adding a student here
+/// enrolls them in the club's existing future sessions and in every session the
+/// club is given afterwards (see src/lib/required-members.ts, wired into all
+/// three session-creation paths). Removing them drops their future forced
+/// signups but leaves past ones alone — those are attendance history.
+model RequiredMember {
+  id        String   @id @default(cuid())
+  clubId    String
+  studentId String
+  createdAt DateTime @default(now())
+
+  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  student User @relation("RequiredMembership", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, studentId])
+  @@index([clubId])
+  @@index([studentId])
 }
 
 model ClubSession {
@@ -305,6 +333,15 @@ model Signup {
   studentId     String
   clubSessionId String
   attended      Boolean?
+
+  /// True when this signup was created by the club's required-member roster
+  /// rather than chosen by the student. A forced signup is not the student's to
+  /// cancel — DELETE /api/signups/[signupId] refuses it for a STUDENT — because
+  /// the whole point is that attendance is mandatory (Yearbook staff, club
+  /// officers). Admins can still remove one through the roster override, which
+  /// records why.
+  forced        Boolean  @default(false)
+
   createdAt     DateTime @default(now())
 
   student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)

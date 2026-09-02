@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { enrollRequiredMembers } from "@/lib/required-members-io";
 import type { RotationSlot } from "@prisma/client";
 import {
   desiredSessionShapes,
@@ -78,6 +79,12 @@ export async function getDefaultRoomConflictIds(params: {
  * Linked clubs get a single session spanning all default rotations (shared
  * roster); unlinked clubs get one independent session per rotation. Never
  * touches Google Calendar — event creation is deferred to finalize.
+ *
+ * The club's required members are enrolled into whatever this creates. That
+ * belongs here rather than in the two callers (POST /api/flex-days and
+ * POST /api/clubs) because a required member who is only enrolled on some of the
+ * paths that make sessions is worse than one who is never enrolled at all — the
+ * roster looks right until the one day it doesn't.
  */
 export async function createAutoScheduledSessions(
   club: {
@@ -87,28 +94,34 @@ export async function createAutoScheduledSessions(
   },
   flexDayId: string
 ) {
-  if (club.linkedRotations) {
-    const session = await prisma.clubSession.create({
-      data: {
-        flexDayId,
-        clubId: club.id,
-        rotations: club.defaultRotations,
-      },
-    });
-    return [session];
-  }
+  const sessions = club.linkedRotations
+    ? [
+        await prisma.clubSession.create({
+          data: {
+            flexDayId,
+            clubId: club.id,
+            rotations: club.defaultRotations,
+          },
+        }),
+      ]
+    : await Promise.all(
+        club.defaultRotations.map((rotation) =>
+          prisma.clubSession.create({
+            data: {
+              flexDayId,
+              clubId: club.id,
+              rotations: [rotation],
+            },
+          })
+        )
+      );
 
-  return Promise.all(
-    club.defaultRotations.map((rotation) =>
-      prisma.clubSession.create({
-        data: {
-          flexDayId,
-          clubId: club.id,
-          rotations: [rotation],
-        },
-      })
-    )
-  );
+  await enrollRequiredMembers({
+    clubId: club.id,
+    sessionIds: sessions.map((s) => s.id),
+  });
+
+  return sessions;
 }
 
 /**
@@ -172,16 +185,26 @@ export async function reconcileFutureSessions(club: {
 
     // One transaction per flex day: a failure part-way through leaves earlier
     // days correct rather than rolling back the whole sweep.
-    await prisma.$transaction(async (tx) => {
+    const createdIds = await prisma.$transaction(async (tx) => {
       if (toDelete.length > 0) {
         await tx.clubSession.deleteMany({ where: { id: { in: toDelete } } });
       }
+      const ids: string[] = [];
       for (const rotations of toCreate) {
-        await tx.clubSession.create({
+        const created = await tx.clubSession.create({
           data: { flexDayId: flexDay.id, clubId: club.id, rotations },
         });
+        ids.push(created.id);
       }
+      return ids;
     });
+
+    // Reshaping a club's rotations makes new sessions, and a required member
+    // belongs in those too — otherwise editing a club silently drops its
+    // mandatory roster for every day it touches.
+    if (createdIds.length > 0) {
+      await enrollRequiredMembers({ clubId: club.id, sessionIds: createdIds });
+    }
 
     report.created += toCreate.length;
     report.deleted += toDelete.length;

@@ -37,6 +37,20 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // A forced signup is not the student's to cancel — that is the whole point of
+  // a required member. Admins keep their escape hatch through the roster
+  // override, which records a reason; teachers end the obligation itself by
+  // removing the student from the club's required roster.
+  if (signup.forced && session.user.role === "STUDENT") {
+    return NextResponse.json(
+      {
+        error:
+          "This club is required for you and can't be cancelled. Talk to the club's teacher.",
+      },
+      { status: 403 }
+    );
+  }
+
   // Enforce deadline for students (admins can override)
   if (
     session.user.role !== "ADMIN" &&
