@@ -15,6 +15,13 @@ export interface StudentOption {
   email: string;
 }
 
+/**
+ * How many candidates to put in the DOM at once. The whole roster is already in
+ * memory and the filter runs over all of it — this caps only what is rendered,
+ * so a school with hundreds of students still scrolls smoothly.
+ */
+const MAX_VISIBLE = 100;
+
 /** The report `enrollRequiredMembers` returns, as it crosses the network. */
 interface EnrollmentReport {
   toCreate: unknown[];
@@ -57,20 +64,26 @@ export default function RequiredMembersPanel({
     [members]
   );
 
+  /** Everyone who could still be added — the list shown before anyone types. */
+  const available = useMemo(
+    () => students.filter((s) => !memberIds.has(s.id)),
+    [students, memberIds]
+  );
+
   // Filtering happens here rather than through a search endpoint: the whole
   // student list is already on the page, and a school's roster is small enough
   // that a round trip per keystroke would be slower than the filter.
+  //
+  // An empty query means "show everyone", not "show nothing". Returning nothing
+  // made the panel look like the school had no students at all, which is the
+  // one thing a teacher setting up a required roster must not be told.
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q.length === 0) return [];
-    return students
-      .filter((s) => !memberIds.has(s.id))
-      .filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
-      )
-      .slice(0, 8);
-  }, [query, students, memberIds]);
+    if (q.length === 0) return available;
+    return available.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q)
+    );
+  }, [query, available]);
 
   async function add(student: StudentOption) {
     setBusy(student.id);
@@ -169,18 +182,35 @@ export default function RequiredMembersPanel({
         </ul>
       )}
 
-      <div className="relative mt-4">
+      <div className="mt-5 border-t border-gray-100 dark:border-gray-700/50 pt-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Add a student
+          </h3>
+          {available.length > 0 && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {query.trim().length > 0
+                ? `${matches.length} of ${available.length}`
+                : `${available.length} available`}
+            </span>
+          )}
+        </div>
+
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           disabled={isPending}
-          placeholder="Add a student by name or email…"
-          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+          placeholder="Filter by name or email…"
+          className="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
         />
-        {matches.length > 0 && (
-          <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
-            {matches.map((s) => (
+
+        {/* The list is always rendered rather than opening on input, and sits in
+            the flow rather than floating over the page: it is the answer to
+            "who can I add?", which is the first thing a teacher asks here. */}
+        {matches.length > 0 ? (
+          <ul className="mt-2 max-h-56 divide-y divide-gray-100 dark:divide-gray-700/50 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-600">
+            {matches.slice(0, MAX_VISIBLE).map((s) => (
               <li key={s.id}>
                 <button
                   onClick={() => add(s)}
@@ -197,10 +227,20 @@ export default function RequiredMembersPanel({
               </li>
             ))}
           </ul>
+        ) : (
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {students.length === 0
+              ? "No student accounts yet. A student appears here once they have signed in with their school Google account for the first time."
+              : available.length === 0
+                ? "Every student is already a required member of this club."
+                : `No student matches “${query.trim()}”.`}
+          </p>
         )}
-        {query.trim().length > 0 && matches.length === 0 && (
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            No matching student who isn&apos;t already required here.
+
+        {matches.length > MAX_VISIBLE && (
+          <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+            Showing {MAX_VISIBLE} of {matches.length} — keep typing to narrow the
+            list.
           </p>
         )}
       </div>
