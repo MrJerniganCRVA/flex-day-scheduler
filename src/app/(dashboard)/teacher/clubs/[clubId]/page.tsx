@@ -26,7 +26,6 @@ export default async function ClubDetailPage({
     include: {
       owner: { select: { id: true, name: true } },
       cosponsor: { select: { id: true, name: true } },
-      teachers: { include: { teacher: { select: { id: true, name: true } } } },
       requiredMembers: {
         select: {
           id: true,
@@ -81,12 +80,6 @@ export default async function ClubDetailPage({
             <span>Capacity: {club.maxCapacity}</span>
             <span>Owner: {club.owner?.name ?? "None (admin-managed)"}</span>
             {club.cosponsor && <span>Cosponsor: {club.cosponsor.name}</span>}
-            {club.teachers.length > 0 && (
-              <span>
-                Rotating:{" "}
-                {club.teachers.map((t) => t.teacher.name).join(", ")}
-              </span>
-            )}
             {club.googleCalendarId ? (
               <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
             ) : (

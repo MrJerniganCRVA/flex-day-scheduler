@@ -20,14 +20,12 @@ export const createClubSchema = z.object({
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
     .min(1, "At least one rotation is required"),
   // Admin only — ignored for teachers, who always own the clubs they create.
-  // Explicit null means "no teacher assigned": a club run by a rotation of
-  // teachers, managed by admins.
+  // Explicit null means "no teacher assigned": an admin-managed club, whose
+  // teacher is set per session on the Coverage page.
   ownerId: z.string().cuid().nullable().optional(),
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
-  /** Pool of teachers who rotate through this club. Grants no edit rights. */
-  teacherIds: z.array(z.string().cuid()).max(50).optional(),
 });
 
 export const updateClubSchema = z.object({
@@ -45,8 +43,6 @@ export const updateClubSchema = z.object({
   allowRandomAssignment: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
-  /** Replaces the club's teacher pool wholesale when present. */
-  teacherIds: z.array(z.string().cuid()).max(50).optional(),
 });
 
 export const createClubSessionSchema = z.object({

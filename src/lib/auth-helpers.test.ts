@@ -151,8 +151,8 @@ describe("canRecordAttendance", () => {
     expect(
       canRecordAttendance(
         { club: { ownerId: null, cosponsorId: null }, oneOffOwnerId: null },
-        new Set(["rotating"]),
-        "rotating",
+        new Set(["covering"]),
+        "covering",
         "TEACHER"
       )
     ).toBe(true);

@@ -102,7 +102,6 @@ model User {
   oneOffSessions   ClubSession[]             @relation("OneOffOwner")
   auditsPerformed  SignupAudit[]             @relation("SignupAuditActor")
   auditsAbout      SignupAudit[]             @relation("SignupAuditStudent")
-  clubTeacherPools ClubTeacher[]             @relation("ClubTeacherPool")
   sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
   dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
   requiredIn       RequiredMember[]          @relation("RequiredMembership")
@@ -150,13 +149,14 @@ model Club {
   linkedRotations  Boolean        @default(true)
   googleCalendarId String?        @unique
 
-  /// Optional. A club may have no owner at all: some clubs are run by a rotation
-  /// of teachers with no single person responsible, and forcing one to be named
-  /// made that teacher read as the club's permanent instructor everywhere.
+  /// Optional. A club may have no owner at all: some clubs have no single person
+  /// permanently responsible, and forcing one to be named made that teacher read
+  /// as the club's permanent instructor everywhere.
   /// Ownership is an administrative role — who may edit the club. Who actually
   /// stands in the room is answered by SessionRotationCoverage per session, with
   /// the owner and cosponsor acting only as defaults (see src/lib/coverage.ts).
-  /// A club with no owner is admin-managed.
+  /// A club with no owner is admin-managed: it has no T1 fallback, so every one
+  /// of its sessions is flagged on the Coverage page until an admin assigns one.
   ownerId String?
 
   cosponsorId           String?
@@ -171,7 +171,6 @@ model Club {
   cosponsor    User?         @relation("ClubCosponsor", fields: [cosponsorId], references: [id], onDelete: SetNull)
   defaultRoom  Room?         @relation("DefaultRoom", fields: [defaultRoomId], references: [id], onDelete: SetNull)
   clubSessions ClubSession[]
-  teachers     ClubTeacher[]
   requiredMembers RequiredMember[]
 
   @@index([ownerId])
@@ -179,33 +178,12 @@ model Club {
   @@index([defaultRoomId])
 }
 
-/// The pool of teachers who rotate through a club.
-///
-/// Deliberately separate from owner/cosponsor, which are *management* roles.
-/// Pool membership means "expect to see this person running this club sometimes";
-/// it grants no permission to edit the club. It exists so a club with four
-/// teachers taking turns can record that fact once, instead of an admin
-/// re-deriving it from scratch on every flex day.
-model ClubTeacher {
-  id        String   @id @default(cuid())
-  clubId    String
-  teacherId String
-  createdAt DateTime @default(now())
-
-  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  teacher User @relation("ClubTeacherPool", fields: [teacherId], references: [id], onDelete: Cascade)
-
-  @@unique([clubId, teacherId])
-  @@index([clubId])
-  @@index([teacherId])
-}
-
 /// Students whose attendance at a club is mandatory — Yearbook staff, club
 /// officers, anyone a teacher needs in the room every time.
 ///
-/// Deliberately named for what it means rather than "ClubMember": ClubTeacher
-/// above is the teacher rotation pool, and a bare "member" next to it reads as
-/// "anyone in the club", which this is not. Ordinary attendance is a Signup.
+/// Deliberately named for what it means rather than "ClubMember": a bare
+/// "member" reads as "anyone in the club", which this is not. Ordinary
+/// attendance is a Signup.
 ///
 /// Membership is *standing*, not a one-off placement: adding a student here
 /// enrolls them in the club's existing future sessions and in every session the

@@ -228,6 +228,33 @@ There are two ways to remove someone, and they mean different things:
 Either one resolves a clash. Clashes are **warned about, never blocked** — it is
 legitimate to know about one and sort it out later.
 
+### Clubs with no permanent teacher
+
+A club does not need an owner. When several teachers take turns running one, or
+nobody is permanently responsible for it, an admin creates it with **No teacher
+assigned (admin-managed)** and sets who is actually teaching each session here on
+the Coverage page.
+
+Such a club has no owner to fall back to, so every one of its rotations shows
+`None — needs cover` until somebody is assigned — which is the point: it is
+visible on the one screen that answers "who still needs a teacher", every Flex
+Day, rather than quietly defaulting to a name that isn't really going to be there.
+
+Two consequences worth knowing:
+
+- **The assigned teacher can take the register.** Attendance follows coverage, not
+  ownership, so whoever is assigned that session can record it without owning the
+  club.
+- **Only admins can edit the club itself** — its rotations, capacity, required
+  members. Ownership is the permission to edit, and there is nobody holding it. If
+  one of the teachers should be able to edit too, make them the **cosponsor**,
+  which grants full co-owner rights without making them the club's face.
+
+There is deliberately no separate list of "teachers who rotate through this club".
+One existed and did nothing but reorder a dropdown: it granted no permissions,
+never assigned anybody, and added a fourth teacher-shaped field to every club form
+beside Owner, Cosponsor and Coverage. Coverage is the record of who is teaching.
+
 ## Duty Posts
 
 Supervision that isn't a club. Defined under **Duty Posts** (admin only) with a
