@@ -135,7 +135,7 @@ export async function PUT(
   // `ownerId: null` from an admin is meaningful — it clears the owner, making the
   // club admin-managed with no permanent teacher — so this distinguishes an
   // explicit null from an absent key.
-  const { ownerId: newOwnerId, cosponsorId, teacherIds, ...updateData } = parsed.data;
+  const { ownerId: newOwnerId, cosponsorId, ...updateData } = parsed.data;
   const ownerIdProvided =
     session.user.role === "ADMIN" && newOwnerId !== undefined;
   const finalOwnerId = ownerIdProvided ? newOwnerId : club.ownerId;
@@ -162,22 +162,6 @@ export async function PUT(
     where: { id: clubId },
     data: finalData,
   });
-
-  // Replace the teacher pool wholesale when provided. Only teachers and admins
-  // are eligible; a silently-filtered list beats a 400 for a stale UI.
-  if (teacherIds !== undefined) {
-    const eligible = await prisma.user.findMany({
-      where: { id: { in: teacherIds }, role: { in: ["TEACHER", "ADMIN"] } },
-      select: { id: true },
-    });
-    await prisma.$transaction([
-      prisma.clubTeacher.deleteMany({ where: { clubId } }),
-      prisma.clubTeacher.createMany({
-        data: eligible.map((t) => ({ clubId, teacherId: t.id })),
-        skipDuplicates: true,
-      }),
-    ]);
-  }
 
   // Sessions used to be generated only when a club or a flex day was created, so
   // editing a club's rotations left every already-scheduled session untouched.

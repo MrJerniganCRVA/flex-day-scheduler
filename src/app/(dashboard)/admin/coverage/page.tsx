@@ -52,7 +52,6 @@ export default async function AdminCoveragePage({
               cosponsorId: true,
               owner: { select: { name: true } },
               cosponsor: { select: { name: true } },
-              teachers: { select: { teacherId: true } },
             },
           },
           oneOffOwner: { select: { name: true } },
@@ -143,7 +142,6 @@ export default async function AdminCoveragePage({
       // Only used to label the "fall back to the owner/cosponsor" options.
       ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
       cosponsorName: cs.club?.cosponsor?.name ?? null,
-      poolTeacherIds: cs.club?.teachers.map((t) => t.teacherId) ?? [],
       rotations: cs.rotations,
       studentCount: cs._count.signups,
       assignments,

@@ -27,7 +27,6 @@ export default async function EditClubPage({
       allowRandomAssignment: true,
       linkedRotations: true,
       cosponsorId: true,
-      teachers: { select: { teacherId: true } },
     },
   });
 
@@ -61,7 +60,6 @@ export default async function EditClubPage({
           allowRandomAssignment: club.allowRandomAssignment,
           linkedRotations: club.linkedRotations,
           cosponsorId: club.cosponsorId,
-          teacherIds: club.teachers.map((t) => t.teacherId),
         }}
         teachers={teachers}
       />

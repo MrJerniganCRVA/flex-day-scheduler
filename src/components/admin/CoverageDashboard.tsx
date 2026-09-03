@@ -35,8 +35,6 @@ export type CoverageClub = {
   ownerName: string | null;
   /** Labels the "fall back to the cosponsor" option; not used to derive anything. */
   cosponsorName: string | null;
-  /** Teachers who rotate through this club — offered first in the dropdowns. */
-  poolTeacherIds: string[];
   rotations: RotationSlot[];
   studentCount: number;
   /** Server-resolved starting state, per rotation. */
@@ -540,31 +538,6 @@ export default function CoverageDashboard({
     return out;
   }, [clubs, duties, assignments, dutyAssignments]);
 
-  /**
-   * Teachers available for a slot, with the club's own pool first.
-   *
-   * For a club run by a rotation of teachers, the pool is almost always the right
-   * answer, and scanning the whole staff list to find one of four names is
-   * needless work.
-   */
-  function getAvailableTeachersForClub(
-    club: CoverageClub,
-    rotation: RotationSlot,
-    slot: "t1" | "t2"
-  ): CoverageTeacher[] {
-    const available = availableTeachersFor(rotation, {
-      kind: "club",
-      sessionId: club.sessionId,
-      slot,
-    });
-    if (club.poolTeacherIds.length === 0) return available;
-    const pool = new Set(club.poolTeacherIds);
-    return [
-      ...available.filter((t) => pool.has(t.id)),
-      ...available.filter((t) => !pool.has(t.id)),
-    ];
-  }
-
   // The teacher panel, from the same list the dropdowns use. It used to walk
   // `clubs` alone, so assigning someone to a duty post removed them from every
   // dropdown while this still filed them under "All 3 open" — and a reload did
@@ -1030,11 +1003,11 @@ export default function CoverageDashboard({
                                 }
                                 teachers={teachers}
                                 availableTeachers={(slot) =>
-                                  getAvailableTeachersForClub(
-                                    item.club,
-                                    rotation,
-                                    slot
-                                  )
+                                  availableTeachersFor(rotation, {
+                                    kind: "club",
+                                    sessionId: item.club.sessionId,
+                                    slot,
+                                  })
                                 }
                                 urgency={item.urgency}
                                 onAssign={(slot, val) =>

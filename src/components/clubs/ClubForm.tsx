@@ -49,8 +49,6 @@ interface Props {
     allowRandomAssignment?: boolean;
     linkedRotations?: boolean;
     cosponsorId?: string | null;
-    /** Teachers who rotate through this club. */
-    teacherIds?: string[];
   };
   /** Candidate teachers for the Cosponsor dropdown (and, for admins, ownership reassignment) */
   teachers?: Teacher[];
@@ -103,9 +101,6 @@ export default function ClubForm({
       : ""
   );
   const [cosponsorId, setCosponsorId] = useState(defaultValues?.cosponsorId ?? "");
-  const [teacherIds, setTeacherIds] = useState<string[]>(
-    defaultValues?.teacherIds ?? []
-  );
   const [reconcile, setReconcile] = useState<ReconcileSummary | null>(null);
 
   // Clear a stale cosponsor selection if admin reassigns the owner to that same person
@@ -192,7 +187,6 @@ export default function ClubForm({
         // how a club is set to have no teacher. Omitting the key would mean
         // "leave ownership alone", which is a different thing.
         ...(isAdmin ? { ownerId: ownerId || null } : {}),
-        teacherIds,
       }),
     });
 
@@ -229,18 +223,6 @@ export default function ClubForm({
     "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-400 dark:placeholder:text-gray-500";
 
   const cosponsorCandidates = (teachers ?? []).filter((t) => t.id !== ownerId);
-
-  // The pool is "who else turns up", so the owner and cosponsor are excluded —
-  // they are already attached to the club and default into coverage on their own.
-  const poolCandidates = (teachers ?? []).filter(
-    (t) => t.id !== ownerId && t.id !== cosponsorId
-  );
-
-  function togglePoolTeacher(id: string) {
-    setTeacherIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -483,9 +465,8 @@ export default function ClubForm({
             Assigned Teacher
           </label>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Optional. Leave unassigned for a club run by a rotation of teachers —
-            admins manage it, and whoever is teaching each session is set on the
-            Coverage page.
+            Optional. Leave unassigned for an admin-managed club — whoever is
+            teaching each session is then set on the Coverage page.
           </p>
           <select
             value={ownerId}
@@ -499,43 +480,6 @@ export default function ClubForm({
               </option>
             ))}
           </select>
-        </div>
-      )}
-
-      {teachers && teachers.length > 0 && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-            Rotating Teachers{" "}
-            <span className="text-gray-400 dark:text-gray-500 font-normal">
-              (optional)
-            </span>
-          </label>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Teachers who take turns running this club. They are offered first when
-            assigning coverage for each Flex Day. This does not let them edit the
-            club — use Cosponsor for that.
-          </p>
-          <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-600 divide-y divide-gray-100 dark:divide-gray-700/50">
-            {poolCandidates.map((t) => (
-              <label
-                key={t.id}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={teacherIds.includes(t.id)}
-                  onChange={() => togglePoolTeacher(t.id)}
-                  className="rounded border-gray-300 dark:border-gray-600"
-                />
-                <span>
-                  {t.name}{" "}
-                  <span className="text-gray-400 dark:text-gray-500 text-xs">
-                    {t.email}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
         </div>
       )}
 

@@ -176,10 +176,10 @@ describe("resolveSessionCoverage with absences", () => {
     expect(
       resolveSessionCoverage(
         { ownerId: null, cosponsorId: null },
-        [row("FLEX_1", "rotating", null)],
+        [row("FLEX_1", "covering", null)],
         "FLEX_1", []
       ).primaryTeacherId
-    ).toBe("rotating");
+    ).toBe("covering");
   });
 });
 
