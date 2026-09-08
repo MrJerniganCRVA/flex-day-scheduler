@@ -463,7 +463,7 @@ export default function SessionCard({
               >
                 Edit
               </button>
-              <DeleteSessionButton clubId={clubId} sessionId={sessionId} label="Remove from Day" />
+              <DeleteSessionButton sessionId={sessionId} label="Remove from Day" />
             </div>
           </div>
 

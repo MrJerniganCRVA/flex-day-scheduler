@@ -185,7 +185,7 @@ export default async function AdminClubDetailPage({
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                           {cs._count.signups}/{club.maxCapacity} enrolled
                         </span>
-                        <DeleteSessionButton clubId={clubId} sessionId={cs.id} />
+                        <DeleteSessionButton sessionId={cs.id} />
                       </div>
                     </div>
 

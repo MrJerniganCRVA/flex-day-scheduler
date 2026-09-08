@@ -7,6 +7,7 @@ import type { RotationSlot } from "@prisma/client";
 import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
+import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
 import {
   SESSION_ABSENCE_SELECT,
@@ -226,6 +227,24 @@ export default async function AdminFlexDayDetailPage({
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
                                 {cs.title ?? cs.club?.name ?? "Session"}
                               </span>
+                              {/* A one-off belongs to no club, so it appears on
+                                  no Club page — but students still see it and can
+                                  sign up. Without this badge a one-off named after
+                                  a club is indistinguishable from the real thing,
+                                  and this page is the only place it can be found. */}
+                              {cs.clubId === null && (
+                                <span
+                                  title={
+                                    cs.oneOffOwner
+                                      ? `One-off session created by ${cs.oneOffOwner.name}. It belongs to no club, so it does not appear on any Club page.`
+                                      : "One-off session. It belongs to no club, so it does not appear on any Club page."
+                                  }
+                                  className="rounded-full bg-teal-100 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-700 px-2 py-0.5 text-xs font-medium"
+                                >
+                                  One-off
+                                  {cs.oneOffOwner && ` · ${cs.oneOffOwner.name}`}
+                                </span>
+                              )}
                               {uncovered.length > 0 && (
                                 <span
                                   title={`No teacher for ${uncovered
@@ -242,14 +261,19 @@ export default async function AdminFlexDayDetailPage({
                               )}
                             </div>
                             <div className="flex items-center gap-3">
-                              {cs.club && (
-                                <a
-                                  href={`/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`}
-                                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                                >
-                                  Edit
-                                </a>
-                              )}
+                              {/* Unconditional: a one-off has no club and so no
+                                  club-scoped edit URL, which previously left it
+                                  with no edit route at all. */}
+                              <a
+                                href={
+                                  cs.club
+                                    ? `/teacher/clubs/${cs.club.id}/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`
+                                    : `/teacher/sessions/${cs.id}/edit?return=/admin/flex-days/${flexDayId}`
+                                }
+                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                Edit
+                              </a>
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"}
                                 {recorded > 0 && (
@@ -258,6 +282,10 @@ export default async function AdminFlexDayDetailPage({
                                   </span>
                                 )}
                               </span>
+                              {/* The only place a one-off can be removed: every
+                                  other delete control lives on a Club page, which
+                                  a club-less session never reaches. */}
+                              <DeleteSessionButton sessionId={cs.id} />
                             </div>
                           </div>
                           {cs.signups.length > 0 && (
