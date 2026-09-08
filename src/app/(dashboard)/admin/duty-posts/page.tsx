@@ -27,8 +27,7 @@ export default async function AdminDutyPostsPage() {
           Duty Posts
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Supervision spots that aren&apos;t clubs — hallways, the cafeteria, the
-          front doors. Assign teachers to them on the Coverage page.
+          Supervision spots that aren&apos;t clubs. Assign teachers to them on the Coverage page.
         </p>
       </div>
 
