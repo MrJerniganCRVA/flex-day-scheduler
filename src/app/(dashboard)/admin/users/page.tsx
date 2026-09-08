@@ -112,9 +112,43 @@ export default async function AdminUsersPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        User Management
-      </h1>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          User Management
+        </h1>
+        {/* Reconciliation file: the app only knows a student once they have
+            signed in, so this is what gets diffed against the school's master
+            student list to find whoever never did. */}
+        {tab === "students" && (
+          <a
+            href="/api/admin/students/export"
+            download
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            title={
+              flexDayLabel
+                ? `Download every student's name and email as a CSV, with signup status for ${flexDayLabel} — compare it against your full student list to find students who have never signed in`
+                : "Download every student's name and email as a CSV — compare it against your full student list to find students who have never signed in"
+            }
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            Export students
+          </a>
+        )}
+      </div>
 
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
         {tabs.map((t) => (
