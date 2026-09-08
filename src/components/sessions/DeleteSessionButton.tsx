@@ -3,46 +3,75 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+/**
+ * Removes one session from its Flex Day.
+ *
+ * Targets `/api/club-sessions/[sessionId]` rather than the club-scoped
+ * `/api/clubs/[clubId]/sessions/[sessionId]`: that endpoint resolves the club
+ * from the session itself, so it handles a one-off session (`clubId = null`,
+ * which belongs to no club and therefore has no club-scoped URL) through the
+ * same path as an ordinary club session, and picks the right Google Calendar
+ * for each. Without it a one-off could be created but never deleted.
+ */
 export default function DeleteSessionButton({
-  clubId,
   sessionId,
   label = "Remove",
 }: {
-  clubId: string;
   sessionId: string;
   label?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleDelete() {
-    const res = await fetch(
-      `/api/clubs/${clubId}/sessions/${sessionId}`,
-      { method: "DELETE" }
-    );
-    if (res.ok) {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/club-sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Silence here used to mean an admin clicked "Yes" and watched nothing
+        // happen, with no way to tell a refused delete from a broken one.
+        setError(data.error ?? "Failed to remove session.");
+        return;
+      }
       startTransition(() => router.refresh());
+      setConfirming(false);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   }
 
   if (confirming) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-red-600 dark:text-red-400">Remove session?</span>
         <button
           onClick={handleDelete}
-          disabled={isPending}
+          disabled={deleting || isPending}
           className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/80 disabled:opacity-50"
         >
-          {isPending ? "Removing…" : "Yes"}
+          {deleting || isPending ? "Removing…" : "Yes"}
         </button>
         <button
-          onClick={() => setConfirming(false)}
+          onClick={() => {
+            setConfirming(false);
+            setError(null);
+          }}
           className="rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           No
         </button>
+        {error && (
+          <span className="text-xs text-red-600 dark:text-red-400">{error}</span>
+        )}
       </div>
     );
   }
