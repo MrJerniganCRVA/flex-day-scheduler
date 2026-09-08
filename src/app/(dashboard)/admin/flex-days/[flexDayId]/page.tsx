@@ -285,7 +285,10 @@ export default async function AdminFlexDayDetailPage({
                               {/* The only place a one-off can be removed: every
                                   other delete control lives on a Club page, which
                                   a club-less session never reaches. */}
-                              <DeleteSessionButton sessionId={cs.id} />
+                              <DeleteSessionButton
+                                sessionId={cs.id}
+                                signupCount={cs._count.signups}
+                              />
                             </div>
                           </div>
                           {cs.signups.length > 0 && (

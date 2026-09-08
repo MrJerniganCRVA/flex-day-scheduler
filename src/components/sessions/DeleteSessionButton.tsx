@@ -15,9 +15,16 @@ import { useRouter } from "next/navigation";
  */
 export default function DeleteSessionButton({
   sessionId,
+  signupCount = 0,
   label = "Remove",
 }: {
   sessionId: string;
+  /**
+   * Students currently signed up. Deleting cascades their Signup rows away
+   * (schema.prisma: Signup.clubSession is onDelete: Cascade), so the count is
+   * named before the click rather than discovered afterwards on the user list.
+   */
+  signupCount?: number;
   label?: string;
 }) {
   const router = useRouter();
@@ -52,7 +59,19 @@ export default function DeleteSessionButton({
   if (confirming) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-red-600 dark:text-red-400">Remove session?</span>
+        <span className="text-xs text-red-600 dark:text-red-400">
+          Remove session?
+          {signupCount > 0 && (
+            <>
+              {" "}
+              <span className="font-semibold">
+                {signupCount} student{signupCount === 1 ? "" : "s"}
+              </span>{" "}
+              {signupCount === 1 ? "is" : "are"} signed up and will lose this
+              placement.
+            </>
+          )}
+        </span>
         <button
           onClick={handleDelete}
           disabled={deleting || isPending}

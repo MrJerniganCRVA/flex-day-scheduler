@@ -67,6 +67,48 @@ export function rotationStats(
   });
 }
 
+/**
+ * Rotations a student's signups cover.
+ *
+ * Takes the rotation lists rather than signup rows so both shapes of query can
+ * use it: the dashboard reads sessions-with-their-signups, the user list reads
+ * signups-with-their-session. A linked session contributes all its rotations at
+ * once, which is why this is a Set and not a count of rows.
+ */
+export function coveredRotations(
+  sessionRotations: RotationSlot[][]
+): Set<RotationSlot> {
+  const covered = new Set<RotationSlot>();
+  for (const rotations of sessionRotations) {
+    for (const r of rotations) covered.add(r);
+  }
+  return covered;
+}
+
+export type Placement =
+  /** A signup covering every rotation. */
+  | { kind: "full" }
+  /** Some rotations covered; `missing` names the empty ones, in slot order. */
+  | { kind: "partial"; missing: RotationSlot[] }
+  /** No signups at all that day. */
+  | { kind: "none" };
+
+/**
+ * The single answer to "is this student placed?".
+ *
+ * Exported so the admin user list renders the same verdict `dayCoverage` counts
+ * and auto-assign acts on. Those three had drifted: the user list asked only
+ * whether *any* signup existed, so a student who lost one of three sessions to a
+ * deleted club still showed as "Signed up" while auto-assign was correctly
+ * queueing them for a replacement.
+ */
+export function placementOf(covered: Set<RotationSlot>): Placement {
+  const missing = ALL_ROTATIONS.filter((r) => !covered.has(r));
+  if (missing.length === 0) return { kind: "full" };
+  if (missing.length === ALL_ROTATIONS.length) return { kind: "none" };
+  return { kind: "partial", missing };
+}
+
 export type DayCoverage = {
   /** Students with a signup in every rotation. */
   fullyPlaced: number;
@@ -89,23 +131,27 @@ export function dayCoverage(
   sessions: ParticipationSession[],
   totalStudents: number
 ): DayCoverage {
-  const covered = new Map<string, Set<RotationSlot>>();
+  const byStudent = new Map<string, RotationSlot[][]>();
   for (const s of sessions) {
     for (const { studentId } of s.signups) {
-      const set = covered.get(studentId) ?? new Set<RotationSlot>();
-      for (const r of s.rotations) set.add(r);
-      covered.set(studentId, set);
+      const held = byStudent.get(studentId) ?? [];
+      held.push(s.rotations);
+      byStudent.set(studentId, held);
     }
   }
 
   let fullyPlaced = 0;
   let partiallyPlaced = 0;
-  for (const rotations of covered.values()) {
-    if (rotations.size >= ALL_ROTATIONS.length) fullyPlaced++;
+  for (const held of byStudent.values()) {
+    // Deliberately routed through placementOf rather than comparing sizes here:
+    // this tally and the per-student badge must always agree, and they only
+    // disagreed in the first place because each had its own copy of the rule.
+    // Everyone in this map holds a signup, so "none" is unreachable.
+    if (placementOf(coveredRotations(held)).kind === "full") fullyPlaced++;
     else partiallyPlaced++;
   }
 
-  const studentsWithAnySignup = covered.size;
+  const studentsWithAnySignup = byStudent.size;
   // Clamped: a stale totalStudents (or a signup from a since-demoted student)
   // must not produce a negative count on a dashboard.
   const unplaced = Math.max(0, totalStudents - studentsWithAnySignup);

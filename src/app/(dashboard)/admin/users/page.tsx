@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import RoleSelect from "@/components/admin/RoleSelect";
 import DeleteUserButton from "@/components/admin/DeleteUserButton";
+import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
+import type { RotationSlot } from "@prisma/client";
+import { coveredRotations, placementOf, type Placement } from "@/lib/participation";
 
 export default async function AdminUsersPage({
   searchParams,
@@ -24,7 +27,7 @@ export default async function AdminUsersPage({
     name: string | null;
     email: string | null;
     role: string;
-    signups?: { id: string }[];
+    placement: Placement;
   }[] = [];
   let teachers: {
     id: string;
@@ -52,28 +55,48 @@ export default async function AdminUsersPage({
 
     const raw = await prisma.user.findMany({
       where: { role: "STUDENT" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        ...(nextFlexDay
-          ? {
-              signups: {
-                where: { clubSession: { flexDayId: nextFlexDay.id } },
-                select: { id: true },
-                take: 1,
-              },
-            }
-          : {}),
-      },
+      select: { id: true, name: true, email: true, role: true },
       orderBy: { name: "asc" },
     });
 
-    students = [
-      ...raw.filter((s) => !s.signups?.length),
-      ...raw.filter((s) => s.signups?.length),
-    ];
+    // Loaded separately, and with the rotations each signup's session covers —
+    // the same shape auto-assign reads. The previous query nested `take: 1,
+    // select: { id: true }` under the user, which made per-rotation coverage
+    // impossible to compute here: two signups out of three is still `length > 0`,
+    // so a student who lost a session to a deleted club kept a green "Signed up"
+    // while auto-assign was already queueing them for a replacement.
+    const daySignups = nextFlexDay
+      ? await prisma.signup.findMany({
+          where: { clubSession: { flexDayId: nextFlexDay.id } },
+          select: {
+            studentId: true,
+            clubSession: { select: { rotations: true } },
+          },
+        })
+      : [];
+
+    const heldByStudent = new Map<string, RotationSlot[][]>();
+    for (const signup of daySignups) {
+      const held = heldByStudent.get(signup.studentId) ?? [];
+      held.push(signup.clubSession.rotations);
+      heldByStudent.set(signup.studentId, held);
+    }
+
+    const withPlacement = raw.map((u) => ({
+      ...u,
+      placement: placementOf(coveredRotations(heldByStudent.get(u.id) ?? [])),
+    }));
+
+    // Severity order: the students an admin has to do something about first,
+    // alphabetical within each group (the query already sorted by name).
+    const severity: Record<Placement["kind"], number> = {
+      none: 0,
+      partial: 1,
+      full: 2,
+    };
+    students = withPlacement.sort(
+      (a, b) => severity[a.placement.kind] - severity[b.placement.kind]
+    );
   } else if (tab === "teachers") {
     teachers = await prisma.user.findMany({
       where: { role: "TEACHER" },
@@ -162,9 +185,22 @@ export default async function AdminUsersPage({
                   </td>
                   {nextFlexDay && (
                     <td className="px-4 py-3">
-                      {user.signups?.length ? (
+                      {user.placement.kind === "full" ? (
                         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                          Signed up
+                          All {ALL_ROTATIONS.length} rotations
+                        </span>
+                      ) : user.placement.kind === "partial" ? (
+                        // Names the gap rather than just flagging one: after a
+                        // session is removed this column is where an admin finds
+                        // out which rotation each affected student now has free.
+                        <span
+                          title="Signed up for some rotations but not all — auto-assign will offer to fill the rest"
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                        >
+                          Missing{" "}
+                          {user.placement.missing
+                            .map((r) => ROTATION_LABELS[r])
+                            .join(", ")}
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">

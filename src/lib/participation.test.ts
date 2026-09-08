@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  coveredRotations,
   dayCoverage,
+  placementOf,
   rotationStats,
   sessionCapacity,
   type ParticipationSession,
@@ -150,5 +152,87 @@ describe("dayCoverage", () => {
     );
     expect(coverage.unplaced).toBe(0);
     expect(coverage.needingSlots).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * The per-student half of the same rule. Split out of dayCoverage so the admin
+ * user list can render exactly the verdict the dashboard tallies: it previously
+ * asked only whether a student had *any* signup, so deleting one of a student's
+ * three sessions left them showing "Signed up" while auto-assign was already
+ * queueing them for a replacement.
+ */
+describe("coveredRotations", () => {
+  it("unions the rotations of every session held", () => {
+    expect([...coveredRotations([["FLEX_1"], ["FLEX_3"]])]).toEqual([
+      "FLEX_1",
+      "FLEX_3",
+    ]);
+  });
+
+  it("takes all rotations of a single linked session", () => {
+    expect(coveredRotations([["FLEX_1", "FLEX_2", "FLEX_3"]]).size).toBe(3);
+  });
+
+  it("does not double-count a rotation held twice", () => {
+    // Not reachable through the signup API, which refuses a second club in the
+    // same rotation, but a Set is what makes that guarantee unnecessary here.
+    expect(coveredRotations([["FLEX_1"], ["FLEX_1"]]).size).toBe(1);
+  });
+
+  it("is empty for a student with no signups", () => {
+    expect(coveredRotations([]).size).toBe(0);
+  });
+});
+
+describe("placementOf", () => {
+  it("calls a student with every rotation full", () => {
+    expect(placementOf(coveredRotations([["FLEX_1", "FLEX_2", "FLEX_3"]]))).toEqual(
+      { kind: "full" }
+    );
+  });
+
+  it("treats one linked session as full, not as three separate holdings", () => {
+    expect(placementOf(coveredRotations([["FLEX_1"], ["FLEX_2"], ["FLEX_3"]])).kind).toBe(
+      "full"
+    );
+  });
+
+  it("names the empty rotations, in slot order", () => {
+    expect(placementOf(coveredRotations([["FLEX_2"]]))).toEqual({
+      kind: "partial",
+      missing: ["FLEX_1", "FLEX_3"],
+    });
+  });
+
+  it("is partial — not full — when a session was deleted from under a student", () => {
+    // The reported bug: three rotations covered, one club removed, two left.
+    const afterDeletion = coveredRotations([["FLEX_1"], ["FLEX_3"]]);
+    expect(placementOf(afterDeletion)).toEqual({
+      kind: "partial",
+      missing: ["FLEX_2"],
+    });
+  });
+
+  it("distinguishes no signups at all from a partial placement", () => {
+    expect(placementOf(coveredRotations([]))).toEqual({ kind: "none" });
+  });
+});
+
+describe("dayCoverage agrees with placementOf", () => {
+  it("counts each student the way placementOf would judge them", () => {
+    const sessions = [
+      session(["FLEX_1", "FLEX_2", "FLEX_3"], ["full"], { maxCapacity: 10 }),
+      session(["FLEX_1"], ["partial"], { maxCapacity: 10 }),
+    ];
+    const coverage = dayCoverage(sessions, 3);
+
+    expect(placementOf(coveredRotations([["FLEX_1", "FLEX_2", "FLEX_3"]])).kind).toBe("full");
+    expect(placementOf(coveredRotations([["FLEX_1"]])).kind).toBe("partial");
+    expect(coverage.fullyPlaced).toBe(1);
+    expect(coverage.partiallyPlaced).toBe(1);
+    // The third student has no signup at all, so nothing places them.
+    expect(coverage.unplaced).toBe(1);
+    expect(coverage.needingSlots).toBe(2);
   });
 });

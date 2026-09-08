@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteFlexDayButton from "@/components/flex-days/DeleteFlexDayButton";
+import { dayCoverage } from "@/lib/participation";
 
 export default async function AdminFlexDaysPage({
   searchParams,
@@ -49,10 +50,26 @@ export default async function AdminFlexDaysPage({
       totalCapacity > 0 ? Math.round((totalSignups / totalCapacity) * 100) : 0;
     // Distinct students with at least one signup that day — a student can
     // have up to 3 Signup rows (one per rotation), so this isn't totalSignups.
+    //
+    // Kept alongside the coverage figure below rather than replaced by it: this
+    // is what the delete confirmation needs, where the question is whose signup
+    // and attendance records get destroyed, not who is fully placed.
     const signedUpStudents = new Set(
       fd.clubSessions.flatMap((cs) => cs.signups.map((s) => s.studentId))
     ).size;
-    return { ...fd, totalCapacity, totalSignups, pct, signedUpStudents };
+    // Students with every rotation covered — the same verdict the dashboard
+    // tiles, auto-assign and the user list now use. The column used to show
+    // `signedUpStudents`, which counted a student with one rotation left empty
+    // the same as one who was fully placed.
+    const { fullyPlaced } = dayCoverage(fd.clubSessions, totalStudents);
+    return {
+      ...fd,
+      totalCapacity,
+      totalSignups,
+      pct,
+      signedUpStudents,
+      fullyPlaced,
+    };
   });
 
   return (
@@ -101,7 +118,12 @@ export default async function AdminFlexDaysPage({
               <tr>
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Clubs</th>
-                <th className="px-4 py-3 text-left">Signups</th>
+                <th
+                  className="px-4 py-3 text-left"
+                  title="Students signed up for all three rotations"
+                >
+                  Fully placed
+                </th>
                 <th className="px-4 py-3 text-left">Filled</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3"></th>
@@ -121,7 +143,7 @@ export default async function AdminFlexDaysPage({
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{fd._count.clubSessions}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                    {fd.signedUpStudents}/{totalStudents}
+                    {fd.fullyPlaced}/{totalStudents}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
