@@ -26,6 +26,14 @@ interface Props {
   sessions: SessionViewData[];
   deadlineISO: string;
   isPastDeadlineOnLoad: boolean;
+  opensAtISO: string;
+  isBeforeOpenOnLoad: boolean;
+  /** "Monday, August 10" — formatted server-side, because these are
+   *  school-local wall-clock times and the client would format them in the
+   *  browser's timezone. */
+  opensAtLabel: string;
+  /** "Aug 10" — the same instant, short enough for a button face. */
+  opensAtShortLabel: string;
   flexDayDateISO: string;
   flexDayLabel: string | null;
 }
@@ -67,17 +75,33 @@ export default function FlexDaySignupView({
   sessions,
   deadlineISO,
   isPastDeadlineOnLoad,
+  opensAtISO,
+  isBeforeOpenOnLoad,
+  opensAtLabel,
+  opensAtShortLabel,
   flexDayDateISO,
   flexDayLabel,
 }: Props) {
   const [isPastDeadline, setIsPastDeadline] = useState(isPastDeadlineOnLoad);
+  const [isBeforeOpen, setIsBeforeOpen] = useState(isBeforeOpenOnLoad);
   const [countdown, setCountdown] = useState<{ text: string; urgency: "normal" | "warning" | "urgent" } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
+    const opensAt = new Date(opensAtISO);
     const deadline = new Date(deadlineISO);
 
     function tick() {
+      // Deliberately no clearInterval on this branch, unlike the deadline one
+      // below: a student sitting on the page as the opening Monday arrives
+      // should watch it open rather than have to reload to find out.
+      if (Date.now() < opensAt.getTime()) {
+        setIsBeforeOpen(true);
+        setCountdown({ text: `Signups open ${opensAtLabel}`, urgency: "normal" });
+        return;
+      }
+      setIsBeforeOpen(false);
+
       const msRemaining = deadline.getTime() - Date.now();
       if (msRemaining <= 0) {
         setIsPastDeadline(true);
@@ -91,7 +115,7 @@ export default function FlexDaySignupView({
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [deadlineISO]);
+  }, [deadlineISO, opensAtISO, opensAtLabel]);
 
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessions;
@@ -137,8 +161,20 @@ export default function FlexDaySignupView({
           </p>
         )}
         <div className={`text-xs font-medium mt-2 ${urgencyClass} ${countdown?.urgency === "urgent" && !isPastDeadline ? "font-bold" : ""}`}>
-          {countdown ? countdown.text : isPastDeadline ? "Signups closed" : null}
+          {countdown
+            ? countdown.text
+            : isBeforeOpen
+              ? `Signups open ${opensAtLabel}`
+              : isPastDeadline
+                ? "Signups closed"
+                : null}
         </div>
+        {isBeforeOpen && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            You can see what&apos;s planned, but signups for this Flex Day
+            haven&apos;t opened yet.
+          </p>
+        )}
       </div>
 
       {/* Search input */}
@@ -266,6 +302,8 @@ export default function FlexDaySignupView({
                             isConflicted={cs.isConflicted}
                             conflictLabel={cs.conflictLabel}
                             isPastDeadline={isPastDeadline}
+                            isBeforeOpen={isBeforeOpen}
+                            opensAtLabel={opensAtShortLabel}
                             enrolledCount={cs.enrolledCount}
                             capacity={cs.capacity}
                           />

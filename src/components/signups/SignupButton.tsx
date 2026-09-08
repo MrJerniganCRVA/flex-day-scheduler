@@ -12,6 +12,8 @@ interface Props {
   isConflicted: boolean;
   conflictLabel?: string;
   isPastDeadline?: boolean;
+  isBeforeOpen?: boolean;
+  opensAtLabel?: string;
   enrolledCount?: number;
   capacity?: number;
 }
@@ -25,6 +27,8 @@ export default function SignupButton({
   isConflicted,
   conflictLabel,
   isPastDeadline = false,
+  isBeforeOpen = false,
+  opensAtLabel,
   enrolledCount,
   capacity,
 }: Props) {
@@ -127,6 +131,20 @@ export default function SignupButton({
         </button>
         {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
+    );
+  }
+
+  // After isMySignup, so a student who already holds a seat on a day that is
+  // not open yet still sees "Signed Up" and a working Cancel button — DELETE is
+  // deliberately not gated on the open time, or they would be trapped.
+  if (isBeforeOpen) {
+    return (
+      <button
+        disabled
+        className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-not-allowed"
+      >
+        {opensAtLabel ? `Opens ${opensAtLabel}` : "Not open yet"}
+      </button>
     );
   }
 

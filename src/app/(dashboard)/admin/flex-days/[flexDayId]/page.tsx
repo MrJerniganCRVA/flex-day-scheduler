@@ -8,7 +8,11 @@ import FinalizeButton from "@/components/flex-days/FinalizeButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
-import { schoolTimeZone } from "@/lib/flex-day-utils";
+import {
+  getSignupDeadline,
+  getSignupOpenTime,
+  schoolTimeZone,
+} from "@/lib/flex-day-utils";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
@@ -138,6 +142,27 @@ export default async function AdminFlexDayDetailPage({
           </h1>
           <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {flexDay.clubSessions.length} sessions · {totalSignups} total signups
+          </div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Signups{" "}
+            {getSignupOpenTime(flexDay.date).toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              timeZone: schoolTimeZone(),
+            })}{" "}
+            <span aria-hidden>–</span>{" "}
+            {getSignupDeadline(flexDay.date).toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              timeZone: schoolTimeZone(),
+            })}{" "}
+            {getSignupDeadline(flexDay.date).toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              timeZone: schoolTimeZone(),
+            })}
           </div>
         </div>
         <div className="flex items-center gap-3">

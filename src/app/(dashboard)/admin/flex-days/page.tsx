@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteFlexDayButton from "@/components/flex-days/DeleteFlexDayButton";
+import { isBeforeSignupOpen } from "@/lib/flex-day-utils";
 
 export default async function AdminFlexDaysPage({
   searchParams,
@@ -154,6 +155,14 @@ export default async function AdminFlexDaysPage({
                       {fd.isFinalized && (
                         <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
                           Finalized
+                        </span>
+                      )}
+                      {isBeforeSignupOpen(fd.date) && (
+                        <span
+                          className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                          title="Students can see this day's clubs but cannot sign up yet"
+                        >
+                          Not open yet
                         </span>
                       )}
                     </div>

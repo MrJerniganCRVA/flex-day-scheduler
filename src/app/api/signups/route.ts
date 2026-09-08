@@ -3,7 +3,12 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { createSignupSchema } from "@/lib/validations";
-import { isPastSignupDeadline } from "@/lib/flex-day-utils";
+import {
+  isBeforeSignupOpen,
+  isPastSignupDeadline,
+  getSignupOpenTime,
+  schoolTimeZone,
+} from "@/lib/flex-day-utils";
 import {
   MAX_TX_ATTEMPTS,
   conflictBackoffMs,
@@ -56,6 +61,17 @@ export async function POST(request: NextRequest) {
 
           if (!targetSession) {
             throw Object.assign(new Error("SESSION_NOT_FOUND"), { status: 404 });
+          }
+
+          // Signups open the Monday of the week before the flex day's own
+          // week. Checked before the deadline because a day that has not opened
+          // cannot also be closed, and "not open yet" is the more useful of the
+          // two messages to a student looking at a day a month out.
+          if (isBeforeSignupOpen(targetSession.flexDay.date)) {
+            throw Object.assign(new Error("SIGNUPS_NOT_OPEN"), {
+              status: 403,
+              flexDayDate: targetSession.flexDay.date,
+            });
           }
 
           // Check signup deadline
@@ -126,9 +142,31 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const err = error as Error & { status?: number; rotations?: string[] };
+      const err = error as Error & {
+        status?: number;
+        rotations?: string[];
+        flexDayDate?: Date;
+      };
       if (err.message === "SESSION_NOT_FOUND") {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+      if (err.message === "SIGNUPS_NOT_OPEN") {
+        const opensAt = err.flexDayDate
+          ? getSignupOpenTime(err.flexDayDate).toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+              timeZone: schoolTimeZone(),
+            })
+          : null;
+        return NextResponse.json(
+          {
+            error: opensAt
+              ? `Signups for this Flex Day open ${opensAt}`
+              : "Signups for this Flex Day have not opened yet",
+          },
+          { status: 403 }
+        );
       }
       if (err.message === "SIGNUPS_CLOSED") {
         return NextResponse.json(

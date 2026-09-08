@@ -100,7 +100,15 @@ Admins can promote any user to ADMIN (or change roles) from the admin panel. The
 
 **Clubs** are created by teachers and assigned to one or more rotation slots per flex day. A club can span multiple rotations (a "linked" session) for activities that need a longer block.
 
-**Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits. Signups close at a configurable deadline before the flex day.
+**Students** browse available sessions for each flex day and sign up, subject to rotation conflicts and capacity limits.
+
+**The signup window** for a Flex Day is the school week before it: signups open at
+12:00 AM on the Monday of the preceding week and close that Friday at 2:56 PM, both
+in `SCHOOL_TIMEZONE`. Before a day opens, students can see its clubs but cannot
+claim a seat — without that gate, limited-capacity clubs filled up weeks ahead and
+the seats went to whoever happened to look first. A student who already holds a
+seat on a day that has not opened yet can still cancel it. Admins bypass the window
+entirely through the roster override below.
 
 **Required members** are students whose attendance at a club is mandatory —
 Yearbook staff, club officers. See below.
@@ -318,7 +326,7 @@ change anything themselves. Admins can still make exceptions — a student turni
 up without a required permission slip, for example — from the Flex Day's roster
 list: expand a session's roster and use **Move** or **Remove** beside a student.
 
-These overrides bypass the deadline but still enforce room capacity and rotation
+These overrides bypass the signup window but still enforce room capacity and rotation
 conflicts. Each one requires a reason, is recorded in the **Changes** tab for
 that Flex Day, and updates the calendar for the affected student only — other
 students on the session are not re-notified.
@@ -330,7 +338,7 @@ npm test
 ```
 
 Unit tests only — no database, no browser, no network, no secrets. They cover the
-logic where a silent error is most expensive: the DST-aware signup deadline math
+logic where a silent error is most expensive: the DST-aware signup window math
 (`src/lib/flex-day-utils.ts`), the participation statistics behind the admin
 dashboard, coverage resolution, environment validation, and the club
 authorization predicate. CI (`.github/workflows/ci.yml`) runs lint, typecheck,

@@ -3,7 +3,13 @@ import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ROTATION_LABELS } from "@/types";
-import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
+import {
+  getSignupDeadline,
+  getSignupOpenTime,
+  isBeforeSignupOpen,
+  isPastSignupDeadline,
+  schoolTimeZone,
+} from "@/lib/flex-day-utils";
 import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
@@ -88,6 +94,21 @@ export default async function StudentDashboard() {
 
   const deadline = getSignupDeadline(nextFlexDay.date);
   const pastDeadline = isPastSignupDeadline(nextFlexDay.date);
+  const opensAt = getSignupOpenTime(nextFlexDay.date);
+  const beforeOpen = isBeforeSignupOpen(nextFlexDay.date);
+  // Formatted here rather than in the client component: these are school-local
+  // wall-clock times, and the browser would render them in its own timezone.
+  const opensAtLabel = opensAt.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: schoolTimeZone(),
+  });
+  const opensAtShortLabel = opensAt.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: schoolTimeZone(),
+  });
 
   // Map sessions to serializable shape for the client component
   const sessions: SessionViewData[] = nextFlexDay.clubSessions.map((cs) => {
@@ -148,6 +169,10 @@ export default async function StudentDashboard() {
         sessions={sessions}
         deadlineISO={deadline.toISOString()}
         isPastDeadlineOnLoad={pastDeadline}
+        opensAtISO={opensAt.toISOString()}
+        isBeforeOpenOnLoad={beforeOpen}
+        opensAtLabel={opensAtLabel}
+        opensAtShortLabel={opensAtShortLabel}
         flexDayDateISO={nextFlexDay.date.toISOString()}
         flexDayLabel={nextFlexDay.label ?? null}
       />

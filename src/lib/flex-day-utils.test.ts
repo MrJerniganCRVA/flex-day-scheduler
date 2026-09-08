@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   getSignupDeadline,
+  getSignupOpenTime,
   getSchoolWeekWindow,
+  isBeforeSignupOpen,
   isPastSignupDeadline,
 } from "./flex-day-utils";
 
@@ -102,6 +104,99 @@ describe("isPastSignupDeadline", () => {
 
   it("is false for a flex day well in the future", () => {
     expect(isPastSignupDeadline(day("2099-01-07"), NY)).toBe(false);
+  });
+});
+
+describe("getSignupOpenTime", () => {
+  /** Weekday as read in a given zone — 00:00 school-local is the previous
+   *  calendar day in UTC for any zone east of Greenwich, so getUTCDay would
+   *  quietly pass only for the Americas. */
+  const weekdayIn = (d: Date, tz: string) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" }).format(d);
+
+  it("opens at midnight Eastern Daylight Time in summer", () => {
+    // Wed 19 Aug 2026 -> its week begins Mon 17 Aug -> back one week to
+    // Mon 10 Aug, 00:00 EDT (UTC-4) = 04:00Z.
+    expect(getSignupOpenTime(day("2026-08-19"), NY).toISOString()).toBe(
+      "2026-08-10T04:00:00.000Z"
+    );
+  });
+
+  it("opens at midnight Eastern Standard Time in winter", () => {
+    // Wed 21 Jan 2026 -> Mon 19 Jan -> Mon 12 Jan, 00:00 EST (UTC-5) = 05:00Z.
+    expect(getSignupOpenTime(day("2026-01-21"), NY).toISOString()).toBe(
+      "2026-01-12T05:00:00.000Z"
+    );
+  });
+
+  it("uses standard time when the flex day is in DST but its opening is not", () => {
+    // DST starts Sun 8 Mar 2026. Wed 11 Mar is EDT, but signups opened on
+    // Mon 2 Mar, still EST — UTC-5, not UTC-4.
+    expect(getSignupOpenTime(day("2026-03-11"), NY).toISOString()).toBe(
+      "2026-03-02T05:00:00.000Z"
+    );
+  });
+
+  it("uses daylight time when the flex day is past the fall-back but its opening is not", () => {
+    // DST ends Sun 1 Nov 2026. Wed 4 Nov is EST, Mon 26 Oct is EDT.
+    expect(getSignupOpenTime(day("2026-11-04"), NY).toISOString()).toBe(
+      "2026-10-26T04:00:00.000Z"
+    );
+  });
+
+  it("honors a timezone other than Eastern", () => {
+    // Mon 10 Aug 2026, 00:00 PDT (UTC-7) = 07:00Z.
+    expect(getSignupOpenTime(day("2026-08-19"), LA).toISOString()).toBe(
+      "2026-08-10T07:00:00.000Z"
+    );
+  });
+
+  it("gives every day of one week the same opening time", () => {
+    // Mon..Sun of the week beginning 17 Aug all open on Mon 10 Aug. Covers the
+    // Sunday branch (dayOfWeek 0), which belongs to the week that *started* the
+    // previous Monday rather than the one it begins.
+    const span = [
+      "2026-08-17", // Mon
+      "2026-08-18", // Tue
+      "2026-08-19", // Wed
+      "2026-08-20", // Thu
+      "2026-08-21", // Fri
+      "2026-08-22", // Sat
+      "2026-08-23", // Sun
+    ];
+    const opens = span.map((d) => getSignupOpenTime(day(d), NY).toISOString());
+    expect(new Set(opens).size).toBe(1);
+    expect(opens[0]).toBe("2026-08-10T04:00:00.000Z");
+  });
+
+  it("lands on a Monday for every day of the week", () => {
+    for (let offset = 0; offset < 7; offset++) {
+      const d = new Date(Date.UTC(2026, 7, 17 + offset));
+      expect(weekdayIn(getSignupOpenTime(d, NY), NY)).toBe("Monday");
+    }
+  });
+
+  it("opens before it closes, in the same week as the deadline", () => {
+    for (const d of ["2026-01-21", "2026-03-11", "2026-08-19", "2026-11-04"]) {
+      const opensAt = getSignupOpenTime(day(d), NY);
+      const deadline = getSignupDeadline(day(d), NY);
+      expect(opensAt.getTime()).toBeLessThan(deadline.getTime());
+      // The window is one school week: Monday 00:00 to Friday 14:56, four days
+      // and change apart.
+      const days = (deadline.getTime() - opensAt.getTime()) / 86_400_000;
+      expect(days).toBeGreaterThan(4);
+      expect(days).toBeLessThan(5);
+    }
+  });
+});
+
+describe("isBeforeSignupOpen", () => {
+  it("is true for a flex day well in the future", () => {
+    expect(isBeforeSignupOpen(day("2099-01-07"), NY)).toBe(true);
+  });
+
+  it("is false for a flex day well in the past", () => {
+    expect(isBeforeSignupOpen(day("2020-01-08"), NY)).toBe(false);
   });
 });
 

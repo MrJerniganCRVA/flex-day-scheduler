@@ -103,6 +103,49 @@ export function getSignupDeadline(flexDayDate: Date, timeZone?: string): Date {
 }
 
 /**
+ * When signups open for a given flex day: 12:00 AM school-local on the Monday
+ * of the week *before* the flex day's own week — "two Mondays before".
+ *
+ * Paired with getSignupDeadline (the Friday of that same preceding week at
+ * 2:56 PM), the signup window is exactly the school week before the Flex Day,
+ * and every Flex Day in a given week opens and closes together.
+ *
+ * Without an opening time a Flex Day was signup-able the moment an admin
+ * created it, so limited-capacity clubs filled up weeks ahead — decided by who
+ * happened to look first rather than by anything about the day itself.
+ * Students can still browse a future day's clubs; they just cannot claim a
+ * seat until it opens.
+ */
+export function getSignupOpenTime(flexDayDate: Date, timeZone?: string): Date {
+  const tz = timeZone ?? schoolTimeZone();
+
+  // Calendar arithmetic in UTC, matching getSignupDeadline: dates are stored as
+  // UTC midnight, and the day-offset maths is timezone-independent.
+  const year = flexDayDate.getUTCFullYear();
+  const month = flexDayDate.getUTCMonth();
+  const day = flexDayDate.getUTCDate();
+  const dow = new Date(Date.UTC(year, month, day)).getUTCDay(); // 0=Sun..6=Sat
+
+  // Same Monday-anchored week as getSchoolWeekWindow — Sunday belongs to the
+  // week that *started* the previous Monday — then back one whole week.
+  //
+  // Subtracting from the calendar date rather than 7 * 86_400_000 ms from the
+  // resolved instant: a week containing a DST transition is 167 or 169 hours
+  // long, so the millisecond form lands an hour off the intended midnight.
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const openDate = new Date(Date.UTC(year, month, day + mondayOffset - 7));
+
+  return zonedTimeToUtc(
+    openDate.getUTCFullYear(),
+    openDate.getUTCMonth() + 1,
+    openDate.getUTCDate(),
+    0,
+    0,
+    tz
+  );
+}
+
+/**
  * Monday 00:00:00.000 through Sunday 23:59:59.999, school-timezone wall
  * clock, of the week containing `flexDayDate` — as UTC instants.
  */
@@ -153,4 +196,15 @@ export function isPastSignupDeadline(
 ): boolean {
   const deadline = getSignupDeadline(flexDayDate, timeZone);
   return new Date() > deadline;
+}
+
+/**
+ * Check if signups for a flex day have not opened yet.
+ */
+export function isBeforeSignupOpen(
+  flexDayDate: Date,
+  timeZone?: string
+): boolean {
+  const opensAt = getSignupOpenTime(flexDayDate, timeZone);
+  return new Date() < opensAt;
 }
