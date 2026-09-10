@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import StatTile from "@/components/admin/StatTile";
@@ -35,6 +35,8 @@ export type CoverageClub = {
   ownerName: string | null;
   /** Labels the "fall back to the cosponsor" option; not used to derive anything. */
   cosponsorName: string | null;
+  /** Where it meets, resolved server-side from the override or the club default. */
+  roomName: string | null;
   rotations: RotationSlot[];
   studentCount: number;
   /** Server-resolved starting state, per rotation. */
@@ -150,61 +152,10 @@ type Urgency = "needs" | "consider" | "covered";
  * no second teacher, no students and no absences — so they stay separate shapes
  * rather than one type full of nullable fields.
  */
-/**
- * Which band every item belongs in, keyed `${rotation}:${itemKey}`.
- *
- * Module-level and pure so the snapshot taken on mount and the one taken by
- * Re-sort cannot disagree — the same reasoning that collapsed three copies of
- * "is this teacher busy" into one list after they drifted apart.
- *
- * Covers both tabs regardless of which is showing, so switching tabs does not
- * need a fresh snapshot to have an answer for the other side.
- */
-function computeBands(
-  clubs: CoverageClub[],
-  duties: CoverageDuty[],
-  assignments: Assignments,
-  dutyAssignments: DutyAssignments
-): Record<string, Urgency> {
-  const bands: Record<string, Urgency> = {};
-
-  for (const club of clubs) {
-    for (const rotation of club.rotations) {
-      bands[`${rotation}:${club.sessionId}`] = urgencyOf(
-        club,
-        assignments[club.sessionId]?.[rotation]
-      );
-    }
-  }
-
-  for (const duty of duties) {
-    for (const rotation of duty.rotations) {
-      bands[`${rotation}:duty:${duty.dutyPostId}`] = dutyAssignments[
-        duty.dutyPostId
-      ]?.[rotation]
-        ? "covered"
-        : "needs";
-    }
-  }
-
-  return bands;
-}
-
 const TABS = [
   { key: "clubs", label: "Clubs" },
   { key: "building", label: "Building" },
 ] as const satisfies readonly { key: CoverageTab; label: string }[];
-
-/** The urgency bands a column renders, worst first — gaps float to the top. */
-const BANDS = [
-  { urgency: "needs", label: "Needs teacher", color: "red" },
-  { urgency: "consider", label: "Consider 2nd", color: "amber" },
-  { urgency: "covered", label: "Covered", color: "gray" },
-] as const satisfies readonly {
-  urgency: Urgency;
-  label: string;
-  color: "red" | "amber" | "gray";
-}[];
 
 /**
  * Which half of the page's job is on screen.
@@ -225,9 +176,24 @@ type ExpectedPlacement = {
     | { kind: "duty"; dutyPostId: string };
 };
 
-type ColumnItem =
-  | { kind: "club"; key: string; club: CoverageClub; urgency: Urgency }
-  | { kind: "duty"; key: string; duty: CoverageDuty; urgency: Urgency };
+/**
+ * One line of the grid: a club session, or a duty post. Which of the two the
+ * grid is showing is the tab's business; the shell around them is identical.
+ */
+type GridRow =
+  | { kind: "club"; key: string; name: string; club: CoverageClub }
+  | { kind: "duty"; key: string; name: string; duty: CoverageDuty };
+
+/**
+ * What one cell of the grid is.
+ *
+ * "not-scheduled" is the state the old three-column layout could not express: a
+ * club with no card in Flex 2 might have been not running, or running with
+ * nothing recorded, and the layout said the same nothing either way. Here every
+ * row spans every rotation, so the distinction has to be — and now can be —
+ * drawn explicitly.
+ */
+type CellState = Urgency | "not-scheduled";
 
 function urgencyOf(
   club: CoverageClub,
@@ -285,34 +251,17 @@ export default function CoverageDashboard({
   );
   const [dutySaveStatus, setDutySaveStatus] = useState<SaveStatuses>({});
 
-  // The band each item sits in, fixed when the page arrives and held while the
-  // admin works. Deliberately mount-scoped: it is what stops a card moving out
-  // from under the person who just edited it. Re-taken by Re-sort below, and for
-  // free on tab switch (the component is keyed on the tab), on changing Flex Day
-  // and on reload.
-  const [bandSnapshot, setBandSnapshot] = useState<Record<string, Urgency>>(() =>
-    computeBands(
-      clubs,
-      duties,
-      Object.fromEntries(clubs.map((c) => [c.sessionId, { ...c.assignments }])),
-      Object.fromEntries(duties.map((d) => [d.dutyPostId, { ...d.assignments }]))
-    )
-  );
-
-  // Whether anything has drifted out of the band it is drawn in. Only then is
-  // there a Re-sort to offer — in the common case the control is not there at
-  // all, and the frozen order is something the admin chose rather than a
-  // mystery they have to notice.
-  const isStale = useMemo(() => {
-    const live = computeBands(clubs, duties, assignments, dutyAssignments);
-    return Object.keys(live).some(
-      (k) => k in bandSnapshot && live[k] !== bandSnapshot[k]
-    );
-  }, [clubs, duties, assignments, dutyAssignments, bandSnapshot]);
-
-  const resort = useCallback(() => {
-    setBandSnapshot(computeBands(clubs, duties, assignments, dutyAssignments));
-  }, [clubs, duties, assignments, dutyAssignments]);
+  // Show only the rows with a gap in them. Off by default: the aligned, complete
+  // list is what the page is for, and this narrows it to a worklist on demand.
+  //
+  // Null means "showing everything". Switched on, it holds the keys of the rows
+  // that had a gap *at that moment* and filters against that frozen set rather
+  // than against live state. Filtering live would delete a row from under the
+  // admin the instant they filled its last slot — the same "the card I just
+  // edited jumped away" problem the old frozen band order existed to prevent,
+  // and the one lesson from that machinery worth keeping. The row stays put and
+  // turns green; `Hide N covered` below re-takes the set.
+  const [gapRows, setGapRows] = useState<Set<string> | null>(null);
 
   // Keyed `teacherId:rotation`, matching how the banner lists clashes.
   const [clashBusy, setClashBusy] = useState<string | null>(null);
@@ -702,6 +651,74 @@ export default function CoverageDashboard({
     return map;
   }, [clashes]);
 
+  /**
+   * What one cell of the grid is showing, for a row and a rotation.
+   *
+   * The single place that decides, so the cell's colour, the row's accent, the
+   * column's uncovered count and the gaps filter can never give four different
+   * answers about the same slot.
+   */
+  const cellState = useCallback(
+    (row: GridRow, rotation: RotationSlot): CellState => {
+      if (row.kind === "club") {
+        if (!row.club.rotations.includes(rotation)) return "not-scheduled";
+        return urgencyOf(row.club, assignments[row.club.sessionId]?.[rotation]);
+      }
+      // A duty post carries only the rotations it is required for, so anything
+      // outside that list is genuinely not wanted rather than unstaffed.
+      if (!row.duty.rotations.includes(rotation)) return "not-scheduled";
+      // Never "consider": that is a second-teacher judgement and a duty post has
+      // no second teacher.
+      return dutyAssignments[row.duty.dutyPostId]?.[rotation]
+        ? "covered"
+        : "needs";
+    },
+    [assignments, dutyAssignments]
+  );
+
+  // Every row of the current tab, in the alphabetical order the server sent.
+  // Nothing here reorders: that is the whole point of the grid.
+  const allRows = useMemo<GridRow[]>(
+    () =>
+      tab === "clubs"
+        ? clubs.map((club) => ({
+            kind: "club" as const,
+            key: club.sessionId,
+            name: club.name,
+            club,
+          }))
+        : duties.map((duty) => ({
+            kind: "duty" as const,
+            key: `duty:${duty.dutyPostId}`,
+            name: duty.name,
+            duty,
+          })),
+    [tab, clubs, duties]
+  );
+
+  const hasGap = useCallback(
+    (row: GridRow) =>
+      ALL_ROTATIONS.some((r) => cellState(row, r) === "needs"),
+    [cellState]
+  );
+
+  const rows = useMemo(
+    () => (gapRows === null ? allRows : allRows.filter((r) => gapRows.has(r.key))),
+    [allRows, gapRows]
+  );
+
+  // Rows still on screen under the filter that no longer have a gap — the count
+  // behind "Hide N covered". Zero while the filter is off, so the control is
+  // absent until there is something for it to do.
+  const clearedRowCount = useMemo(
+    () => (gapRows === null ? 0 : rows.filter((r) => !hasGap(r)).length),
+    [gapRows, rows, hasGap]
+  );
+
+  const applyGapFilter = useCallback(() => {
+    setGapRows(new Set(allRows.filter(hasGap).map((r) => r.key)));
+  }, [allRows, hasGap]);
+
   return (
     <div>
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -837,230 +854,285 @@ export default function CoverageDashboard({
           })}
         </div>
 
-        {isStale && (
-          <button
-            onClick={resort}
-            title="Move newly covered sessions down into Covered"
-            className="mb-1.5 shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Re-sort
-          </button>
-        )}
+        {/* Triage without reordering. The old layout floated gaps to the top of
+            each column, which is why nothing lined up across rotations; asking
+            "show me only the problems" as a filter answers the same need and
+            leaves every remaining row where it was. */}
+        <div className="mb-1.5 flex shrink-0 items-center gap-3">
+          {clearedRowCount > 0 && (
+            <button
+              onClick={applyGapFilter}
+              title="Drop the rows you have just finished covering"
+              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Hide {clearedRowCount} covered
+            </button>
+          )}
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={gapRows !== null}
+              onChange={(e) =>
+                e.target.checked ? applyGapFilter() : setGapRows(null)
+              }
+              className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-1 focus:ring-indigo-500"
+            />
+            Only show gaps
+          </label>
+        </div>
       </div>
 
-      <div className="flex gap-5">
-        {/* ── Three rotation columns ─────────────────────────────────── */}
-        {/* lg:, matching the other three rotation grids in the app. Below that
-            the columns stack rather than becoming three ~90px lanes of selects. */}
-        <div className="flex-1 grid gap-4 lg:grid-cols-3 min-w-0">
-          {ALL_ROTATIONS.map((rotation) => {
-            // Clubs and duty posts sit on one axis — a duty slot *is* "someone
-            // must be here during Flex 1", the same shape as a club session. The
-            // tab only filters which of them this column shows; it does not put
-            // them back on different axes.
-            const items: ColumnItem[] = [
-              ...(tab === "clubs"
-                ? clubs
-                    .filter((c) => c.rotations.includes(rotation))
-                    .map((club) => ({
-                      kind: "club" as const,
-                      key: club.sessionId,
-                      club,
-                      urgency: urgencyOf(
-                        club,
-                        assignments[club.sessionId]?.[rotation]
-                      ),
-                    }))
-                : []),
-              ...(tab === "building"
-                ? duties
-                    .filter((d) => d.rotations.includes(rotation))
-                    .map((duty) => ({
-                      kind: "duty" as const,
-                      key: `duty:${duty.dutyPostId}`,
-                      duty,
-                      // Never "consider": that is a second-teacher judgement and
-                      // a duty post has no second teacher.
-                      urgency: (dutyAssignments[duty.dutyPostId]?.[rotation]
-                        ? "covered"
-                        : "needs") as Urgency,
-                    }))
-                : []),
-            ];
+      {/* The grid is bounded rather than page-length so both sticky axes have a
+          scroll container to pin against: the rotation headers stay put while
+          you work down a long list, and the name column stays put while you
+          scroll sideways on a narrow screen. */}
+      {/* items-start so the grid keeps its own height. Stretching is the flex
+          default, and it left a short list — three duty posts — drawn inside a
+          panel as tall as the teacher list beside it. */}
+      <div className="flex flex-col xl:flex-row gap-5 items-start">
+        {/* ── The grid: a row per club, a column per rotation ─────────── */}
+        {/*
+          One row per club rather than three independent columns of cards.
 
-            // Grouped by the *snapshot*, styled by the live value.
-            //
-            // Deciding the band from live state meant the card an admin had just
-            // edited left "Needs teacher" and reappeared at the foot of "Covered"
-            // the instant they picked a name — losing their place, and making a
-            // mistake hard to walk back. The band is now fixed when the page
-            // arrives and holds while they work; the card stays where it is and
-            // simply turns green. `?? i.urgency` catches an item the server added
-            // mid-session, which has no snapshot entry yet.
-            const grouped = {
-              needs: items.filter(
-                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "needs"
-              ),
-              consider: items.filter(
-                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "consider"
-              ),
-              covered: items.filter(
-                (i) => (bandSnapshot[`${rotation}:${i.key}`] ?? i.urgency) === "covered"
-              ),
-            };
-
-            // Live, not snapshotted: the header states a fact about the day, not
-            // about the layout. It drops the moment a slot is filled, which is
-            // what confirms the action now that the card itself stays put.
-            const uncoveredCount = items.filter(
-              (i) => i.urgency === "needs"
-            ).length;
-
-            return (
-              <div
-                key={rotation}
-                className="flex flex-col rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden"
-              >
-                {/* Column header */}
-                <div className="flex items-center justify-between px-4 py-3 bg-indigo-50 dark:bg-indigo-950/50 border-b border-gray-200 dark:border-gray-700">
-                  <span className="font-semibold text-sm text-indigo-700 dark:text-indigo-300">
+          The columns used to be sorted worst-first, each on its own, so a club
+          running all three rotations appeared at three unrelated heights and
+          its name was written three times. Admin reads this page across the day
+          — "what is happening, and who is there?" — and that question needs the
+          rotations to line up. They line up here because they are literally one
+          grid row: the cells share a row height, so a club is a single
+          horizontal band whatever its rotations do.
+        */}
+        <div className="min-w-0 flex-1 overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 max-h-[calc(100vh-16rem)]">
+          <div className="grid min-w-[54rem] grid-cols-[minmax(11rem,15rem)_repeat(3,minmax(13rem,1fr))]">
+            {/* ── Header row ────────────────────────────────────────── */}
+            {/* Opaque, not the /50 the panels use elsewhere: these cells are
+                sticky and would otherwise show the rows sliding under them. */}
+            <div className="sticky left-0 top-0 z-30 border-b border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-950 px-3 py-3">
+              <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                {tab === "clubs" ? "Club" : "Duty post"}
+              </span>
+            </div>
+            {ALL_ROTATIONS.map((rotation) => {
+              // Live, and counted over every row rather than the filtered ones:
+              // the header states a fact about the day, not about the view. It
+              // drops the moment a slot is filled, which is what confirms the
+              // action now that nothing moves.
+              const uncovered = allRows.filter(
+                (r) => cellState(r, rotation) === "needs"
+              ).length;
+              return (
+                <div
+                  key={rotation}
+                  className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-l border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-950 px-3 py-3"
+                >
+                  <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
                     {ROTATION_LABELS[rotation]}
                   </span>
                   <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      uncoveredCount === 0
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      uncovered === 0
                         ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                         : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
                     }`}
                   >
-                    {uncoveredCount === 0
-                      ? "All covered"
-                      : `${uncoveredCount} uncovered`}
+                    {uncovered === 0 ? "All covered" : `${uncovered} uncovered`}
                   </span>
                 </div>
+              );
+            })}
 
-                {/* Cards */}
-                <div className="flex-1 overflow-y-auto">
-                  {items.length === 0 ? (
-                    tab === "building" && !summary.hasDutyPosts ? (
-                      // Duty posts have no region of their own any more, so this
-                      // is where an admin discovers the feature exists.
-                      <div className="px-4 py-6 text-center">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          No duty posts yet.
-                        </p>
-                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Hallways, the cafeteria, the front doors.
-                        </p>
-                        <a
-                          href="/admin/duty-posts"
-                          className="mt-2 inline-block text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            {/* ── Rows ──────────────────────────────────────────────── */}
+            {rows.map((row) => {
+              const states = ALL_ROTATIONS.map((r) => cellState(row, r));
+              // The row's worst cell, on the left edge, so scanning straight
+              // down the name column finds the rows that need attention
+              // without reading the cells.
+              const rowAccent = states.includes("needs")
+                ? "border-l-red-400"
+                : states.includes("consider")
+                  ? "border-l-amber-400"
+                  : "border-l-transparent";
+
+              const subtitle =
+                row.kind === "club" ? row.club.roomName : row.duty.location;
+
+              return (
+                <Fragment key={row.key}>
+                  <div
+                    className={`sticky left-0 z-10 border-b border-l-4 border-gray-100 dark:border-gray-700/50 bg-white dark:bg-gray-900 px-3 py-3 ${rowAccent}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span
+                          className="block truncate text-sm font-medium text-gray-900 dark:text-white"
+                          title={row.name}
                         >
-                          Set them up →
-                        </a>
-                      </div>
+                          {row.name}
+                        </span>
+                        {subtitle && (
+                          <span
+                            className="block truncate text-xs text-gray-400 dark:text-gray-500"
+                            title={subtitle}
+                          >
+                            {subtitle}
+                          </span>
+                        )}
+                      </span>
+                      {row.kind === "club" ? (
+                        row.club.studentCount > 0 && (
+                          <span
+                            className={`shrink-0 text-xs ${
+                              row.club.studentCount >= HIGH_ENROLLMENT_THRESHOLD
+                                ? "font-semibold text-red-600 dark:text-red-400"
+                                : "text-gray-500 dark:text-gray-400"
+                            }`}
+                          >
+                            👤 {row.club.studentCount}
+                          </span>
+                        )
+                      ) : (
+                        // Marks this as building supervision rather than a club,
+                        // in the pill vocabulary the rest of the app uses — not
+                        // an emoji, which renders differently on every platform.
+                        <span className="shrink-0 rounded-full border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                          Duty
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {ALL_ROTATIONS.map((rotation) => {
+                    const state = cellState(row, rotation);
+
+                    if (state === "not-scheduled")
+                      return (
+                        <NotScheduledCell
+                          key={rotation}
+                          label={`${row.name} is not ${
+                            row.kind === "club" ? "scheduled for" : "required in"
+                          } ${ROTATION_LABELS[rotation]}`}
+                        />
+                      );
+
+                    return row.kind === "club" ? (
+                      <ClubCell
+                        key={rotation}
+                        club={row.club}
+                        rotation={rotation}
+                        state={state}
+                        assignment={
+                          assignments[row.club.sessionId]?.[rotation] ??
+                          EMPTY_ASSIGNMENT
+                        }
+                        clashingTeachers={
+                          clashesByCard.get(
+                            `${row.club.sessionId}:${rotation}`
+                          ) ?? []
+                        }
+                        onUndoAbsence={() =>
+                          undoAbsences(
+                            row.club.sessionId,
+                            rotation,
+                            assignments[row.club.sessionId]?.[rotation]
+                              ?.absentTeacherIds ?? []
+                          )
+                        }
+                        saveStatus={
+                          saveStatus[row.club.sessionId]?.[rotation] ?? "idle"
+                        }
+                        teachers={teachers}
+                        availableTeachers={(slot) =>
+                          availableTeachersFor(rotation, {
+                            kind: "club",
+                            sessionId: row.club.sessionId,
+                            slot,
+                          })
+                        }
+                        onAssign={(slot, val) =>
+                          assign(row.club.sessionId, rotation, slot, val)
+                        }
+                      />
                     ) : (
-                      <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500 italic">
-                        {tab === "clubs"
-                          ? "No clubs scheduled."
-                          : "No duty posts for this rotation."}
-                      </p>
-                    )
-                  ) : (
-                    // One loop over the three urgency bands rather than three
-                    // near-identical copies of the same forty lines — which is
-                    // what made adding a second card type worth doing properly.
-                    BANDS.map(({ urgency, label, color }) =>
-                      grouped[urgency].length === 0 ? null : (
-                        <div key={urgency}>
-                          <SectionLabel label={label} color={color} />
-                          {grouped[urgency].map((item) =>
-                            item.kind === "club" ? (
-                              <ClubCard
-                                key={item.key}
-                                club={item.club}
-                                rotation={rotation}
-                                assignment={
-                                  assignments[item.club.sessionId]?.[rotation] ??
-                                  EMPTY_ASSIGNMENT
-                                }
-                                clashingTeachers={
-                                  clashesByCard.get(
-                                    `${item.club.sessionId}:${rotation}`
-                                  ) ?? []
-                                }
-                                onUndoAbsence={() =>
-                                  undoAbsences(
-                                    item.club.sessionId,
-                                    rotation,
-                                    assignments[item.club.sessionId]?.[rotation]
-                                      ?.absentTeacherIds ?? []
-                                  )
-                                }
-                                saveStatus={
-                                  saveStatus[item.club.sessionId]?.[rotation] ??
-                                  "idle"
-                                }
-                                teachers={teachers}
-                                availableTeachers={(slot) =>
-                                  availableTeachersFor(rotation, {
-                                    kind: "club",
-                                    sessionId: item.club.sessionId,
-                                    slot,
-                                  })
-                                }
-                                urgency={item.urgency}
-                                onAssign={(slot, val) =>
-                                  assign(item.club.sessionId, rotation, slot, val)
-                                }
-                              />
-                            ) : (
-                              <DutyCard
-                                key={item.key}
-                                duty={item.duty}
-                                rotation={rotation}
-                                teacherId={
-                                  dutyAssignments[item.duty.dutyPostId]?.[
-                                    rotation
-                                  ] ?? null
-                                }
-                                clashingTeachers={
-                                  clashesByCard.get(
-                                    `duty:${item.duty.dutyPostId}:${rotation}`
-                                  ) ?? []
-                                }
-                                saveStatus={
-                                  dutySaveStatus[item.duty.dutyPostId]?.[
-                                    rotation
-                                  ] ?? "idle"
-                                }
-                                options={availableDutyTeachers(
-                                  rotation,
-                                  item.duty.dutyPostId
-                                )}
-                                teachers={teachers}
-                                onAssign={(teacherId) =>
-                                  assignDuty(
-                                    item.duty.dutyPostId,
-                                    rotation,
-                                    teacherId
-                                  )
-                                }
-                              />
-                            )
-                          )}
-                        </div>
-                      )
-                    )
-                  )}
-                </div>
+                      <DutyCell
+                        key={rotation}
+                        duty={row.duty}
+                        rotation={rotation}
+                        teacherId={
+                          dutyAssignments[row.duty.dutyPostId]?.[rotation] ??
+                          null
+                        }
+                        clashingTeachers={
+                          clashesByCard.get(
+                            `duty:${row.duty.dutyPostId}:${rotation}`
+                          ) ?? []
+                        }
+                        saveStatus={
+                          dutySaveStatus[row.duty.dutyPostId]?.[rotation] ??
+                          "idle"
+                        }
+                        options={availableDutyTeachers(
+                          rotation,
+                          row.duty.dutyPostId
+                        )}
+                        teachers={teachers}
+                        onAssign={(teacherId) =>
+                          assignDuty(row.duty.dutyPostId, rotation, teacherId)
+                        }
+                      />
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+
+            {rows.length === 0 && (
+              <div className="col-span-4 px-4 py-10 text-center">
+                {gapRows !== null ? (
+                  <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Nothing is missing a teacher.
+                    </p>
+                    <button
+                      onClick={() => setGapRows(null)}
+                      className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      Show everything
+                    </button>
+                  </>
+                ) : tab === "building" && !summary.hasDutyPosts ? (
+                  // Duty posts have no region of their own any more, so this is
+                  // where an admin discovers the feature exists.
+                  <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No duty posts yet.
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      Hallways, the cafeteria, the front doors.
+                    </p>
+                    <a
+                      href="/admin/duty-posts"
+                      className="mt-2 inline-block text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      Set them up →
+                    </a>
+                  </>
+                ) : (
+                  <p className="text-sm italic text-gray-400 dark:text-gray-500">
+                    {tab === "clubs"
+                      ? "No clubs scheduled."
+                      : "No duty posts for this flex day."}
+                  </p>
+                )}
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
 
         {/* ── Teacher sidebar ─────────────────────────────────────────── */}
-        <div className="w-52 shrink-0">
+        {/* Beside the grid where there is room for both, beneath it where there
+            is not — it used to hold its 208px even at the width where the
+            columns had already given up and stacked. */}
+        <div className="w-full shrink-0 xl:w-52">
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div className="px-4 py-3 bg-indigo-50 dark:bg-indigo-950/50 border-b border-gray-200 dark:border-gray-700">
               <span className="font-semibold text-sm text-indigo-700 dark:text-indigo-300">
@@ -1127,29 +1199,65 @@ export default function CoverageDashboard({
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SectionLabel({
-  label,
-  color,
-}: {
-  label: string;
-  color: "red" | "amber" | "gray";
-}) {
-  const styles = {
-    red: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30",
-    amber:
-      "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30",
-    gray: "text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50",
-  };
+/**
+ * Shared by every cell so the four states differ only where they mean to.
+ *
+ * `min-w-0` is load-bearing: a grid item defaults to `min-width: auto`, so the
+ * `flex-1` selects inside push the cell wider than its track and the last
+ * column spills past the panel's own border.
+ *
+ * So is `relative`. `sr-only` is `position: absolute`, and an absolutely
+ * positioned box is clipped by an ancestor's `overflow` only when that ancestor
+ * is in its containing-block chain. With no positioned cell, the screen-reader
+ * text in the cells below escaped the grid's scroll container from its static
+ * position out at column three — giving the whole *page* an 86px sideways
+ * scroll on a phone, from spans that are one pixel wide.
+ */
+const CELL_SHELL =
+  "relative min-w-0 border-b border-l border-gray-100 dark:border-gray-700/50 px-3 py-3";
+
+/**
+ * A rotation this row does not take part in.
+ *
+ * Deliberately recessive — it is there to hold the row's shape so the cells
+ * either side of it stay aligned with every other row, and to say the quiet
+ * part the old layout could not: nothing is missing here, nothing is wanted
+ * here. An empty white cell would read as an unfilled slot, which is the one
+ * thing it must not be confused with.
+ */
+function NotScheduledCell({ label }: { label: string }) {
   return (
     <div
-      className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wide border-y border-gray-100 dark:border-gray-700/50 ${styles[color]}`}
+      // Hatched rather than merely pale. A plain empty cell was indistinguishable
+      // from a slot nobody had filled in yet — the exact confusion this cell
+      // exists to prevent — whereas a hatch reads as "no entry expected here" at
+      // a glance and stays out of the way of the cells either side of it. The
+      // dash is kept for high-contrast modes, which drop background images.
+      className={`${CELL_SHELL} flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgb(0_0_0/0.05)_5px,rgb(0_0_0/0.05)_10px)] dark:bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgb(255_255_255/0.045)_5px,rgb(255_255_255/0.045)_10px)]`}
     >
-      {label}
+      {/* The hatch carries no meaning to a screen reader, so the row's actual
+          state is spelled out rather than left to a title tooltip. */}
+      <span className="sr-only">{label}</span>
+      <span
+        aria-hidden
+        className="text-lg leading-none text-gray-400 dark:text-gray-600"
+      >
+        –
+      </span>
     </div>
   );
 }
 
-function ClubCard({
+/** Tint for a cell that is in play, by how much attention it wants. */
+function cellTone(state: Urgency): string {
+  return state === "needs"
+    ? "bg-red-50/60 dark:bg-red-950/20"
+    : state === "consider"
+      ? "bg-amber-50/50 dark:bg-amber-950/20"
+      : "";
+}
+
+function ClubCell({
   club,
   rotation,
   assignment,
@@ -1158,31 +1266,22 @@ function ClubCard({
   saveStatus,
   teachers,
   availableTeachers,
-  urgency,
+  state,
   onAssign,
 }: {
   club: CoverageClub;
   rotation: RotationSlot;
   assignment: Assignment;
-  /** Names of teachers this card double-books in this rotation; usually empty. */
+  /** Names of teachers this cell double-books in this rotation; usually empty. */
   clashingTeachers: string[];
-  /** Lifts every absence recorded on this card's rotation. */
+  /** Lifts every absence recorded on this cell's rotation. */
   onUndoAbsence: () => void;
   saveStatus: SaveStatus;
   teachers: CoverageTeacher[];
   availableTeachers: (slot: "t1" | "t2") => CoverageTeacher[];
-  urgency: "needs" | "consider" | "covered";
+  state: Urgency;
   onAssign: (slot: "t1" | "t2", value: string | null) => void;
 }) {
-  const borderColor =
-    urgency === "needs"
-      ? "border-l-red-400"
-      : urgency === "consider"
-        ? "border-l-amber-400"
-        : "border-l-transparent";
-
-  const isHighEnrollment = club.studentCount >= HIGH_ENROLLMENT_THRESHOLD;
-
   const statusIndicator =
     saveStatus === "saving" ? (
       <span className="text-gray-400 dark:text-gray-500 text-xs animate-pulse">
@@ -1212,18 +1311,13 @@ function ClubCard({
     (id) => teachers.find((t) => t.id === id)?.name ?? "A teacher"
   );
 
+  // The name and the student count are the row's, not the cell's — stated once
+  // on the left instead of once per rotation. What is left here is only what
+  // differs between one club's Flex 1 and its Flex 2.
   return (
-    <div
-      className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${borderColor}`}
-    >
-      <div className="flex items-center justify-between mb-2 gap-2">
-        <span
-          className="text-sm font-medium text-gray-900 dark:text-white truncate"
-          title={club.name}
-        >
-          {club.name}
-        </span>
-        <div className="flex items-center gap-1.5 shrink-0">
+    <div className={`${CELL_SHELL} ${cellTone(state)}`}>
+      {(clashingTeachers.length > 0 || statusIndicator) && (
+        <div className="mb-1.5 flex items-center justify-end gap-1.5">
           {clashingTeachers.length > 0 && (
             <span
               title={`${clashingTeachers.join(", ")} ${
@@ -1235,19 +1329,8 @@ function ClubCard({
             </span>
           )}
           {statusIndicator}
-          {club.studentCount > 0 && (
-            <span
-              className={`text-xs ${
-                isHighEnrollment
-                  ? "text-red-600 dark:text-red-400 font-semibold"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
-            >
-              👤 {club.studentCount}
-            </span>
-          )}
         </div>
-      </div>
+      )}
       <div className="space-y-1.5">
         <TeacherDropdown
           label="T1"
@@ -1309,18 +1392,19 @@ function ClubCard({
 /**
  * One duty post's slot for one rotation.
  *
- * Shares ClubCard's grammar exactly — the same row shell, the same left-border
- * urgency accent, the same save micro-labels, the same select colouring including
- * the opaque `dark:bg-*-950` a translucent fill would wash out — and differs only
- * where the data does. A duty post has no second teacher, no students, and no
- * owner to fall back to, so there is one dropdown and no cleared-vs-default
- * ambiguity: empty simply means unstaffed.
+ * Shares ClubCell's grammar exactly — the same cell shell, the same tint, the
+ * same save micro-labels, the same select colouring including the opaque
+ * `dark:bg-*-950` a translucent fill would wash out — and differs only where the
+ * data does. A duty post has no second teacher, no students, and no owner to
+ * fall back to, so there is one dropdown and no cleared-vs-default ambiguity:
+ * empty simply means unstaffed.
  *
- * A post required in Flex 1 and Flex 3 renders two of these, one per column.
- * That is the point: a slot is a thing that lives in its rotation, not a row
- * nested inside a post.
+ * A post required in Flex 1 and Flex 3 renders two of these on its row, with a
+ * NotScheduledCell between them reading "not required in Flex 2" — a thing the
+ * old layout had no way to say, since a post simply had no card in the columns
+ * it was not wanted in.
  */
-function DutyCard({
+function DutyCell({
   duty,
   rotation,
   teacherId,
@@ -1349,27 +1433,13 @@ function DutyCard({
     : null;
   const inOptions = current !== null && options.some((t) => t.id === current.id);
 
+  // Name, location and the Duty pill belong to the row, on the left.
   return (
     <div
-      className={`px-4 py-3 border-l-4 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${
-        assigned ? "border-l-transparent" : "border-l-red-400"
-      }`}
+      className={`${CELL_SHELL} ${cellTone(assigned ? "covered" : "needs")}`}
     >
-      <div className="flex items-center justify-between mb-2 gap-2">
-        <span className="min-w-0">
-          <span
-            className="block text-sm font-medium text-gray-900 dark:text-white truncate"
-            title={duty.name}
-          >
-            {duty.name}
-          </span>
-          {duty.location && (
-            <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">
-              {duty.location}
-            </span>
-          )}
-        </span>
-        <div className="flex items-center gap-1.5 shrink-0">
+      {(clashingTeachers.length > 0 || saveStatus !== "idle") && (
+        <div className="mb-1.5 flex items-center justify-end gap-1.5">
           {clashingTeachers.length > 0 && (
             <span
               title={`${clashingTeachers.join(", ")} ${
@@ -1395,14 +1465,8 @@ function DutyCard({
               Error — retry
             </span>
           )}
-          {/* Marks this as building supervision rather than a club, in the pill
-              vocabulary the rest of the app uses — not an emoji, which renders
-              differently on every platform. */}
-          <span className="rounded-full border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">
-            Duty
-          </span>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-5 shrink-0">
@@ -1410,7 +1474,8 @@ function DutyCard({
         </span>
         <select
           aria-label={`${duty.name} — ${ROTATION_LABELS[rotation]} teacher`}
-          className={`flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+          // min-w-0 for the same reason as the club selects above.
+          className={`min-w-0 flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
             assigned
               ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
               : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
@@ -1488,7 +1553,10 @@ function TeacherDropdown({
       </span>
       <select
         aria-label={ariaLabel}
-        className={`flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${selectClass}`}
+        // min-w-0: a flex item will not shrink below its content, and a select's
+        // content is its *widest option* — "Cosponsor (Nina Brooks)" — so without
+        // this the control pushes its cell past the panel's right edge.
+        className={`min-w-0 flex-1 rounded-md border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 ${selectClass}`}
         value={value ?? ""}
         onChange={(e) =>
           onChange(e.target.value === "" ? null : e.target.value)

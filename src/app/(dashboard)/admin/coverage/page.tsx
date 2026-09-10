@@ -52,8 +52,14 @@ export default async function AdminCoveragePage({
               cosponsorId: true,
               owner: { select: { name: true } },
               cosponsor: { select: { name: true } },
+              defaultRoom: { select: { name: true } },
             },
           },
+          // The grid is read as "what is happening, where, and who is there",
+          // so the room belongs beside the name. Same precedence as every other
+          // surface that shows one — see the note on effectiveRoomId in
+          // src/lib/scheduling.ts.
+          roomOverride: { select: { name: true } },
           oneOffOwner: { select: { name: true } },
           _count: { select: { signups: true } },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
@@ -142,11 +148,32 @@ export default async function AdminCoveragePage({
       // Only used to label the "fall back to the owner/cosponsor" options.
       ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
       cosponsorName: cs.club?.cosponsor?.name ?? null,
+      roomName: cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null,
       rotations: cs.rotations,
       studentCount: cs._count.signups,
       assignments,
     };
   });
+
+  // Alphabetical, and only alphabetical.
+  //
+  // The grid below lines clubs up in rows across all three rotations, which only
+  // helps if a club sits in the same place every time you look. Ordering used to
+  // be "gaps first", computed per column, so a club running all three rotations
+  // appeared at three different heights and could not be followed across the
+  // page — the thing admin actually wants from this screen. Finding gaps is a
+  // filter now (see the Only show gaps toggle), not an ordering.
+  //
+  // Sorted here rather than in the client so the component stays a renderer, and
+  // in JS rather than by the database so both tabs order by the same rule —
+  // Postgres collation and localeCompare disagree on punctuation and case.
+  const byName = <T extends { name: string; id: string }>(a: T, b: T) =>
+    a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+
+  // Two sessions of the same club on one day are legitimate, so the name is not
+  // a unique key — the id tiebreak is what keeps their order stable across
+  // renders instead of flipping on every refresh.
+  clubs.sort((a, b) => byName({ ...a, id: a.sessionId }, { ...b, id: b.sessionId }));
 
   const duties: CoverageDuty[] = dutyPosts.map((post) => ({
     dutyPostId: post.id,
@@ -162,6 +189,8 @@ export default async function AdminCoveragePage({
       ])
     ) as Partial<Record<RotationSlot, string | null>>,
   }));
+
+  duties.sort((a, b) => byName({ ...a, id: a.dutyPostId }, { ...b, id: b.dutyPostId }));
 
   // Teachers expected in two places at once. Computed here, on the server, from
   // the same resolution the cards are built from — so a clash can never be a
@@ -231,8 +260,8 @@ export default async function AdminCoveragePage({
     <CoverageDashboard
       // Keyed on the tab so switching remounts the component. A same-route
       // search-param navigation does not reliably do that on its own, and the
-      // frozen band order below is mount-scoped — this is what makes "switching
-      // tabs re-sorts the columns" true rather than incidental.
+      // gaps filter's frozen row set is mount-scoped — this is what stops the
+      // Clubs tab's filter carrying over onto Building.
       key={tab}
       tab={tab}
       clubs={clubs}
