@@ -117,20 +117,32 @@ function escapeField(value: string): string {
 }
 
 /**
- * Serialize rows to CSV text.
+ * Serialize rows to CSV text for an arbitrary column list.
  *
  * CRLF line endings per RFC 4180, and a UTF-8 BOM so Excel on Windows opens the
  * file as UTF-8 instead of mangling any non-ASCII name in it. Both are for the
  * benefit of the spreadsheet this is going to be opened in.
+ *
+ * Generic over its columns because there is now more than one CSV in the app
+ * (see src/lib/student-roster-export.ts) and the quoting rules below are the
+ * kind of thing that must exist exactly once.
  */
-export function toCsv(rows: ExportRow[]): string {
+export function serializeCsv<const C extends readonly string[]>(
+  columns: C,
+  rows: ReadonlyArray<Record<C[number], string>>
+): string {
   const lines = [
-    CSV_COLUMNS.join(","),
+    columns.join(","),
     ...rows.map((row) =>
-      CSV_COLUMNS.map((column) => escapeField(row[column])).join(",")
+      columns.map((column) => escapeField(row[column as C[number]])).join(",")
     ),
   ];
   return `﻿${lines.join("\r\n")}\r\n`;
+}
+
+/** Serialize Flex Day roster rows. */
+export function toCsv(rows: ExportRow[]): string {
+  return serializeCsv(CSV_COLUMNS, rows);
 }
 
 /** e.g. "flex-day-2026-09-09-signups.csv" */

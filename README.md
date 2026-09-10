@@ -199,6 +199,50 @@ placeholder constant so the column is present and populated for downstream
 invite tooling. Both are computed in `src/lib/csv-export.ts` and are the two
 things to revisit if the app ever gains real student records.
 
+## Student Roster Export (finding students the app has never seen)
+
+The app has no roster of its own. A student's account is created by Google
+sign-in the first time they log in, so **a student who has never opened the site
+does not exist here at all** — and is therefore invisible to every "not signed
+up" figure in the app, because those are computed over the students the app
+knows about. That is the one gap auto-assign cannot close: it can place a
+student who forgot to pick a club, but not one it has never heard of.
+
+**Export students** on the admin Users page (students tab) downloads what the
+app *does* know, for reconciliation against the school's master student list:
+diff the `email` column against that list in a spreadsheet, and anyone present
+there but missing here has never signed in and needs chasing. This mostly
+matters for the first few Flex Days.
+
+| Column | Value |
+|---|---|
+| `name` | Name from their Google account |
+| `email` | Full school email address |
+| `student_id` | Local part of that email, same derivation as the roster export |
+| `signed_up` | `yes` / `no` for the upcoming Flex Day |
+| `rotations_covered` | `0`–`3`, distinct rotations they are placed in |
+
+One row per `STUDENT` account, whether or not they have signed up — the exact
+inverse of the roster export above, which is driven from signups and so omits
+precisely the students this file is for. Rows are ordered with unsigned-up
+students first, then by name, so the work is at the top; the email tiebreak
+keeps two downloads of an unchanged roster diffable.
+
+`signed_up` and `rotations_covered` describe the next upcoming active Flex Day,
+named in the filename (`students-2026-09-09.csv`). Pass `?flexDayId=` to the
+endpoint to report against a specific day instead. **When there is no upcoming
+Flex Day both columns are blank rather than `no`** — there is nothing to have
+signed up for, and a column of `no` would tell the spreadsheet to chase the
+entire school.
+
+`rotations_covered` is a count of *distinct rotations*, not of signups: a linked
+session covers several rotations in one row, so a student booked solid reads `3`
+from a single signup.
+
+Admin-only, like the roster export — it is the whole student body with email
+addresses attached. Logic in `src/lib/student-roster-export.ts`, route in
+`src/app/api/admin/students/export/route.ts`.
+
 ## Coverage, and Taking a Teacher Off a Session
 
 Who is in the room is *derived*, not stored: with no explicit assignment, T1 falls
