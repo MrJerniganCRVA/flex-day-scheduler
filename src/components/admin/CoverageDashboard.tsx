@@ -30,6 +30,16 @@ const CLEARED = "__none__";
  */
 export type CoverageClub = {
   sessionId: string;
+  /**
+   * Null for a one-off session, which belongs to no club.
+   *
+   * A club whose rotations are *unlinked* gets one session per rotation, so
+   * students can sign up for one, two or three of them independently — see
+   * desiredSessionShapes in src/lib/reconcile.ts. Those sessions are separate
+   * rows in the database and separate cards on every other screen, but they are
+   * one club to an admin reading across the day, so the grid groups by this.
+   */
+  clubId: string | null;
   name: string;
   /** Labels the "fall back to the owner" option; not used to derive anything. */
   ownerName: string | null;
@@ -177,11 +187,24 @@ type ExpectedPlacement = {
 };
 
 /**
- * One line of the grid: a club session, or a duty post. Which of the two the
- * grid is showing is the tab's business; the shell around them is identical.
+ * One line of the grid: a club, or a duty post. Which of the two the grid is
+ * showing is the tab's business; the shell around them is identical.
+ *
+ * A club row holds a session *per rotation* rather than a single session,
+ * because a club with unlinked rotations has one session per rotation — three
+ * database rows that are one club to the admin reading across the day. Each
+ * cell edits whichever session covers its rotation, so the three keep their own
+ * rosters, rooms and coverage while sharing a line.
  */
 type GridRow =
-  | { kind: "club"; key: string; name: string; club: CoverageClub }
+  | {
+      kind: "club";
+      key: string;
+      name: string;
+      /** The room, when every session in the row agrees; null when they differ. */
+      roomName: string | null;
+      sessions: Partial<Record<RotationSlot, CoverageClub>>;
+    }
   | { kind: "duty"; key: string; name: string; duty: CoverageDuty };
 
 /**
@@ -661,8 +684,9 @@ export default function CoverageDashboard({
   const cellState = useCallback(
     (row: GridRow, rotation: RotationSlot): CellState => {
       if (row.kind === "club") {
-        if (!row.club.rotations.includes(rotation)) return "not-scheduled";
-        return urgencyOf(row.club, assignments[row.club.sessionId]?.[rotation]);
+        const session = row.sessions[rotation];
+        if (!session) return "not-scheduled";
+        return urgencyOf(session, assignments[session.sessionId]?.[rotation]);
       }
       // A duty post carries only the rotations it is required for, so anything
       // outside that list is genuinely not wanted rather than unstaffed.
@@ -678,23 +702,71 @@ export default function CoverageDashboard({
 
   // Every row of the current tab, in the alphabetical order the server sent.
   // Nothing here reorders: that is the whole point of the grid.
-  const allRows = useMemo<GridRow[]>(
-    () =>
-      tab === "clubs"
-        ? clubs.map((club) => ({
-            kind: "club" as const,
-            key: club.sessionId,
-            name: club.name,
-            club,
-          }))
-        : duties.map((duty) => ({
-            kind: "duty" as const,
-            key: `duty:${duty.dutyPostId}`,
-            name: duty.name,
-            duty,
-          })),
-    [tab, clubs, duties]
-  );
+  const allRows = useMemo<GridRow[]>(() => {
+    if (tab === "building")
+      return duties.map((duty) => ({
+        kind: "duty" as const,
+        key: `duty:${duty.dutyPostId}`,
+        name: duty.name,
+        duty,
+      }));
+
+    // Sessions of one club collapse into one row.
+    //
+    // An unlinked club has a session per rotation, and keying rows by session
+    // drew it three times — three lines each with one cell filled and two
+    // hatched, for a club that is simply running all day. Grouping by club is
+    // what makes the row mean "Art Club" rather than "one of Art Club's three
+    // sessions".
+    //
+    // Two sessions of the same club *in the same rotation* cannot share a cell,
+    // so they take a second row rather than one quietly winning. `clubs`
+    // arrives sorted by name, and rows keep first-encounter order, so the
+    // result is still alphabetical with any such pair adjacent.
+    type ClubRow = Extract<GridRow, { kind: "club" }>;
+    const rows: ClubRow[] = [];
+    const byClub = new Map<string, ClubRow[]>();
+
+    for (const session of clubs) {
+      // A one-off belongs to no club, so it never merges with anything.
+      const siblings = session.clubId ? (byClub.get(session.clubId) ?? []) : [];
+      let row = siblings.find((r) =>
+        session.rotations.every((rotation) => !r.sessions[rotation])
+      );
+
+      if (!row) {
+        row = {
+          kind: "club",
+          key: session.clubId
+            ? `club:${session.clubId}:${siblings.length}`
+            : `session:${session.sessionId}`,
+          name: session.name,
+          roomName: null,
+          sessions: {},
+        };
+        rows.push(row);
+        if (session.clubId) byClub.set(session.clubId, [...siblings, row]);
+      }
+
+      for (const rotation of session.rotations) row.sessions[rotation] = session;
+    }
+
+    // The room belongs on the row only when the row agrees about it. Sessions
+    // of one club normally inherit the same default room, but any of them can
+    // carry an override, and a row header claiming one room for three sessions
+    // held in two would be worse than saying nothing — so when they differ the
+    // cells state their own (see ClubCell).
+    for (const row of rows) {
+      const names = new Set(
+        ALL_ROTATIONS.map((r) => row.sessions[r]?.roomName).filter(
+          (n): n is string => !!n
+        )
+      );
+      row.roomName = names.size === 1 ? [...names][0] : null;
+    }
+
+    return rows;
+  }, [tab, clubs, duties]);
 
   const hasGap = useCallback(
     (row: GridRow) =>
@@ -720,8 +792,12 @@ export default function CoverageDashboard({
   }, [allRows, hasGap]);
 
   return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-4">
+    // Fills main at xl and up, where the grid sits beside the teacher panel and
+    // takes the leftover height as its own scroll region. Below that everything
+    // stacks at natural height and main scrolls, which is the right behaviour
+    // when the panel is under the grid rather than next to it.
+    <div className="flex flex-col xl:h-full">
+      <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Coverage
@@ -743,7 +819,7 @@ export default function CoverageDashboard({
       {/* The answer to "is anything wrong today?", before any scrolling. Zero is
           never red anywhere in this app — a screen scanned for problems should
           show colour only where there is one. */}
-      <div className="mb-5 grid grid-cols-3 gap-3">
+      <div className="mb-5 grid shrink-0 grid-cols-3 gap-3">
         <StatTile
           value={summary.sessionsNeedingTeacher}
           label="need a teacher"
@@ -778,13 +854,16 @@ export default function CoverageDashboard({
           every card beside every resolved teacher; the decision is only ever made
           when a clash appears, so it belongs here, where the clash is named. */}
       {clashes.length > 0 && (
-        <div className="mb-5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
+        <div className="mb-5 shrink-0 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
             {clashes.length === 1
               ? "1 teacher is expected in two places at once"
               : `${clashes.length} teachers are expected in two places at once`}
           </p>
-          <ul className="mt-2 space-y-2">
+          {/* Capped: the grid below now lives in the height this leaves it, and
+              a day with five clashes was pushing it down to two visible rows.
+              Scrolls rather than truncates — every clash stays reachable. */}
+          <ul className="mt-2 max-h-44 space-y-2 overflow-y-auto">
             {clashes.map((clash) => {
               const key = `${clash.teacherId}:${clash.rotation}`;
               const busy = clashBusy === key;
@@ -823,7 +902,7 @@ export default function CoverageDashboard({
 
       {/* Only the columns are tabbed. Everything above stays put, so a clash or
           an open building slot is visible whichever tab you are on. */}
-      <div className="flex items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 mb-4">
+      <div className="flex shrink-0 items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 mb-4">
         <div className="flex gap-1">
           {TABS.map((t) => {
             const gaps =
@@ -882,14 +961,17 @@ export default function CoverageDashboard({
         </div>
       </div>
 
-      {/* The grid is bounded rather than page-length so both sticky axes have a
-          scroll container to pin against: the rotation headers stay put while
-          you work down a long list, and the name column stays put while you
-          scroll sideways on a narrow screen. */}
-      {/* items-start so the grid keeps its own height. Stretching is the flex
-          default, and it left a short list — three duty posts — drawn inside a
-          panel as tall as the teacher list beside it. */}
-      <div className="flex flex-col xl:flex-row gap-5 items-start">
+      {/* At xl this row takes whatever height main has left, and the grid inside
+          it is the only thing that scrolls — so the panel's bottom edge is the
+          bottom of the window rather than a guessed height with the page
+          carrying on past it. It also gives both sticky axes a container to pin
+          against: rotation headers stay put down a long list, the name column
+          stays put scrolling sideways.
+          items-start keeps the teacher panel at its own height instead of
+          stretching it to match the grid. */}
+      {/* min-h is the safety valve: on a short window with a lot above it, main
+          scrolls a little rather than the grid shrinking to a couple of rows. */}
+      <div className="flex flex-col xl:flex-row gap-5 items-start xl:flex-1 xl:min-h-[20rem]">
         {/* ── The grid: a row per club, a column per rotation ─────────── */}
         {/*
           One row per club rather than three independent columns of cards.
@@ -902,7 +984,7 @@ export default function CoverageDashboard({
           grid row: the cells share a row height, so a club is a single
           horizontal band whatever its rotations do.
         */}
-        <div className="min-w-0 flex-1 overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 max-h-[calc(100vh-16rem)]">
+        <div className="w-full min-w-0 overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 xl:h-full xl:w-auto xl:flex-1">
           <div className="grid min-w-[54rem] grid-cols-[minmax(11rem,15rem)_repeat(3,minmax(13rem,1fr))]">
             {/* ── Header row ────────────────────────────────────────── */}
             {/* Opaque, not the /50 the panels use elsewhere: these cells are
@@ -954,7 +1036,7 @@ export default function CoverageDashboard({
                   : "border-l-transparent";
 
               const subtitle =
-                row.kind === "club" ? row.club.roomName : row.duty.location;
+                row.kind === "club" ? row.roomName : row.duty.location;
 
               return (
                 <Fragment key={row.key}>
@@ -978,19 +1060,7 @@ export default function CoverageDashboard({
                           </span>
                         )}
                       </span>
-                      {row.kind === "club" ? (
-                        row.club.studentCount > 0 && (
-                          <span
-                            className={`shrink-0 text-xs ${
-                              row.club.studentCount >= HIGH_ENROLLMENT_THRESHOLD
-                                ? "font-semibold text-red-600 dark:text-red-400"
-                                : "text-gray-500 dark:text-gray-400"
-                            }`}
-                          >
-                            👤 {row.club.studentCount}
-                          </span>
-                        )
-                      ) : (
+                      {row.kind === "duty" && (
                         // Marks this as building supervision rather than a club,
                         // in the pill vocabulary the rest of the app uses — not
                         // an emoji, which renders differently on every platform.
@@ -1014,45 +1084,58 @@ export default function CoverageDashboard({
                         />
                       );
 
-                    return row.kind === "club" ? (
-                      <ClubCell
-                        key={rotation}
-                        club={row.club}
-                        rotation={rotation}
-                        state={state}
-                        assignment={
-                          assignments[row.club.sessionId]?.[rotation] ??
-                          EMPTY_ASSIGNMENT
-                        }
-                        clashingTeachers={
-                          clashesByCard.get(
-                            `${row.club.sessionId}:${rotation}`
-                          ) ?? []
-                        }
-                        onUndoAbsence={() =>
-                          undoAbsences(
-                            row.club.sessionId,
-                            rotation,
-                            assignments[row.club.sessionId]?.[rotation]
-                              ?.absentTeacherIds ?? []
-                          )
-                        }
-                        saveStatus={
-                          saveStatus[row.club.sessionId]?.[rotation] ?? "idle"
-                        }
-                        teachers={teachers}
-                        availableTeachers={(slot) =>
-                          availableTeachersFor(rotation, {
-                            kind: "club",
-                            sessionId: row.club.sessionId,
-                            slot,
-                          })
-                        }
-                        onAssign={(slot, val) =>
-                          assign(row.club.sessionId, rotation, slot, val)
-                        }
-                      />
-                    ) : (
+                    if (row.kind === "club") {
+                      // The session covering *this* rotation — its own roster,
+                      // room and coverage, even though it shares a row.
+                      const session = row.sessions[rotation]!;
+                      return (
+                        <ClubCell
+                          key={rotation}
+                          club={session}
+                          rotation={rotation}
+                          state={state}
+                          // Stated per cell, not per row: an unlinked club's
+                          // rotations have separate sign-up lists, so one number
+                          // on the left would be three different numbers'
+                          // worth of wrong — and it is this count that decides
+                          // whether a rotation is nudged for a second teacher.
+                          showRoom={row.roomName === null}
+                          assignment={
+                            assignments[session.sessionId]?.[rotation] ??
+                            EMPTY_ASSIGNMENT
+                          }
+                          clashingTeachers={
+                            clashesByCard.get(
+                              `${session.sessionId}:${rotation}`
+                            ) ?? []
+                          }
+                          onUndoAbsence={() =>
+                            undoAbsences(
+                              session.sessionId,
+                              rotation,
+                              assignments[session.sessionId]?.[rotation]
+                                ?.absentTeacherIds ?? []
+                            )
+                          }
+                          saveStatus={
+                            saveStatus[session.sessionId]?.[rotation] ?? "idle"
+                          }
+                          teachers={teachers}
+                          availableTeachers={(slot) =>
+                            availableTeachersFor(rotation, {
+                              kind: "club",
+                              sessionId: session.sessionId,
+                              slot,
+                            })
+                          }
+                          onAssign={(slot, val) =>
+                            assign(session.sessionId, rotation, slot, val)
+                          }
+                        />
+                      );
+                    }
+
+                    return (
                       <DutyCell
                         key={rotation}
                         duty={row.duty}
@@ -1131,8 +1214,11 @@ export default function CoverageDashboard({
         {/* ── Teacher sidebar ─────────────────────────────────────────── */}
         {/* Beside the grid where there is room for both, beneath it where there
             is not — it used to hold its 208px even at the width where the
-            columns had already given up and stacked. */}
-        <div className="w-full shrink-0 xl:w-52">
+            columns had already given up and stacked.
+            max-h-full and its own scroll at xl: a long staff list is the other
+            thing that can push past the bottom of the window, and the point of
+            this layout is that nothing does. */}
+        <div className="w-full shrink-0 xl:w-52 xl:max-h-full xl:overflow-y-auto">
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div className="px-4 py-3 bg-indigo-50 dark:bg-indigo-950/50 border-b border-gray-200 dark:border-gray-700">
               <span className="font-semibold text-sm text-indigo-700 dark:text-indigo-300">
@@ -1267,10 +1353,13 @@ function ClubCell({
   teachers,
   availableTeachers,
   state,
+  showRoom,
   onAssign,
 }: {
   club: CoverageClub;
   rotation: RotationSlot;
+  /** True when the row's sessions sit in different rooms, so the row can't say. */
+  showRoom: boolean;
   assignment: Assignment;
   /** Names of teachers this cell double-books in this rotation; usually empty. */
   clashingTeachers: string[];
@@ -1311,13 +1400,35 @@ function ClubCell({
     (id) => teachers.find((t) => t.id === id)?.name ?? "A teacher"
   );
 
-  // The name and the student count are the row's, not the cell's — stated once
-  // on the left instead of once per rotation. What is left here is only what
-  // differs between one club's Flex 1 and its Flex 2.
+  // The name is the row's; the roster is this rotation's. An unlinked club's
+  // three sessions have three sign-up lists, so the head count belongs beside
+  // the slot it describes — and it is this count that decides whether the
+  // rotation gets nudged for a second teacher.
   return (
     <div className={`${CELL_SHELL} ${cellTone(state)}`}>
-      {(clashingTeachers.length > 0 || statusIndicator) && (
-        <div className="mb-1.5 flex items-center justify-end gap-1.5">
+      <div className="mb-1.5 flex items-center justify-between gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
+          {club.studentCount > 0 && (
+            <span
+              className={`shrink-0 text-xs ${
+                club.studentCount >= HIGH_ENROLLMENT_THRESHOLD
+                  ? "font-semibold text-red-600 dark:text-red-400"
+                  : "text-gray-500 dark:text-gray-400"
+              }`}
+            >
+              👤 {club.studentCount}
+            </span>
+          )}
+          {showRoom && club.roomName && (
+            <span
+              className="truncate text-xs text-gray-400 dark:text-gray-500"
+              title={club.roomName}
+            >
+              {club.roomName}
+            </span>
+          )}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
           {clashingTeachers.length > 0 && (
             <span
               title={`${clashingTeachers.join(", ")} ${
@@ -1329,8 +1440,8 @@ function ClubCell({
             </span>
           )}
           {statusIndicator}
-        </div>
-      )}
+        </span>
+      </div>
       <div className="space-y-1.5">
         <TeacherDropdown
           label="T1"
