@@ -142,6 +142,9 @@ export default async function AdminCoveragePage({
 
     return {
       sessionId: cs.id,
+      // Lets the grid merge the per-rotation sessions of an unlinked club back
+      // into one row. Null for one-offs, which never merge with anything.
+      clubId: cs.club?.id ?? null,
       // One-off sessions have no club; they are still real sessions in real rooms
       // whose teacher can be absent or double-booked, so they belong here.
       name: cs.title ?? cs.club?.name ?? "Session",

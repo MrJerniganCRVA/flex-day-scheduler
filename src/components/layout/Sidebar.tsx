@@ -94,7 +94,10 @@ export default function Sidebar() {
   const links = useNavLinks();
 
   return (
-    <aside className="hidden md:block w-56 shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 min-h-screen pt-6">
+    // The flex row stretches this to full height now, so min-h-screen would only
+    // add a screen's worth of overflow below the fold. overflow-y-auto so a long
+    // nav still reaches its last link on a short window.
+    <aside className="hidden md:block w-56 shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto pt-6">
       <nav aria-label="Main" className="px-3">
         <ul className="space-y-1">
           {links.map((item) => (
