@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import RoleSelect from "@/components/admin/RoleSelect";
 import DeleteUserButton from "@/components/admin/DeleteUserButton";
+import ImportStudentsPanel from "@/components/admin/ImportStudentsPanel";
 
 export default async function AdminUsersPage({
   searchParams,
@@ -116,9 +117,10 @@ export default async function AdminUsersPage({
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           User Management
         </h1>
-        {/* Reconciliation file: the app only knows a student once they have
-            signed in, so this is what gets diffed against the school's master
-            student list to find whoever never did. */}
+        {/* Reconciliation file: diffed against the school's master student list
+            to find whoever has never signed in. Import Students, below, is the
+            other half of that workflow — what actually does something about the
+            names the diff turns up. */}
         {tab === "students" && (
           <a
             href="/api/admin/students/export"
@@ -165,6 +167,15 @@ export default async function AdminUsersPage({
           </Link>
         ))}
       </div>
+
+      {/* The other half of the export above: creates accounts for students who
+          have never signed in, so they can be auto-assigned and invited. Sits
+          directly over the table it adds rows to. */}
+      {tab === "students" && (
+        <div className="mb-6">
+          <ImportStudentsPanel />
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
