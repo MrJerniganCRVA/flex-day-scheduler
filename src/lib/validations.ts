@@ -102,6 +102,25 @@ export const addRequiredMemberSchema = z.object({
   studentId: z.string().cuid(),
 });
 
+/**
+ * Bulk student import from an uploaded CSV.
+ *
+ * The size caps are the point of this schema — the CSV's *contents* are checked
+ * by src/lib/student-import.ts, which reports bad rows individually instead of
+ * failing the upload. These two bounds exist so that a mis-selected file (a
+ * video, a database dump) is refused at the boundary rather than parsed
+ * character by character and then written to the users table. 2 MB is roughly
+ * twenty times a whole-school roster.
+ */
+export const importStudentsSchema = z.object({
+  csv: z
+    .string()
+    .min(1, "The file is empty")
+    .max(2_000_000, "That file is too large to be a student roster"),
+  /** Preview only. The UI always previews before it commits. */
+  dryRun: z.boolean().optional(),
+});
+
 export const updateUserRoleSchema = z.object({
   role: z.enum(["STUDENT", "TEACHER", "ADMIN"] as [Role, ...Role[]]),
 });

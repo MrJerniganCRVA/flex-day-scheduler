@@ -199,24 +199,37 @@ placeholder constant so the column is present and populated for downstream
 invite tooling. Both are computed in `src/lib/csv-export.ts` and are the two
 things to revisit if the app ever gains real student records.
 
-## Student Roster Export (finding students the app has never seen)
+## Student Roster: Export and Import
 
-The app has no roster of its own. A student's account is created by Google
-sign-in the first time they log in, so **a student who has never opened the site
-does not exist here at all** — and is therefore invisible to every "not signed
-up" figure in the app, because those are computed over the students the app
-knows about. That is the one gap auto-assign cannot close: it can place a
-student who forgot to pick a club, but not one it has never heard of.
+A student's account is normally created by Google sign-in the first time they log
+in. Left at that, **a student who has never opened the site does not exist here
+at all** — invisible to every "not signed up" figure in the app, because those
+are computed over the students the app knows about, and beyond the reach of
+auto-assign, which can place a student who forgot to pick a club but not one it
+has never heard of.
 
-**Export students** on the admin Users page (students tab) downloads what the
-app *does* know, for reconciliation against the school's master student list:
-diff the `email` column against that list in a spreadsheet, and anyone present
-there but missing here has never signed in and needs chasing. This mostly
-matters for the first few Flex Days.
+Export and import are the two halves of closing that gap, and they are meant to
+be used together:
+
+1. **Export students** on the admin Users page (students tab) downloads what the
+   app *does* know. Diff the `email` column against the school's master student
+   list in a spreadsheet; anyone present there but missing here has never signed
+   in.
+2. **Import students** on the same page takes that file back. Add the missing
+   students to the bottom of it and upload — the extra columns are ignored, and
+   students already present are skipped, so re-uploading the same file is a
+   no-op.
+
+Once a student has an account they are an ordinary student, whether or not they
+have ever logged in: included in Auto-assign for the next Flex Day, and sent a
+Google Calendar invite when that day is finalized. Nothing about the invite
+depends on them having used the app — it goes to their school address either way.
+
+### Export
 
 | Column | Value |
 |---|---|
-| `name` | Name from their Google account |
+| `name` | Name from their Google account, or derived from the address if imported and not yet signed in |
 | `email` | Full school email address |
 | `student_id` | Local part of that email, same derivation as the roster export |
 | `signed_up` | `yes` / `no` for the upcoming Flex Day |
@@ -242,6 +255,45 @@ from a single signup.
 Admin-only, like the roster export — it is the whole student body with email
 addresses attached. Logic in `src/lib/student-roster-export.ts`, route in
 `src/app/api/admin/students/export/route.ts`.
+
+### Import
+
+Upload a CSV of students. The `email` column is the only one that matters;
+`name` is used when present and otherwise derived from the address
+(`jane.doe@…` → "Jane Doe"), which is a placeholder — the student's real Google
+name replaces it the first time they sign in. Column order is irrelevant, extra
+columns are ignored, and a file with no header at all is read as a bare list of
+addresses.
+
+The upload is previewed before anything is written: how many students are new,
+how many are already here, and every row that will be skipped with its line
+number and the reason. Rows are skipped rather than failing the upload, so one
+malformed line in two thousand costs you that line and not the import.
+
+A row is skipped when it has no address, when the address is malformed, when it
+is **not at the school's domain** (that account could never sign in), when it is
+a **staff address** (importing a teacher as a student would have them silently
+promoted to `TEACHER` at their next login), or when the same address appeared
+earlier in the file. Existing accounts are never modified — no renames, and no
+role changes for anyone already on file.
+
+Admin-only. Parsing in `src/lib/student-import.ts` (pure, and the exact inverse
+of the quoting in `src/lib/csv-export.ts`), route in
+`src/app/api/admin/students/import/route.ts`.
+
+**Invites go out at finalize, not at import.** A student imported and
+auto-assigned *after* a Flex Day has already been finalized gets no invite until
+that day is unfinalized and re-finalized, or they are added through the admin
+roster override. This is existing behavior — equally true of a student who signs
+up late — but it is the reason to import before you finalize.
+
+Pre-creating accounts this way requires Auth.js to attach a Google login to a
+`User` row that already exists, which is why the Google provider sets
+`allowDangerousEmailAccountLinking` (`src/auth.ts`). Without it every imported
+student would be refused with `OAuthAccountNotLinked` on their first sign-in. It
+is safe here because Google is the only provider, it verifies the addresses it
+issues, and sign-in is confined to the school's own Workspace domain — adding a
+second provider would make it unsafe.
 
 ## Coverage, and Taking a Teacher Off a Session
 

@@ -4,17 +4,19 @@ import { serializeCsv, studentIdFromEmail } from "@/lib/csv-export";
 /**
  * Student roster export — the signup reconciliation file.
  *
- * The app has no roster of its own. A User row is created by NextAuth the first
- * time a student signs in with Google (src/auth.ts), so the app cannot know
- * about a student who has never logged in. That makes every "not signed up"
- * figure in the app blind to exactly the students most at risk of missing a Flex
- * Day: they are absent from the population those figures are computed over.
+ * A User row is normally created by NextAuth the first time a student signs in
+ * with Google (src/auth.ts), so a student who has never logged in is absent from
+ * the population every "not signed up" figure is computed over — which makes
+ * those figures blind to exactly the students most at risk of missing a Flex Day.
  *
- * This file closes that loop outside the app. An admin downloads it and diffs
- * the `email` column against the school's master student list; whoever is in the
- * master list and not in this file has never signed in at all, and needs
- * chasing. The signup columns then answer the second question from the same
- * file: who has signed in but not yet picked a club.
+ * This file is how an admin finds them. Download it, diff the `email` column
+ * against the school's master student list, and whoever is in the master list
+ * but not in this file has never signed in at all. The signup columns answer the
+ * second question from the same file: who has signed in but not yet picked a club.
+ *
+ * What to *do* about the first group is src/lib/student-import.ts, which reads
+ * this same file back and creates the missing accounts — so the export's natural
+ * next step is to add the missing rows to it and upload it again.
  *
  * Sibling of src/lib/csv-export.ts, and deliberately the inverse of it — that
  * export is driven from signups (a student with nothing booked has no row),
