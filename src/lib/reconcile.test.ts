@@ -14,13 +14,12 @@ const DAY = new Date("2026-09-02T00:00:00.000Z");
 function session(
   id: string,
   rotations: RotationSlot[],
-  opts: { signups?: number; eventId?: string | null } = {}
+  opts: { signups?: number; events?: number } = {}
 ) {
   return {
     id,
     rotations,
-    googleEventId: opts.eventId ?? null,
-    _count: { signups: opts.signups ?? 0 },
+    _count: { signups: opts.signups ?? 0, sessionEvents: opts.events ?? 0 },
   };
 }
 
@@ -104,7 +103,7 @@ describe("planReconcile", () => {
 
   it("refuses to delete a session that already has a calendar event", () => {
     const result = plan(
-      [session("b", ["FLEX_2"], { eventId: "evt_1" })],
+      [session("b", ["FLEX_2"], { events: 1 })],
       [["FLEX_1"]]
     );
     expect(result.toDelete).toEqual([]);

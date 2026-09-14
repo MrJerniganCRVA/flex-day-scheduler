@@ -1,44 +1,82 @@
 import { NextRequest, NextResponse } from "next/server";
+import { calendar_v3 } from "googleapis";
+import { RotationSlot } from "@prisma/client";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import {
   createEventForSession,
-  getOrCreateOneOffCalendarId,
-  shareCalendarWithTeacher,
+  deleteEvent,
   syncEventForSession,
 } from "@/lib/google-calendar";
+import { getCalendarClientForUser } from "@/lib/google-oauth";
 import {
   resolveRoomName,
+  rotationName,
   sessionEventDescription,
   sessionEventTitle,
 } from "@/lib/session-event";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
-  resolveSessionTeacherIds,
+  resolveSessionCoverage,
   sessionRef,
 } from "@/lib/coverage";
 
-/** Why a session could not be synced, for the admin-facing report. */
-type SkipReason = "club-calendar-missing" | "one-off-calendar-unavailable";
+/**
+ * Finalizing a Flex Day: send every invite it implies.
+ *
+ * The unit of work is a **block** — one rotation of one session — not a session.
+ * A club linked across Flex 1 to Flex 3 sends three invites sitting at their own
+ * bell times, which leaves the transition gaps free and lets each invite carry
+ * only the coverage for its own block. See the note on `SessionCalendarEvent` in
+ * the schema for why the single spanning event it replaced was wrong.
+ *
+ * Each block's invite is created **by that block's T1**, on their own calendar,
+ * over OAuth (src/lib/google-oauth.ts). Google refuses attendee invites from this
+ * app's own service identity without Domain-Wide Delegation, which this Workspace
+ * does not grant — and sending as the covering teacher is better anyway, because
+ * the invite then visibly comes from the person standing in the room.
+ *
+ * A teacher who has not yet granted access does not cost their students an
+ * invite: the block falls back to an admin's calendar and is reported by name, so
+ * the day still goes out and the gap is visible rather than silent.
+ */
 
-type SentOutcome = { kind: "sent"; sessionId: string; name: string };
-type FailedOutcome = {
-  kind: "failed";
+/** One rotation of one session — what an invite actually covers. */
+type BlockRef = {
   sessionId: string;
-  name: string;
-  error: unknown;
+  rotation: RotationSlot;
+  /** "Art Club — Flex 2", for the admin-facing report. */
+  label: string;
 };
-type SkippedOutcome = {
+
+/**
+ * The block's invite went out. `fellBackFrom` is set when it was sent from an
+ * admin because the assigned teacher could not send it themselves: `teacherName`
+ * names them, or is null when nobody was assigned to the block at all.
+ */
+type SentOutcome = BlockRef & {
+  kind: "sent";
+  fellBackFrom: { teacherName: string | null } | null;
+};
+
+/** Google rejected the request. */
+type FailedOutcome = BlockRef & { kind: "failed"; error: unknown };
+
+/** Nobody could send it — not the assigned teacher, and not any admin. */
+type SkippedOutcome = BlockRef & {
   kind: "skipped";
-  sessionId: string;
-  name: string;
-  reason: SkipReason;
+  teacherName: string | null;
 };
-type SessionOutcome = SentOutcome | FailedOutcome | SkippedOutcome;
 
-const isSent = (o: SessionOutcome): o is SentOutcome => o.kind === "sent";
-const isFailed = (o: SessionOutcome): o is FailedOutcome => o.kind === "failed";
+type BlockOutcome = SentOutcome | FailedOutcome | SkippedOutcome;
+
+const isSent = (o: BlockOutcome): o is SentOutcome => o.kind === "sent";
+const isFailed = (o: BlockOutcome): o is FailedOutcome => o.kind === "failed";
+const isSkipped = (o: BlockOutcome): o is SkippedOutcome => o.kind === "skipped";
+
+/** A calendar client with the id of whose calendar it writes to. */
+type Sender = { client: calendar_v3.Calendar; userId: string };
 
 export async function POST(
   _req: NextRequest,
@@ -48,6 +86,7 @@ export async function POST(
   if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const actorId = session.user.id;
 
   const { flexDayId } = await params;
 
@@ -60,8 +99,6 @@ export async function POST(
             select: {
               id: true,
               name: true,
-              googleCalendarId: true,
-              calendarSharedAt: true,
               ownerId: true,
               cosponsorId: true,
               owner: { select: { name: true, email: true } },
@@ -72,10 +109,19 @@ export async function POST(
           oneOffOwner: { select: { id: true, name: true, email: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
-          // A teacher who has stepped back from this session must not be invited
-          // to it, even when they are the club's owner and therefore the implicit
-          // default.
+          // A teacher who has stepped back from a rotation must not be invited to
+          // it, even when they are the club's owner and therefore the implicit
+          // default — and, now that events are per-rotation, must not be invited
+          // to that rotation while staying on the others they do cover.
           teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+          sessionEvents: {
+            select: {
+              id: true,
+              rotation: true,
+              googleEventId: true,
+              ownerId: true,
+            },
+          },
           signups: {
             include: {
               student: { select: { email: true } },
@@ -100,31 +146,10 @@ export async function POST(
   const sessionName = (cs: (typeof flexDay.clubSessions)[number]) =>
     cs.title ?? cs.club?.name ?? "Session";
 
-  // One-off sessions have no club calendar. Provision the shared host calendar
-  // once, only if this flex day actually contains a one-off. A failure here is
-  // not fatal to the whole finalize — those sessions get reported as skipped.
-  const hasOneOff = flexDay.clubSessions.some((cs) => cs.clubId === null);
-  let oneOffCalendarId: string | null = null;
-  if (hasOneOff) {
-    try {
-      oneOffCalendarId = await getOrCreateOneOffCalendarId();
-    } catch (err) {
-      console.error(
-        "Failed to provision the one-off host calendar — one-off sessions will be reported as skipped:",
-        err
-      );
-    }
-  }
-
-  /** The calendar a session's event belongs on, or null if none is available. */
-  const calendarIdFor = (cs: (typeof flexDay.clubSessions)[number]) =>
-    cs.clubId === null ? oneOffCalendarId : (cs.club?.googleCalendarId ?? null);
-
-  // Teacher emails by id, for turning resolved coverage into attendees.
+  // Emails for turning resolved coverage into attendees, and names for the invite
+  // body — which says who is in the room, something the title has no space for
+  // and the attendee list conveys only as an email address.
   const teacherEmailById = new Map<string, string>();
-  // Names, for the invite body. Same ids, same lookups — the description says
-  // who is in the room, which the title has no space for and the attendee list
-  // only conveys as an email address.
   const teacherNameById = new Map<string, string>();
   for (const cs of flexDay.clubSessions) {
     if (cs.club?.ownerId && cs.club.owner?.email) {
@@ -163,172 +188,286 @@ export async function POST(
     }
   }
 
-  const syncable = flexDay.clubSessions.filter((cs) => calendarIdFor(cs) !== null);
-  const skipped: SkippedOutcome[] = flexDay.clubSessions
-    .filter((cs) => calendarIdFor(cs) === null)
-    .map((cs) => ({
-      kind: "skipped",
-      sessionId: cs.id,
-      name: sessionName(cs),
-      reason:
-        cs.clubId === null
-          ? "one-off-calendar-unavailable"
-          : "club-calendar-missing",
-    }));
-
-  // Share each involved club's calendar with its owning teacher exactly once,
-  // the first time any of its sessions is finalized. Treat an "already shared"
-  // API error as a non-fatal no-op (covers clubs shared under old behavior).
-  //
-  // A club may have no owner at all — nobody to share with — in which case the
-  // share is skipped and `calendarSharedAt` is deliberately left null, so that
-  // if the club later gains an owner they still get access. Stamping it
-  // unconditionally would mark the club "shared" forever without anyone ever
-  // having been granted anything.
-  const clubsToShare = new Map<string, { calendarId: string; ownerEmail: string }>();
-  for (const cs of syncable) {
-    if (
-      cs.club &&
-      cs.club.calendarSharedAt === null &&
-      cs.club.owner?.email &&
-      !clubsToShare.has(cs.club.id)
-    ) {
-      clubsToShare.set(cs.club.id, {
-        calendarId: cs.club.googleCalendarId!,
-        ownerEmail: cs.club.owner.email,
-      });
+  // One client per teacher, however many blocks they cover. Memoized on the
+  // promise rather than the result so concurrent blocks share one token refresh
+  // instead of racing to perform their own.
+  const clientCache = new Map<string, Promise<calendar_v3.Calendar | null>>();
+  const clientFor = (userId: string): Promise<calendar_v3.Calendar | null> => {
+    let pending = clientCache.get(userId);
+    if (!pending) {
+      pending = getCalendarClientForUser(userId);
+      clientCache.set(userId, pending);
     }
-  }
-  await Promise.all(
-    [...clubsToShare.entries()].map(async ([clubId, { calendarId, ownerEmail }]) => {
-      try {
-        await shareCalendarWithTeacher(calendarId, ownerEmail);
-      } catch (err) {
-        console.error(
-          `Failed to share calendar for club ${clubId} (continuing — may already be shared):`,
-          err
-        );
-      }
-      await prisma.club
-        .update({ where: { id: clubId }, data: { calendarSharedAt: new Date() } })
-        .catch((err) =>
-          console.error(`Failed to persist calendarSharedAt for club ${clubId}:`, err)
-        );
-    })
-  );
+    return pending;
+  };
 
-  // Settle each session independently, but keep each result paired with the
-  // session it came from — indexing a filtered array by position (the previous
-  // approach) attributes failures to the wrong session in the logs.
+  /**
+   * The admin whose calendar covers blocks their assigned teacher cannot send
+   * from. Prefers whoever pressed Finalize — they are present, and the resulting
+   * invite comes from a person the school can ask about it — and otherwise any
+   * admin who has connected. Null when no admin has connected either.
+   */
+  let backstopPromise: Promise<Sender | null> | null = null;
+  const getBackstop = (): Promise<Sender | null> => {
+    backstopPromise ??= (async () => {
+      const own = await clientFor(actorId);
+      if (own) return { client: own, userId: actorId };
+
+      const admins = await prisma.user.findMany({
+        where: {
+          role: "ADMIN",
+          id: { not: actorId },
+          calendarGrant: { is: { revokedAt: null } },
+        },
+        select: { id: true },
+      });
+      for (const admin of admins) {
+        const client = await clientFor(admin.id);
+        if (client) return { client, userId: admin.id };
+      }
+      return null;
+    })();
+    return backstopPromise;
+  };
+
+  // Settle each session independently. Blocks within a session run in sequence:
+  // they share a stale-row cleanup and an upsert per rotation, and a linked
+  // session is at most three of them, so there is nothing to gain from racing.
   const settled = await Promise.all(
-    syncable.map(async (cs): Promise<SessionOutcome> => {
+    flexDay.clubSessions.map(async (cs): Promise<BlockOutcome[]> => {
       const name = sessionName(cs);
-      try {
-        const calendarId = calendarIdFor(cs)!;
+      const outcomes: BlockOutcome[] = [];
 
-        // Teachers expected in the room: explicit coverage, else the club's
-        // owner/cosponsor. One-off sessions fall back to their creator.
-        const teacherIds = resolveSessionTeacherIds(
-          sessionRef(cs),
-          cs.rotationCoverage,
-          cs.rotations,
-          cs.teacherAbsences
-        );
-        const teacherEmails = new Set<string>();
-        const teacherNames = new Set<string>();
-        for (const id of teacherIds) {
-          const email = teacherEmailById.get(id);
-          if (email) teacherEmails.add(email);
-          const teacherName = teacherNameById.get(id);
-          if (teacherName) teacherNames.add(teacherName);
+      const eventsByRotation = new Map(
+        cs.sessionEvents.map((e) => [e.rotation, e])
+      );
+
+      // A rotation dropped from the session since the last finalize leaves an
+      // event for a block that no longer happens. Remove it before sending, so
+      // nobody is holding an invite to a block that isn't running.
+      const live = new Set(cs.rotations);
+      for (const stale of cs.sessionEvents.filter((e) => !live.has(e.rotation))) {
+        const client = stale.ownerId ? await clientFor(stale.ownerId) : null;
+        if (client) {
+          await deleteEvent(client, stale.googleEventId, "all").catch((err) =>
+            console.error(
+              `Failed to withdraw the ${rotationName(stale.rotation)} event for session ${cs.id} ("${name}") after that rotation was removed:`,
+              err
+            )
+          );
         }
-        if (cs.clubId === null && cs.oneOffOwner?.email) {
-          teacherEmails.add(cs.oneOffOwner.email);
-          if (cs.oneOffOwner.name) teacherNames.add(cs.oneOffOwner.name);
-        }
-
-        const attendeeEmails = [
-          ...teacherEmails,
-          ...cs.signups
-            .map((s) => s.student.email)
-            .filter((email): email is string => Boolean(email)),
-        ];
-
-        // Composed once and used by both branches, so a first send and a
-        // re-finalize produce byte-identical text. They used to diverge: only
-        // the create branch set a title at all.
-        const location = resolveRoomName(cs);
-        const summary = sessionEventTitle({
-          name,
-          roomName: location,
-          rotations: cs.rotations,
-        });
-        const description = sessionEventDescription({
-          roomName: location,
-          rotations: cs.rotations,
-          teacherNames: [...teacherNames],
-        });
-
-        if (cs.googleEventId) {
-          // Already has an event (e.g. re-finalize after unfinalize) — bring it
-          // back in line with the database, room and all, not just its
-          // attendees. See syncEventForSession.
-          await syncEventForSession({
-            calendarId,
-            eventId: cs.googleEventId,
-            summary,
-            description,
-            location,
-            flexDayDate: flexDay.date,
-            rotations: cs.rotations,
-            attendeeEmails,
-          });
-        } else {
-          // No event yet — create it now, with attendees baked in, so the
-          // invite goes out the moment the event is created.
-          const eventId = await createEventForSession({
-            calendarId,
-            summary,
-            description,
-            location,
-            flexDayDate: flexDay.date,
-            rotations: cs.rotations,
-            attendeeEmails,
-            sendUpdates: "all",
-          });
-          await prisma.clubSession.update({
-            where: { id: cs.id },
-            data: { googleEventId: eventId },
-          });
-        }
-
-        return { kind: "sent", sessionId: cs.id, name };
-      } catch (error) {
-        return { kind: "failed", sessionId: cs.id, name, error };
+        await prisma.sessionCalendarEvent
+          .delete({ where: { id: stale.id } })
+          .catch((err) =>
+            console.error(
+              `Failed to drop the stale ${rotationName(stale.rotation)} event row for session ${cs.id}:`,
+              err
+            )
+          );
       }
+
+      const studentEmails = cs.signups
+        .map((s) => s.student.email)
+        .filter((email): email is string => Boolean(email));
+
+      const location = resolveRoomName(cs);
+
+      for (const rotation of cs.rotations) {
+        const label = `${name} — ${rotationName(rotation)}`;
+        const block: BlockRef = { sessionId: cs.id, rotation, label };
+
+        try {
+          // Who is in this room, this block. Absences and the admin's explicit
+          // clears are already subtracted here, which is what keeps a teacher
+          // covering Flex 1 and Flex 3 off the Flex 2 invite.
+          const { primaryTeacherId, secondaryTeacherId } = resolveSessionCoverage(
+            sessionRef(cs),
+            cs.rotationCoverage,
+            rotation,
+            cs.teacherAbsences
+          );
+
+          // T1 sends it. Coverage is the source of truth for who is actually
+          // running the block — not the club's owner, who may not be there.
+          const organizerId = primaryTeacherId;
+          const organizerClient = organizerId
+            ? await clientFor(organizerId)
+            : null;
+
+          let sender: Sender | null = organizerClient
+            ? { client: organizerClient, userId: organizerId! }
+            : null;
+          let fellBackFrom: SentOutcome["fellBackFrom"] = null;
+
+          if (!sender) {
+            const backstop = await getBackstop();
+            if (!backstop) {
+              outcomes.push({
+                ...block,
+                kind: "skipped",
+                teacherName: organizerId
+                  ? (teacherNameById.get(organizerId) ?? null)
+                  : null,
+              });
+              continue;
+            }
+            sender = backstop;
+            fellBackFrom = {
+              teacherName: organizerId
+                ? (teacherNameById.get(organizerId) ?? null)
+                : null,
+            };
+          }
+
+          const blockTeacherIds = [primaryTeacherId, secondaryTeacherId].filter(
+            (id): id is string => id !== null
+          );
+
+          // Everyone else on this block, plus every student signed up for the
+          // session. The sender is excluded because Google adds the calendar's
+          // owner as organizer itself and listing them again produces a
+          // self-invite — note this excludes whoever is *actually* sending, so a
+          // T1 whose block fell back to an admin is still invited as a guest.
+          const attendeeEmails = [
+            ...new Set([
+              ...blockTeacherIds
+                .filter((id) => id !== sender!.userId)
+                .map((id) => teacherEmailById.get(id))
+                .filter((email): email is string => Boolean(email)),
+              ...studentEmails,
+            ]),
+          ];
+
+          const teacherNames = [
+            ...new Set(
+              blockTeacherIds
+                .map((id) => teacherNameById.get(id))
+                .filter((n): n is string => Boolean(n))
+            ),
+          ];
+
+          // Composed once and used by both branches, so a first send and a
+          // re-finalize produce byte-identical text.
+          const summary = sessionEventTitle({ name, roomName: location, rotation });
+          const description = sessionEventDescription({
+            roomName: location,
+            rotation,
+            teacherNames,
+          });
+
+          const existing = eventsByRotation.get(rotation);
+          const sameSender =
+            existing !== undefined && existing.ownerId === sender.userId;
+
+          let patched = false;
+          if (sameSender) {
+            // Same sender as last time — bring the event back in line with the
+            // database, room and all, not just its attendees.
+            try {
+              await syncEventForSession({
+                calendar: sender.client,
+                eventId: existing!.googleEventId,
+                summary,
+                description,
+                location,
+                flexDayDate: flexDay.date,
+                rotation,
+                attendeeEmails,
+              });
+              patched = true;
+            } catch (err) {
+              // The organizer deleted the event from their own calendar, which
+              // they can do — they own it. Fall through and issue a fresh one
+              // rather than failing this block on every future re-finalize,
+              // which is the documented way to recover from exactly that.
+              if (!isMissingEvent(err)) throw err;
+              console.error(
+                `The ${label} event no longer exists on its organizer's calendar; issuing a replacement.`
+              );
+            }
+          }
+
+          if (!patched) {
+            // No event yet, coverage has changed hands, or the old event is
+            // gone. Google cannot move an event between calendars, so a changed
+            // sender means withdrawing the old invite and issuing a new one from
+            // the teacher now covering the block.
+            if (existing && !sameSender) {
+              const previous = existing.ownerId
+                ? await clientFor(existing.ownerId)
+                : null;
+              if (previous) {
+                await deleteEvent(previous, existing.googleEventId, "all").catch(
+                  (err) =>
+                    console.error(
+                      `Failed to withdraw the previous ${label} event after coverage changed — it may linger on the old teacher's calendar:`,
+                      err
+                    )
+                );
+              } else {
+                console.error(
+                  `Cannot withdraw the previous ${label} event: its owner is no longer able to send. It may linger on their calendar.`
+                );
+              }
+            }
+
+            const eventId = await createEventForSession({
+              calendar: sender.client,
+              summary,
+              description,
+              location,
+              flexDayDate: flexDay.date,
+              rotation,
+              attendeeEmails,
+              sendUpdates: "all",
+            });
+
+            await prisma.sessionCalendarEvent.upsert({
+              where: { sessionId_rotation: { sessionId: cs.id, rotation } },
+              create: {
+                sessionId: cs.id,
+                rotation,
+                googleEventId: eventId,
+                ownerId: sender.userId,
+              },
+              update: { googleEventId: eventId, ownerId: sender.userId },
+            });
+          }
+
+          outcomes.push({ ...block, kind: "sent", fellBackFrom });
+        } catch (error) {
+          outcomes.push({ ...block, kind: "failed", error });
+        }
+      }
+
+      return outcomes;
     })
   );
 
-  const sent = settled.filter(isSent);
-  const failed = settled.filter(isFailed);
+  const blocks = settled.flat();
+  const sent = blocks.filter(isSent);
+  const failed = blocks.filter(isFailed);
+  const skipped = blocks.filter(isSkipped);
 
   for (const f of failed) {
-    console.error(
-      `Failed to send calendar invites for session ${f.sessionId} ("${f.name}"):`,
-      f.error
-    );
+    console.error(`Failed to send calendar invites for ${f.label}:`, f.error);
   }
   for (const s of skipped) {
     console.error(
-      `Skipped session ${s.sessionId} ("${s.name}") during finalize: ${s.reason}`
+      `Skipped ${s.label} during finalize: ${
+        s.teacherName
+          ? `${s.teacherName} has not connected a Google Calendar`
+          : "nobody is assigned to cover it"
+      }, and no admin has connected one either.`
     );
   }
 
   // If nothing at all went out, finalizing would be a lie — the button would go
   // green while every student received nothing. Refuse, and say why. This also
-  // covers the case where every session was *skipped* rather than failed, which
-  // the previous guard missed because it only compared failures against the
-  // already-filtered syncable list.
+  // covers the case where every block was *skipped* rather than failed.
+  // Compared against sessions, not blocks: a day that has sessions but produced
+  // no blocks at all (every session somehow carrying no rotations) sent nobody
+  // anything, and marking it green would be the same lie.
   if (flexDay.clubSessions.length > 0 && sent.length === 0) {
     return NextResponse.json(
       {
@@ -337,7 +476,7 @@ export async function POST(
         sessionsSent: 0,
         sessionsFailed: failed.length,
         sessionsSkipped: skipped.length,
-        problems: describeProblems(failed, skipped),
+        problems: describeProblems(failed, skipped, sent),
       },
       { status: 500 }
     );
@@ -353,25 +492,91 @@ export async function POST(
     sessionsSent: sent.length,
     sessionsFailed: failed.length,
     sessionsSkipped: skipped.length,
-    problems: describeProblems(failed, skipped),
+    problems: describeProblems(failed, skipped, sent),
   });
 }
 
-/** Admin-readable one-liners for anything that didn't get an invite. */
+/**
+ * Whether Google is saying the event we tried to patch is not there.
+ *
+ * 404 for an event that never existed or was hard-deleted, 410 for one Google
+ * still remembers as cancelled. Both mean the same thing to the caller: stop
+ * patching and issue a new one.
+ */
+function isMissingEvent(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as {
+    code?: number | string;
+    status?: number;
+    response?: { status?: number };
+  };
+  const status =
+    err.response?.status ??
+    err.status ??
+    (typeof err.code === "number" ? err.code : Number(err.code));
+  return status === 404 || status === 410;
+}
+
+/**
+ * Google's own explanation of a rejection.
+ *
+ * Worth digging for: every failure used to be reported to the admin as
+ * "Google Calendar rejected the request", which is how a whole day of invites
+ * failing on one fixable cause — a service account that was never allowed to
+ * invite anybody — could only be diagnosed by reading server logs.
+ */
+function googleErrorReason(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+
+  const err = error as {
+    errors?: { message?: string; reason?: string }[];
+    response?: { data?: { error?: { message?: string } | string } };
+    message?: string;
+  };
+
+  const first = Array.isArray(err.errors) ? err.errors[0] : undefined;
+  const nested = err.response?.data?.error;
+  const nestedMessage = typeof nested === "string" ? nested : nested?.message;
+
+  const reason =
+    first?.message ?? first?.reason ?? nestedMessage ?? err.message ?? null;
+  return reason ? reason.trim().replace(/\.$/, "") : null;
+}
+
+/** Admin-readable one-liners for anything an admin should act on. */
 function describeProblems(
   failed: FailedOutcome[],
-  skipped: SkippedOutcome[]
+  skipped: SkippedOutcome[],
+  sent: SentOutcome[]
 ): string[] {
   const problems: string[] = [];
+
   for (const f of failed) {
-    problems.push(`${f.name}: Google Calendar rejected the request.`);
-  }
-  for (const s of skipped) {
+    const reason = googleErrorReason(f.error);
     problems.push(
-      s.reason === "club-calendar-missing"
-        ? `${s.name}: this club has no Google Calendar yet, so no invites were sent. Use "Retry calendar setup" on the club, then re-send.`
-        : `${s.name}: the shared calendar for one-off sessions could not be reached, so no invites were sent.`
+      reason
+        ? `${f.label}: Google Calendar rejected the request — ${reason}.`
+        : `${f.label}: Google Calendar rejected the request.`
     );
   }
+
+  for (const s of skipped) {
+    problems.push(
+      s.teacherName
+        ? `${s.label}: ${s.teacherName} has not connected their Google Calendar and no admin has either, so no invites were sent. Ask them to open the app and connect it, then re-send.`
+        : `${s.label}: nobody is assigned to cover this block and no admin has connected a Google Calendar, so no invites were sent.`
+    );
+  }
+
+  // Sent, but not by the person who should have sent it. Not a failure — the
+  // students have their invite — so it is reported after the real problems.
+  for (const s of sent.filter((o) => o.fellBackFrom !== null)) {
+    problems.push(
+      s.fellBackFrom!.teacherName
+        ? `${s.label}: ${s.fellBackFrom!.teacherName} has not connected their Google Calendar, so the invite was sent from an admin instead.`
+        : `${s.label}: nobody is assigned to cover this block, so the invite was sent from an admin instead.`
+    );
+  }
+
   return problems;
 }

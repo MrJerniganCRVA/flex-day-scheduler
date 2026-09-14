@@ -15,9 +15,11 @@ import {
   sleep,
 } from "@/lib/tx-retry";
 import {
-  getOneOffCalendarId,
-  removeAttendeeFromEvent,
-} from "@/lib/google-calendar";
+  SESSION_EVENTS_SELECT,
+  applyAttendeeOps,
+  attendeeOpsForSession,
+  type AttendeeOp,
+} from "@/lib/session-calendar";
 
 export { RequiredMemberConflictError } from "@/lib/required-members";
 export type { EnrollmentPlan } from "@/lib/required-members";
@@ -294,7 +296,7 @@ function emptyPlan(): EnrollmentPlan {
 export async function dropFutureForcedSignups(params: {
   clubId: string;
   studentId: string;
-}): Promise<{ removed: number; calendarOps: CalendarWithdrawal[] }> {
+}): Promise<{ removed: number; calendarOps: AttendeeOp[] }> {
   const { clubId, studentId } = params;
   const today = startOfToday();
 
@@ -311,28 +313,26 @@ export async function dropFutureForcedSignups(params: {
       id: true,
       student: { select: { email: true } },
       clubSession: {
-        select: {
-          googleEventId: true,
-          clubId: true,
-          club: { select: { googleCalendarId: true } },
-        },
+        select: { sessionEvents: { select: SESSION_EVENTS_SELECT } },
       },
     },
   });
 
   if (doomed.length === 0) return { removed: 0, calendarOps: [] };
 
-  const calendarOps: CalendarWithdrawal[] = [];
+  // One withdrawal per event the session has — a session linked across
+  // rotations sends an invite for each block, so ending a required membership
+  // has to take the student off all of them.
+  const calendarOps: AttendeeOp[] = [];
   for (const s of doomed) {
-    const eventId = s.clubSession.googleEventId;
-    if (!eventId || !s.student.email) continue;
-    const calendarId =
-      s.clubSession.clubId === null
-        ? await getOneOffCalendarId()
-        : (s.clubSession.club?.googleCalendarId ?? null);
-    if (calendarId) {
-      calendarOps.push({ calendarId, eventId, email: s.student.email });
-    }
+    if (!s.student.email) continue;
+    calendarOps.push(
+      ...attendeeOpsForSession(
+        s.clubSession.sessionEvents,
+        s.student.email,
+        "remove"
+      )
+    );
   }
 
   const { count } = await prisma.signup.deleteMany({
@@ -342,30 +342,14 @@ export async function dropFutureForcedSignups(params: {
   return { removed: count, calendarOps };
 }
 
-export interface CalendarWithdrawal {
-  calendarId: string;
-  eventId: string;
-  email: string;
-}
-
 /**
- * Withdraw calendar invites after the database change has committed. A Google
- * hiccup must not roll back a roster change the teacher has already been told
- * about — the same trade-off, and the same ordering, as the admin roster
- * override.
+ * Withdraw calendar invites after the database change has committed.
+ *
+ * A thin naming wrapper over the shared reconciler: this used to be its own loop
+ * with its own op type, which was `applyAttendeeOps` minus the per-owner client
+ * cache and the skip for an unreachable event. Two implementations of one rule
+ * means one of them is quietly wrong, and it was this one.
  */
-export async function applyCalendarWithdrawals(ops: CalendarWithdrawal[]) {
-  for (const op of ops) {
-    await removeAttendeeFromEvent({
-      calendarId: op.calendarId,
-      eventId: op.eventId,
-      studentEmail: op.email,
-      sendUpdates: "all",
-    }).catch((err) =>
-      console.error(
-        `Required membership ended, but withdrawing the calendar invite for ${op.email} on event ${op.eventId} failed:`,
-        err
-      )
-    );
-  }
+export async function applyCalendarWithdrawals(ops: AttendeeOp[]) {
+  await applyAttendeeOps(ops, "Required membership ended");
 }

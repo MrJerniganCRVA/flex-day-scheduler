@@ -623,3 +623,73 @@ describe("findTeacherClashes", () => {
     expect(clashes.map((c) => c.rotation)).toEqual(["FLEX_1", "FLEX_2"]);
   });
 });
+
+/**
+ * Who *sends* a block's invite.
+ *
+ * Each rotation of a session gets its own calendar event, created by that
+ * rotation's T1 on their own calendar — so `primaryTeacherId` is not only a
+ * display value any more, it decides whose Google account the invite comes from
+ * and, by extension, which guests are on which block.
+ *
+ * The case worth pinning is the one that motivated the whole per-rotation split:
+ * a sponsor who runs this club in Flex 1 and Flex 3 but a different club in
+ * Flex 2. Under the old single spanning event they were booked through all three
+ * regardless. Resolved per rotation, Flex 2 excludes them — whether they were
+ * marked absent or an admin assigned somebody else.
+ */
+describe("the sender of each block's invite", () => {
+  const sponsorRunsFlex1And3 = [
+    { teacherId: "owner", rotation: "FLEX_2" as const },
+  ];
+
+  it("keeps the sponsor on the blocks they cover", () => {
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_1", sponsorRunsFlex1And3)
+        .primaryTeacherId
+    ).toBe("owner");
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_3", sponsorRunsFlex1And3)
+        .primaryTeacherId
+    ).toBe("owner");
+  });
+
+  it("drops them from the block they are absent for, rather than the session", () => {
+    // Null here means the Flex 2 invite has no assigned sender, so finalize
+    // falls back to an admin — and, crucially, the sponsor is not on it.
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_2", sponsorRunsFlex1And3)
+        .primaryTeacherId
+    ).toBeNull();
+  });
+
+  it("drops them from that block when an admin assigns a replacement instead", () => {
+    // The other way an admin records the same fact: name the covering teacher.
+    // The owner fallback must not re-derive the sponsor over the top of it.
+    const rows = [row("FLEX_2", "substitute", null)];
+    expect(resolveSessionCoverage(club, rows, "FLEX_2", []).primaryTeacherId).toBe(
+      "substitute"
+    );
+    expect(resolveSessionCoverage(club, rows, "FLEX_1", []).primaryTeacherId).toBe(
+      "owner"
+    );
+  });
+
+  it("still invites the absent sponsor's cosponsor to that block", () => {
+    // The sponsor stepping back does not strip the block of its other teacher —
+    // T2 is resolved independently, and must still receive the Flex 2 invite.
+    expect(
+      resolveSessionCoverage(club, [], "FLEX_2", sponsorRunsFlex1And3)
+        .secondaryTeacherId
+    ).toBe("cosponsor");
+  });
+
+  it("has no sender when the slot is deliberately empty", () => {
+    // primaryCleared is the admin saying this block needs no T1 at all. It must
+    // not silently re-derive the owner as the person the invite comes from.
+    expect(
+      resolveSessionCoverage(club, [row("FLEX_1", null, null, false, true)], "FLEX_1", [])
+        .primaryTeacherId
+    ).toBeNull();
+  });
+});

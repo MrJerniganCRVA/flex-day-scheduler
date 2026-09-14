@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { deleteEvent } from "@/lib/google-calendar";
+import {
+  SESSION_EVENTS_SELECT,
+  withdrawEvents,
+  type SessionEventRef,
+} from "@/lib/session-calendar";
 import { isClubManager } from "@/lib/auth-helpers";
 import { z } from "zod";
 import type { RotationSlot } from "@prisma/client";
@@ -39,11 +43,11 @@ export async function POST(
       include: {
         signups: { select: { studentId: true } },
         rotationCoverage: true,
+        sessionEvents: { select: { rotation: true } },
         club: {
           select: {
             id: true,
             ownerId: true,
-            googleCalendarId: true,
             cosponsorId: true,
           },
         },
@@ -57,7 +61,9 @@ export async function POST(
             include: { student: { select: { id: true, name: true } } },
           },
           rotationCoverage: true,
-          club: { select: { googleCalendarId: true } },
+          sessionEvents: {
+            select: { id: true, ...SESSION_EVENTS_SELECT },
+          },
         },
       })
     ),
@@ -187,6 +193,14 @@ export async function POST(
     ...new Set(merges.flatMap((m) => m!.signups.map((s) => s.studentId))),
   ];
 
+  // Rotations the target already has an invite for. A merged session's event for
+  // one of those cannot move — [sessionId, rotation] is unique, and the target's
+  // own invite is the one students already hold — so it is cancelled instead.
+  const targetRotationsWithEvents = new Set(
+    target.sessionEvents.map((e) => e.rotation)
+  );
+  const eventsToCancel: SessionEventRef[] = [];
+
   await prisma.$transaction(async (tx) => {
     await tx.clubSession.update({
       where: { id: sessionId },
@@ -221,23 +235,32 @@ export async function POST(
       }
     }
 
+    // Each merged session's invites follow their rotation to the target, which
+    // now runs that block — so a merge sends nothing new to anybody. This has to
+    // happen before the delete below, which cascades the rows away and would
+    // otherwise strand live events in Google with nothing pointing at them.
+    for (const m of merges) {
+      for (const event of m!.sessionEvents) {
+        if (targetRotationsWithEvents.has(event.rotation)) {
+          eventsToCancel.push(event);
+          continue;
+        }
+        await tx.sessionCalendarEvent.update({
+          where: { id: event.id },
+          data: { sessionId },
+        });
+        targetRotationsWithEvents.add(event.rotation);
+      }
+    }
+
     // Delete merged sessions (cascade removes their signups and rotationCoverage)
     await tx.clubSession.deleteMany({
       where: { id: { in: mergeSessionIds } },
     });
   });
 
-  // Delete merged sessions' Google Calendar events non-blocking after commit
-  for (const m of merges) {
-    if (m!.club?.googleCalendarId && m!.googleEventId) {
-      deleteEvent(m!.club!.googleCalendarId, m!.googleEventId).catch((err) =>
-        console.error(
-          `Failed to delete calendar event for merged session ${m!.id}:`,
-          err
-        )
-      );
-    }
-  }
+  // Non-blocking after commit, for the duplicates that could not move.
+  void withdrawEvents(eventsToCancel, `Linked sessions into ${sessionId}`);
 
   return NextResponse.json({
     linkedSession: { id: sessionId, rotations: combinedRotations },

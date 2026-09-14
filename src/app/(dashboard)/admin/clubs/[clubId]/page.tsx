@@ -89,11 +89,6 @@ export default async function AdminClubDetailPage({
             )}
             <span>Capacity: {club.maxCapacity}</span>
 
-            {club.googleCalendarId ? (
-              <span className="text-green-600 dark:text-green-400">Calendar: Connected</span>
-            ) : (
-              <span className="text-yellow-600 dark:text-yellow-400">Calendar: Pending</span>
-            )}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">

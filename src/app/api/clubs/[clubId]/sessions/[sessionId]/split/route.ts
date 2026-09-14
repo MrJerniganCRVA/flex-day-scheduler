@@ -1,9 +1,16 @@
-import { resolveRoomName, sessionEventTitle } from "@/lib/session-event";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { createEventForSession, deleteEvent } from "@/lib/google-calendar";
-import { resolveSessionTeacherIds, sessionRef } from "@/lib/coverage";
+
+/**
+ * Split a linked session into one session per rotation.
+ *
+ * Since each rotation already has its own calendar event, the split does not
+ * touch Google at all: the `SessionCalendarEvent` rows simply follow their
+ * rotation to the session that now owns it. This used to delete the single
+ * spanning event and create a fresh one per rotation, which re-sent an invite to
+ * every student for a change that, to them, altered nothing.
+ */
 
 export async function POST(
   _req: NextRequest,
@@ -25,27 +32,8 @@ export async function POST(
           student: { select: { email: true } },
         },
       },
-      rotationCoverage: {
-        include: {
-          primaryTeacher: { select: { id: true, email: true } },
-          secondaryTeacher: { select: { id: true, email: true } },
-        },
-      },
-      teacherAbsences: { select: { teacherId: true, rotation: true } },
-      club: {
-        select: {
-          id: true,
-          ownerId: true,
-          cosponsorId: true,
-          name: true,
-          googleCalendarId: true,
-          defaultRoom: { select: { name: true } },
-          owner: { select: { id: true, email: true } },
-          cosponsor: { select: { id: true, email: true } },
-        },
-      },
-      flexDay: { select: { date: true } },
-      roomOverride: { select: { name: true } },
+      rotationCoverage: true,
+      sessionEvents: { select: { id: true, rotation: true } },
     },
   });
 
@@ -60,58 +48,12 @@ export async function POST(
     );
   }
 
-  const club = original.club;
-  const ref = sessionRef(original);
   const rotationCoverage = original.rotationCoverage;
-  const teacherAbsences = original.teacherAbsences;
   const rotations = original.rotations;
-
-  // Teacher id -> email, for turning resolved coverage back into attendees.
-  const teacherEmailById = new Map<string, string>();
-  if (club?.ownerId && club.owner?.email) {
-    teacherEmailById.set(club.ownerId, club.owner.email);
-  }
-  if (club?.cosponsorId && club.cosponsor?.email) {
-    teacherEmailById.set(club.cosponsorId, club.cosponsor.email);
-  }
-  for (const rc of rotationCoverage) {
-    if (rc.primaryTeacher?.id && rc.primaryTeacher.email) {
-      teacherEmailById.set(rc.primaryTeacher.id, rc.primaryTeacher.email);
-    }
-    if (rc.secondaryTeacher?.id && rc.secondaryTeacher.email) {
-      teacherEmailById.set(rc.secondaryTeacher.id, rc.secondaryTeacher.email);
-    }
-  }
   const studentIds = original.signups.map((s) => s.studentId);
-  const studentEmails = original.signups
-    .map((s) => s.student.email)
-    .filter((email): email is string => Boolean(email));
-  const location = resolveRoomName({
-    roomOverride: original.roomOverride,
-    club: club ? { defaultRoom: club.defaultRoom } : null,
-  });
-
-  // Per-rotation attendees for the split-off sessions, used only when the
-  // original session was already finalized/invited.
-  //
-  // Routed through the shared resolver rather than hand-rolling the fallback:
-  // the previous version fell back to the club owner only, so splitting a
-  // session dropped its cosponsor from the resulting calendar events.
-  function attendeeEmailsForRotation(rotation: (typeof rotations)[number]) {
-    const teacherIds = resolveSessionTeacherIds(
-      ref,
-      rotationCoverage,
-      [rotation],
-      teacherAbsences
-    );
-    const emails = new Set<string>();
-    for (const id of teacherIds) {
-      const email = teacherEmailById.get(id);
-      if (email) emails.add(email);
-    }
-    for (const email of studentEmails) emails.add(email);
-    return [...emails];
-  }
+  const eventByRotation = new Map(
+    original.sessionEvents.map((e) => [e.rotation, e])
+  );
 
   // Run all DB mutations atomically: create new sessions + migrate data + delete original
   const newSessions = await prisma.$transaction(async (tx) => {
@@ -151,6 +93,18 @@ export async function POST(
         });
       }
 
+      // Hand this rotation's existing invite to the session that now owns the
+      // rotation. Re-parenting must happen before the delete below, which would
+      // otherwise cascade the row away and strand a live event in Google with
+      // nothing pointing at it.
+      const event = eventByRotation.get(rotation);
+      if (event) {
+        await tx.sessionCalendarEvent.update({
+          where: { id: event.id },
+          data: { sessionId: newSession.id },
+        });
+      }
+
       created.push({ id: newSession.id, rotation });
     }
 
@@ -159,50 +113,6 @@ export async function POST(
 
     return created;
   });
-
-  // Only create calendar events for the split-off sessions if the original
-  // session had already been finalized/invited — otherwise leave the new
-  // sessions eventless, consistent with every other not-yet-finalized session.
-  if (original.club?.googleCalendarId && original.googleEventId) {
-    for (const { id: newSessionId, rotation } of newSessions) {
-      createEventForSession({
-        calendarId: original.club.googleCalendarId!,
-        summary: sessionEventTitle({
-          name: original.club.name!,
-          roomName: location,
-          rotations: [rotation],
-        }),
-        location,
-        flexDayDate: original.flexDay.date,
-        rotations: [rotation],
-        attendeeEmails: attendeeEmailsForRotation(rotation),
-        sendUpdates: "all",
-      })
-        .then((eventId) =>
-          prisma.clubSession.update({
-            where: { id: newSessionId },
-            data: { googleEventId: eventId },
-          })
-        )
-        .catch((err) =>
-          console.error(
-            `Failed to create calendar event for split session ${newSessionId}:`,
-            err
-          )
-        );
-    }
-  }
-
-  // Delete original Google Calendar event non-blocking
-  if (original.club?.googleCalendarId && original.googleEventId) {
-    deleteEvent(original.club!.googleCalendarId, original.googleEventId).catch(
-      (err) =>
-        console.error(
-          `Failed to delete original calendar event for split session ${sessionId}:`,
-          err
-        )
-    );
-  }
 
   return NextResponse.json({ splitInto: newSessions });
 }

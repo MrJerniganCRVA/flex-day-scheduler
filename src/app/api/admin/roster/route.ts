@@ -5,9 +5,11 @@ import { Prisma } from "@prisma/client";
 import type { RotationSlot } from "@prisma/client";
 import { rosterOverrideSchema } from "@/lib/validations";
 import {
+  SESSION_EVENTS_SELECT,
   applyAttendeeOps,
-  resolveSessionCalendarId,
+  attendeeOpsForSession,
   type AttendeeOp,
+  type SessionEventRef,
 } from "@/lib/session-calendar";
 import {
   MAX_TX_ATTEMPTS,
@@ -49,24 +51,26 @@ type SessionForOverride = {
   id: string;
   rotations: RotationSlot[];
   capacityOverride: number | null;
-  googleEventId: string | null;
+  /** One per rotation, each on its covering teacher's calendar. Empty until the
+   *  day is finalized, which is why the calendar steps below are unconditional. */
+  sessionEvents: SessionEventRef[];
   clubId: string | null;
   title: string | null;
   flexDayId: string;
   flexDay: { id: string; date: Date };
-  club: { name: string; maxCapacity: number; googleCalendarId: string | null } | null;
+  club: { name: string; maxCapacity: number } | null;
 };
 
 const sessionSelect = {
   id: true,
   rotations: true,
   capacityOverride: true,
-  googleEventId: true,
+  sessionEvents: { select: SESSION_EVENTS_SELECT },
   clubId: true,
   title: true,
   flexDayId: true,
   flexDay: { select: { id: true, date: true } },
-  club: { select: { name: true, maxCapacity: true, googleCalendarId: true } },
+  club: { select: { name: true, maxCapacity: true } },
 } as const;
 
 const displayName = (s: SessionForOverride) =>
@@ -151,16 +155,14 @@ export async function POST(request: NextRequest) {
           if (input.action === "move" || input.action === "remove") {
             await tx.signup.delete({ where: { id: input.signupId } });
 
-            if (fromSession?.googleEventId && student.email) {
-              const calendarId = await resolveSessionCalendarId(fromSession);
-              if (calendarId) {
-                calendarOps.push({
-                  op: "remove",
-                  calendarId,
-                  eventId: fromSession.googleEventId,
-                  email: student.email,
-                });
-              }
+            if (fromSession && student.email) {
+              calendarOps.push(
+                ...attendeeOpsForSession(
+                  fromSession.sessionEvents,
+                  student.email,
+                  "remove"
+                )
+              );
             }
           }
 
@@ -197,16 +199,14 @@ export async function POST(request: NextRequest) {
               data: { studentId, clubSessionId: toSession.id },
             });
 
-            if (toSession.googleEventId && student.email) {
-              const calendarId = await resolveSessionCalendarId(toSession);
-              if (calendarId) {
-                calendarOps.push({
-                  op: "add",
-                  calendarId,
-                  eventId: toSession.googleEventId,
-                  email: student.email,
-                });
-              }
+            if (student.email) {
+              calendarOps.push(
+                ...attendeeOpsForSession(
+                  toSession.sessionEvents,
+                  student.email,
+                  "add"
+                )
+              );
             }
           }
 

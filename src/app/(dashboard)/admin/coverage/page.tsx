@@ -22,6 +22,8 @@ import {
   sessionRef,
 } from "@/lib/coverage";
 import { ALL_ROTATIONS } from "@/types";
+import { usersWithLiveGrant } from "@/lib/google-oauth";
+import CalendarReadinessPanel from "@/components/calendar/CalendarReadinessPanel";
 
 export default async function AdminCoveragePage({
   searchParams,
@@ -260,21 +262,50 @@ export default async function AdminCoveragePage({
         timeZone: "UTC",
       });
 
+  // Who on this day cannot send their own invites yet.
+  //
+  // Only T1 decides the sender of a block, but a T2 who has not connected is
+  // worth naming too: coverage changes right up to the morning, and a T2
+  // promoted to T1 the day before would otherwise become a surprise fallback.
+  const assignedTeacherIds = [
+    ...new Set(
+      clubs.flatMap((club) =>
+        Object.values(club.assignments).flatMap((a) =>
+          [a?.t1, a?.t2].filter((id): id is string => Boolean(id))
+        )
+      )
+    ),
+  ];
+  const connected = await usersWithLiveGrant([
+    ...assignedTeacherIds,
+    session.user.id,
+  ]);
+  const unconnectedTeachers = assignedTeacherIds
+    .filter((id) => !connected.has(id) && id !== session.user.id)
+    .map((id) => ({ id, name: teacherNameById.get(id) ?? id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
-    <CoverageDashboard
-      // Keyed on the tab so switching remounts the component. A same-route
-      // search-param navigation does not reliably do that on its own, and the
-      // gaps filter's frozen row set is mount-scoped — this is what stops the
-      // Clubs tab's filter carrying over onto Building.
-      key={tab}
-      tab={tab}
-      clubs={clubs}
-      teachers={teachers}
-      duties={duties}
-      flexDayId={nextFlexDay.id}
-      clashes={clashWarnings}
-      summary={summary}
-      flexDayLabel={flexDayLabel}
-    />
+    <>
+      <CalendarReadinessPanel
+        unconnected={unconnectedTeachers}
+        adminConnected={connected.has(session.user.id)}
+      />
+      <CoverageDashboard
+        // Keyed on the tab so switching remounts the component. A same-route
+        // search-param navigation does not reliably do that on its own, and the
+        // gaps filter's frozen row set is mount-scoped — this is what stops the
+        // Clubs tab's filter carrying over onto Building.
+        key={tab}
+        tab={tab}
+        clubs={clubs}
+        teachers={teachers}
+        duties={duties}
+        flexDayId={nextFlexDay.id}
+        clashes={clashWarnings}
+        summary={summary}
+        flexDayLabel={flexDayLabel}
+      />
+    </>
   );
 }

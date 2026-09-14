@@ -80,11 +80,6 @@ export default async function ClubDetailPage({
             <span>Capacity: {club.maxCapacity}</span>
             <span>Owner: {club.owner?.name ?? "None (admin-managed)"}</span>
             {club.cosponsor && <span>Cosponsor: {club.cosponsor.name}</span>}
-            {club.googleCalendarId ? (
-              <span className="text-green-600 dark:text-green-400">Google Calendar: Connected</span>
-            ) : (
-              <span className="text-yellow-600 dark:text-yellow-400">Google Calendar: Pending</span>
-            )}
           </div>
         </div>
         <DeleteClubButton

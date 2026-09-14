@@ -24,8 +24,10 @@ export default function FinalizeButton({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  // Sessions that got no invite even though the day itself finalized. Without
-  // this the button just went green and the admin had no way to know.
+  // Anything the admin should act on, even when the day itself finalized:
+  // blocks that got no invite, and blocks sent from an admin because their
+  // teacher has not connected a calendar. Without this the button just went
+  // green and there was no way to know.
   const [problems, setProblems] = useState<string[]>([]);
   const [unfinalizeConfirming, setUnfinalizeConfirming] = useState(false);
 
@@ -63,8 +65,8 @@ export default function FinalizeButton({
   const problemList = problems.length > 0 && (
     <div className="max-w-sm rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-left">
       <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-        {problems.length} session{problems.length === 1 ? "" : "s"} did not
-        receive invites
+        {problems.length} {problems.length === 1 ? "block needs" : "blocks need"}{" "}
+        your attention
       </p>
       <ul className="mt-1 space-y-1">
         {problems.map((p, i) => (

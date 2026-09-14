@@ -105,6 +105,8 @@ model User {
   sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
   dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
   requiredIn       RequiredMember[]          @relation("RequiredMembership")
+  sessionEventsOwned SessionCalendarEvent[]  @relation("SessionEventOwner")
+  calendarGrant    CalendarGrant?
 
   @@index([email])
 }
@@ -210,7 +212,6 @@ model ClubSession {
   clubId           String?
   rotations        RotationSlot[]
   roomOverrideId   String?
-  googleEventId    String?
   title            String?
   capacityOverride Int?
   oneOffOwnerId    String?
@@ -224,6 +225,7 @@ model ClubSession {
   signups          Signup[]
   rotationCoverage SessionRotationCoverage[]
   teacherAbsences  SessionTeacherAbsence[]
+  sessionEvents    SessionCalendarEvent[]
 
   @@index([flexDayId])
   @@index([clubId])
@@ -304,6 +306,74 @@ model SessionTeacherAbsence {
   @@unique([sessionId, teacherId, rotation])
   @@index([sessionId])
   @@index([teacherId])
+}
+
+/// One Google Calendar event, for one rotation of one session.
+///
+/// Replaces ClubSession.googleEventId, which could hold only one id and so forced
+/// a session linked across rotations into a single event spanning the earliest
+/// start to the latest end. That swallowed the transition gaps between blocks and
+/// booked every guest solid across all of them. One event per rotation keeps the
+/// gaps free, and — because each event covers exactly one block — lets it carry
+/// exactly that block's coverage: a teacher who runs this club in Flex 1 but a
+/// different one in Flex 2 is simply not on the Flex 2 event.
+///
+/// Keyed [sessionId, rotation] like SessionRotationCoverage, which it shadows one
+/// row for one row. That unique constraint is also what stops a session merge from
+/// producing two events for the same block.
+model SessionCalendarEvent {
+  id            String       @id @default(cuid())
+  sessionId     String
+  rotation      RotationSlot
+  googleEventId String
+
+  /// Whose calendar the event lives on: that rotation's T1, or the admin who
+  /// pressed Finalize when T1 has not connected theirs.
+  ///
+  /// Required as data, not derivable: events live on individual teachers'
+  /// calendars now, so without this there is no way to find the event again to
+  /// patch or delete it. SetNull rather than Cascade — losing the owner must not
+  /// silently delete the record of an event that still exists in Google, which
+  /// would strand it on a calendar with nothing left pointing at it.
+  ownerId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session ClubSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  owner   User?       @relation("SessionEventOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, rotation])
+  @@index([sessionId])
+  @@index([ownerId])
+}
+
+/// A teacher's consent for this app to create calendar events as them.
+///
+/// Google refuses to let a service account invite attendees without Domain-Wide
+/// Delegation of Authority, which this Workspace does not grant. Every event is
+/// therefore created by a real user over OAuth, which also makes the invite come
+/// visibly from the teacher running the room rather than from a service account.
+///
+/// One row per user, holding the refresh token Google returns on consent. It stays
+/// valid until revoked, so a teacher consents once.
+model CalendarGrant {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  refreshToken String    @db.Text
+  accessToken  String?   @db.Text
+  expiresAt    DateTime?
+  scope        String?
+
+  /// Set when Google rejects the refresh token — the teacher revoked access, or
+  /// left the domain. Kept rather than deleted so the dashboard can say
+  /// "reconnect" instead of silently re-prompting, and so finalize can tell
+  /// "never connected" from "connection broke".
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Signup {

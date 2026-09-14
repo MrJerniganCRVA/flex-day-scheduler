@@ -16,10 +16,16 @@ import { ALL_ROTATIONS } from "@/types";
  * views do not surface it until the event is opened, which is why the room is
  * also in the title rather than only there.
  *
- * The rotation is deliberately *not* in the title any more. It used to be, and
- * it is redundant: the event's start and end times already say which block it
- * is, and a club linked across Flex 1 and Flex 2 shows as one long block either
- * way. The rotation still appears in the description, spelled out.
+ * The rotation is deliberately *not* in the title. It used to be, and it is
+ * redundant: the event's start and end times already say which block it is. That
+ * holds more strongly now than when it was written, because a session linked
+ * across several rotations no longer produces one long block — it produces one
+ * event per rotation, each sitting at its own bell times. The rotation still
+ * appears in the description, spelled out.
+ *
+ * Title and body therefore describe **one rotation**, not a session. A linked
+ * Flex 1 to Flex 3 club sends three invites, each naming its own block and only
+ * the teachers covering that block.
  */
 
 /** Anything carrying the two places a room can come from. */
@@ -41,17 +47,25 @@ export function resolveRoomName(session: SessionRoomRef): string | null {
   return session.roomOverride?.name ?? session.club?.defaultRoom?.name ?? null;
 }
 
+/** "FLEX_1" -> "Flex 1". The spelling every invite and screen uses. */
+export function rotationName(rotation: RotationSlot): string {
+  return rotation.replace("FLEX_", "Flex ");
+}
+
 /**
- * "Flex 1", or "Flex 1 + Flex 2" for a session spanning several rotations.
+ * "Flex 1", or "Flex 1 + Flex 2" for a set of rotations.
  *
  * Sorted into timetable order rather than trusting the stored array's order, so
  * a session whose rotations were saved out of order does not read "Flex 2 +
  * Flex 1".
+ *
+ * No longer used by the invite itself, which is per-rotation. Kept for the
+ * screens that describe a whole session at a glance.
  */
 export function rotationLabel(rotations: RotationSlot[]): string {
   const present = new Set(rotations);
   return ALL_ROTATIONS.filter((r) => present.has(r))
-    .map((r) => r.replace("FLEX_", "Flex "))
+    .map(rotationName)
     .join(" + ");
 }
 
@@ -68,9 +82,9 @@ export function rotationLabel(rotations: RotationSlot[]): string {
 export function sessionEventTitle(params: {
   name: string;
   roomName: string | null;
-  rotations: RotationSlot[];
+  rotation: RotationSlot;
 }): string {
-  const qualifier = params.roomName ?? rotationLabel(params.rotations);
+  const qualifier = params.roomName ?? rotationName(params.rotation);
   return qualifier ? `${params.name} (${qualifier})` : params.name;
 }
 
@@ -81,18 +95,23 @@ export function sessionEventTitle(params: {
  * all — the title has no room for it and Google's `location` field is a single
  * line. Written as plain text, not HTML: Google renders either, and plain text
  * is what survives being forwarded, printed, or read on a watch.
+ *
+ * `teacherNames` are the teachers covering **this rotation**, so a club whose
+ * sponsor hands over to somebody else after Flex 1 names the right person in
+ * each of its invites rather than listing both on both.
  */
 export function sessionEventDescription(params: {
   roomName: string | null;
-  rotations: RotationSlot[];
+  rotation: RotationSlot;
   teacherNames: string[];
 }): string {
   const lines: string[] = [];
 
   lines.push(`Room: ${params.roomName ?? "not yet assigned"}`);
 
-  const label = rotationLabel(params.rotations);
-  if (label) lines.push(`When: ${label}`);
+  // Exact rather than a summary: this event covers this block and no other, so
+  // the line names the block a guest is actually being invited to.
+  lines.push(`When: ${rotationName(params.rotation)}`);
 
   if (params.teacherNames.length > 0) {
     lines.push(
