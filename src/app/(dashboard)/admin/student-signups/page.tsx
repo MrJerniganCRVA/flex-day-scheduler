@@ -19,11 +19,7 @@ export default async function AdminStudentSignupsPage() {
           Student Signups
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Look a student up and change their clubs on any upcoming Flex Day —
-          before or after invites have gone out. Changes are applied in one go,
-          recorded in that day&apos;s Changes tab, and the student&apos;s calendar
-          invites are updated to match. Nobody else on the session is
-          re-notified.
+          Look up a student by their email prefix. Will update calendars and teacher roster.
         </p>
       </div>
 
