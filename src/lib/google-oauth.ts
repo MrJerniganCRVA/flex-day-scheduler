@@ -58,19 +58,98 @@ export const CALENDAR_STATE_COOKIE = "flexday_calendar_state";
  */
 export const CALENDAR_PROMPTED_COOKIE = "flexday_calendar_prompted";
 
+/** Hosts that mean "this container", never "where the teacher's browser is". */
+const LOOPBACK_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "[::1]",
+]);
+
+let warnedAboutInternalOrigin = false;
+
+function isAbsoluteUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLoopback(origin: string): boolean {
+  try {
+    return LOOPBACK_HOSTS.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * The redirect URI to hand Google.
+ * A misconfigured deployment URL breaks nothing at the moment it is read — it
+ * surfaces much later, as a Google `redirect_uri_mismatch` or as a teacher
+ * dead-ended on a `localhost` URL after a *successful* connect. Say so once, at
+ * the point the fallback is actually taken, rather than on every request.
+ */
+function warnOnce(message: string): void {
+  if (warnedAboutInternalOrigin) return;
+  warnedAboutInternalOrigin = true;
+  console.warn(message);
+}
+
+/**
+ * Where this app lives, as a browser sees it.
  *
- * Prefers the configured deployment URL over the request's own origin, because
- * Google matches this string exactly against the registered list and a request
- * arriving through a proxy under a different host would produce one that isn't on
- * it. `src/auth.ts` already normalizes these two variables to carry a scheme, so
- * a bare hostname from a platform like Railway is safe to read here.
+ * Prefers the configured deployment URL over the request's own origin, because a
+ * Next.js **route handler** is not handed the public host. Behind a proxy that
+ * forwards to the container on its own port — Railway sets `PORT`, and
+ * `next start` binds there — `req.nextUrl.origin` resolves to something like
+ * `https://localhost:8080`: the container's internal address, dressed in the
+ * `https` of the `x-forwarded-proto` header. Middleware *does* get the public
+ * host applied, which is why `src/proxy.ts` can redirect off `req.url` and
+ * nothing here may.
+ *
+ * `src/auth.ts` normalizes these two variables to carry a scheme before any
+ * request runs, so a bare hostname from a platform like Railway is usually
+ * repaired by the time it is read here. The scheme check below is the backstop
+ * for when it is not.
+ */
+export function appBaseUrl(requestOrigin: string): string {
+  // First *non-blank* of the two, not `AUTH_URL ?? NEXTAUTH_URL`: an empty
+  // AUTH_URL is not nullish, so `??` would let a variable that exists but holds
+  // "" mask a perfectly good NEXTAUTH_URL and silently drop us to the request
+  // origin — which is the failure this function exists to prevent.
+  const base = [process.env.AUTH_URL, process.env.NEXTAUTH_URL]
+    .map((v) => v?.trim())
+    .find((v) => v);
+
+  // A configured value that `new URL()` cannot parse is worse than none at all:
+  // callers build on it, so it would throw inside the callback's own error path
+  // — the one place that must always end with the teacher back on a real page.
+  if (base && isAbsoluteUrl(base)) return base;
+  if (base) {
+    warnOnce(
+      `AUTH_URL/NEXTAUTH_URL is set to "${base}", which is not a valid absolute URL. Falling back to ${requestOrigin}.`
+    );
+    return requestOrigin;
+  }
+
+  if (isLoopback(requestOrigin)) {
+    warnOnce(
+      `Neither AUTH_URL nor NEXTAUTH_URL is set, so calendar links are being built from ${requestOrigin} — this container's own address, not a URL a teacher's browser can reach. Set one of them to the deployment's public origin.`
+    );
+  }
+  return requestOrigin;
+}
+
+/**
+ * The redirect URI to hand Google. Must match a registered redirect URI exactly,
+ * byte for byte, both when the consent URL is issued and when the code is
+ * exchanged — so both legs read it from here.
  */
 export function calendarRedirectUri(requestOrigin: string): string {
-  const configured = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
-  const base = configured?.trim() || requestOrigin;
-  return new URL(CALLBACK_PATH, base).toString();
+  return new URL(CALLBACK_PATH, appBaseUrl(requestOrigin)).toString();
 }
 
 /**
