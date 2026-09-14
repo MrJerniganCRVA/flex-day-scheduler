@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionPerDaySchema } from "@/lib/validations";
-import { deleteEvent, getOneOffCalendarId } from "@/lib/google-calendar";
+import {
+  SESSION_EVENTS_SELECT,
+  withdrawEvents,
+} from "@/lib/session-calendar";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
 import type { Role } from "@prisma/client";
@@ -14,11 +17,11 @@ async function resolveOwnerAndSession(sessionId: string, userId: string, userRol
       club: {
         select: {
           ownerId: true,
-          googleCalendarId: true,
           defaultRoom: { select: { id: true, capacity: true } },
           cosponsorId: true,
         },
       },
+      sessionEvents: { select: SESSION_EVENTS_SELECT },
     },
   });
   if (!clubSession) return { error: "Session not found", status: 404, clubSession: null };
@@ -164,23 +167,14 @@ export async function DELETE(
     return NextResponse.json({ error }, { status });
   }
 
-  // Resolve the host calendar before deleting: club sessions live on their
-  // club's calendar, one-off sessions on the shared one-off calendar. Guarding
-  // only on `club.googleCalendarId` would leak every deleted one-off's event.
-  let calendarId: string | null = null;
-  if (clubSession.googleEventId) {
-    calendarId = clubSession.club
-      ? clubSession.club.googleCalendarId
-      : await getOneOffCalendarId();
-  }
+  // Read the events before deleting: the rows cascade away with the session, and
+  // after that there is no record of what to cancel. A session linked across
+  // rotations has one per block, each on its covering teacher's calendar.
+  const eventsToCancel = clubSession.sessionEvents;
 
   await prisma.clubSession.delete({ where: { id: sessionId } });
 
-  if (calendarId && clubSession.googleEventId) {
-    deleteEvent(calendarId, clubSession.googleEventId).catch((err) =>
-      console.error("Failed to delete Google Calendar event:", err)
-    );
-  }
+  void withdrawEvents(eventsToCancel, `Deleted session ${sessionId}`);
 
   return new NextResponse(null, { status: 204 });
 }

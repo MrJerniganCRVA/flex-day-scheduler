@@ -48,8 +48,8 @@ export type ReconcileReport = {
 type ReconcileSession = {
   id: string;
   rotations: RotationSlot[];
-  googleEventId: string | null;
-  _count: { signups: number };
+  /** Signups, and the calendar events the session has — one per rotation. */
+  _count: { signups: number; sessionEvents: number };
 };
 
 /**
@@ -96,7 +96,7 @@ export function planReconcile(params: {
         ? "has-signups"
         : flexDayFinalized
           ? "flex-day-finalized"
-          : session.googleEventId !== null
+          : session._count.sessionEvents > 0
             ? "has-calendar-event"
             : null;
 

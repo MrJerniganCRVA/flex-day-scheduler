@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSchema } from "@/lib/validations";
-import { createCalendarForClub } from "@/lib/google-calendar";
 import { createAutoScheduledSessions, getDefaultRoomConflictIds } from "@/lib/scheduling";
 
 export async function GET() {
@@ -107,20 +106,11 @@ export async function POST(request: NextRequest) {
     data: { ...clubData, ownerId, cosponsorId: finalCosponsorId },
   });
 
-  // Attempt to create a Google Calendar for this club (non-blocking). The
-  // calendar itself is created eagerly, but it is NOT shared with the
-  // teacher and no events/invites go out yet — that only happens when an
-  // admin finalizes the specific Flex Day this club is scheduled on.
-  try {
-    const calendarId = await createCalendarForClub(parsed.data.name);
-    await prisma.club.update({
-      where: { id: club.id },
-      data: { googleCalendarId: calendarId },
-    });
-    club.googleCalendarId = calendarId;
-  } catch (err) {
-    console.error("Google Calendar creation failed for club:", club.id, err);
-  }
+  // No calendar is provisioned for a club any more. Its sessions' invites are
+  // created on the calendar of whoever covers each rotation, when an admin
+  // finalizes the Flex Day the club is scheduled on — so there is nothing to set
+  // up here, and a club can no longer end up unable to send invites because a
+  // calendar was never created for it.
 
   // Auto-schedule club on all future flex days with default rotations
   if (clubData.defaultRotations && clubData.defaultRotations.length > 0) {

@@ -155,8 +155,7 @@ export async function reconcileFutureSessions(club: {
         select: {
           id: true,
           rotations: true,
-          googleEventId: true,
-          _count: { select: { signups: true } },
+          _count: { select: { signups: true, sessionEvents: true } },
         },
       },
     },

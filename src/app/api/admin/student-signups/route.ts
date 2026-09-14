@@ -5,8 +5,9 @@ import { Prisma } from "@prisma/client";
 import { studentScheduleUpdateSchema } from "@/lib/validations";
 import { allowedEmailDomain, classifyAllowedEmail } from "@/lib/email-domain";
 import {
+  SESSION_EVENTS_SELECT,
   applyAttendeeOps,
-  resolveSessionCalendarId,
+  attendeeOpsForSession,
   type AttendeeOp,
 } from "@/lib/session-calendar";
 import {
@@ -38,9 +39,9 @@ import {
  * finalized flag, because that is the entire point of an override.
  *
  * Nothing here is conditional on the day being finalized. A session that has
- * not had invites sent has no `googleEventId`, so the calendar step simply
- * finds nothing to do — which is what makes this usable before the deadline as
- * well as after it.
+ * not had invites sent has no `SessionCalendarEvent` rows, so the calendar step
+ * simply finds nothing to do — which is what makes this usable before the
+ * deadline as well as after it.
  */
 
 const PAST_DAYS_SHOWN = 5;
@@ -57,9 +58,9 @@ const sessionSelect = {
   title: true,
   rotations: true,
   capacityOverride: true,
-  googleEventId: true,
+  sessionEvents: { select: SESSION_EVENTS_SELECT },
   clubId: true,
-  club: { select: { name: true, maxCapacity: true, googleCalendarId: true } },
+  club: { select: { name: true, maxCapacity: true } },
   _count: { select: { signups: true } },
 } as const;
 
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest) {
             rotations: s.rotations,
             capacity: resolveCapacity(s),
             enrolledCount: s._count.signups,
-            hasCalendarEvent: s.googleEventId !== null,
+            hasCalendarEvent: s.sessionEvents.length > 0,
           }))
           .sort((a, b) => a.sessionName.localeCompare(b.sessionName)),
         signups: asSignupPayload(day.id),
@@ -339,16 +340,14 @@ export async function POST(request: NextRequest) {
                 await tx.signup.delete({ where: { id: op.fromSignupId } });
 
                 const from = sessionById.get(op.fromSessionId!)!;
-                if (from.googleEventId && student.email) {
-                  const calendarId = await resolveSessionCalendarId(from);
-                  if (calendarId) {
-                    calendarOps.push({
-                      op: "remove",
-                      calendarId,
-                      eventId: from.googleEventId,
-                      email: student.email,
-                    });
-                  }
+                if (student.email) {
+                  calendarOps.push(
+                    ...attendeeOpsForSession(
+                      from.sessionEvents,
+                      student.email,
+                      "remove"
+                    )
+                  );
                 }
                 if (op.droppingForced && op.fromSessionName) {
                   droppedRequired.push(op.fromSessionName);
@@ -361,16 +360,14 @@ export async function POST(request: NextRequest) {
                 });
 
                 const to = sessionById.get(op.toSessionId)!;
-                if (to.googleEventId && student.email) {
-                  const calendarId = await resolveSessionCalendarId(to);
-                  if (calendarId) {
-                    calendarOps.push({
-                      op: "add",
-                      calendarId,
-                      eventId: to.googleEventId,
-                      email: student.email,
-                    });
-                  }
+                if (student.email) {
+                  calendarOps.push(
+                    ...attendeeOpsForSession(
+                      to.sessionEvents,
+                      student.email,
+                      "add"
+                    )
+                  );
                 }
               }
 

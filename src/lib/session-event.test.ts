@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveRoomName,
   rotationLabel,
+  rotationName,
   sessionEventDescription,
   sessionEventTitle,
 } from "./session-event";
@@ -51,6 +52,13 @@ describe("resolveRoomName", () => {
   });
 });
 
+describe("rotationName", () => {
+  it("spells one rotation the way an invite does", () => {
+    expect(rotationName("FLEX_1")).toBe("Flex 1");
+    expect(rotationName("FLEX_3")).toBe("Flex 3");
+  });
+});
+
 describe("rotationLabel", () => {
   it("names a single rotation", () => {
     expect(rotationLabel(["FLEX_1"])).toBe("Flex 1");
@@ -78,41 +86,31 @@ describe("rotationLabel", () => {
 describe("sessionEventTitle", () => {
   it("puts the room in the title", () => {
     expect(
-      sessionEventTitle({ name: "Art Club", roomName: "Room 205", rotations: ["FLEX_1"] })
+      sessionEventTitle({ name: "Art Club", roomName: "Room 205", rotation: "FLEX_1" })
     ).toBe("Art Club (Room 205)");
   });
 
-  it("keeps the room even for a session spanning several rotations", () => {
-    expect(
-      sessionEventTitle({
-        name: "Esports",
-        roomName: "Lab B",
-        rotations: ["FLEX_1", "FLEX_2"],
-      })
-    ).toBe("Esports (Lab B)");
+  it("titles each block of a linked session identically", () => {
+    // A linked session sends one invite per rotation. They are told apart by
+    // their times, not their titles — the rotation is deliberately absent from
+    // the title, so both blocks of an Esports double read the same.
+    const base = { name: "Esports", roomName: "Lab B" } as const;
+    expect(sessionEventTitle({ ...base, rotation: "FLEX_1" })).toBe("Esports (Lab B)");
+    expect(sessionEventTitle({ ...base, rotation: "FLEX_2" })).toBe("Esports (Lab B)");
   });
 
   it("falls back to the rotation when the club has no room", () => {
     expect(
-      sessionEventTitle({ name: "Art Club", roomName: null, rotations: ["FLEX_1"] })
+      sessionEventTitle({ name: "Art Club", roomName: null, rotation: "FLEX_1" })
     ).toBe("Art Club (Flex 1)");
   });
 
-  it("falls back to the joined rotations for a roomless linked session", () => {
+  it("names its own block in the roomless fallback, not the whole session", () => {
+    // The old behavior joined every rotation here, so the Flex 2 invite of a
+    // linked session read "(Flex 1 + Flex 2)" — naming a block it did not cover.
     expect(
-      sessionEventTitle({
-        name: "Esports",
-        roomName: null,
-        rotations: ["FLEX_1", "FLEX_2"],
-      })
-    ).toBe("Esports (Flex 1 + Flex 2)");
-  });
-
-  it("never emits empty parentheses", () => {
-    // No room and no rotations should degrade to the bare name, not "Art Club ()".
-    expect(sessionEventTitle({ name: "Art Club", roomName: null, rotations: [] })).toBe(
-      "Art Club"
-    );
+      sessionEventTitle({ name: "Esports", roomName: null, rotation: "FLEX_2" })
+    ).toBe("Esports (Flex 2)");
   });
 
   it("uses a one-off session's own title unchanged", () => {
@@ -120,7 +118,7 @@ describe("sessionEventTitle", () => {
       sessionEventTitle({
         name: "College Essay Workshop",
         roomName: "Library",
-        rotations: ["FLEX_2"],
+        rotation: "FLEX_2",
       })
     ).toBe("College Essay Workshop (Library)");
   });
@@ -131,7 +129,7 @@ describe("sessionEventDescription", () => {
     expect(
       sessionEventDescription({
         roomName: "Room 205",
-        rotations: ["FLEX_1"],
+        rotation: "FLEX_1",
         teacherNames: ["Ms Rivera"],
       })
     ).toBe("Room: Room 205\nWhen: Flex 1\nTeacher: Ms Rivera");
@@ -141,10 +139,23 @@ describe("sessionEventDescription", () => {
     expect(
       sessionEventDescription({
         roomName: "Gym",
-        rotations: ["FLEX_2", "FLEX_3"],
+        rotation: "FLEX_2",
         teacherNames: ["Ms Rivera", "Mr Okafor"],
       })
-    ).toBe("Room: Gym\nWhen: Flex 2 + Flex 3\nTeachers: Ms Rivera, Mr Okafor");
+    ).toBe("Room: Gym\nWhen: Flex 2\nTeachers: Ms Rivera, Mr Okafor");
+  });
+
+  it("names only the block it covers, not the whole session", () => {
+    // The point of the per-rotation split: a session linked across Flex 1 and
+    // Flex 2 sends two invites, and the Flex 2 one must say "Flex 2". The old
+    // behavior joined every rotation into "Flex 1 + Flex 2" on both.
+    expect(
+      sessionEventDescription({
+        roomName: "Lab B",
+        rotation: "FLEX_2",
+        teacherNames: ["Mr Okafor"],
+      })
+    ).toBe("Room: Lab B\nWhen: Flex 2\nTeacher: Mr Okafor");
   });
 
   it("omits the teacher line entirely when nobody is assigned", () => {
@@ -153,7 +164,7 @@ describe("sessionEventDescription", () => {
     expect(
       sessionEventDescription({
         roomName: "Room 205",
-        rotations: ["FLEX_1"],
+        rotation: "FLEX_1",
         teacherNames: [],
       })
     ).toBe("Room: Room 205\nWhen: Flex 1");
@@ -163,7 +174,7 @@ describe("sessionEventDescription", () => {
     expect(
       sessionEventDescription({
         roomName: null,
-        rotations: ["FLEX_1"],
+        rotation: "FLEX_1",
         teacherNames: ["Ms Rivera"],
       })
     ).toBe("Room: not yet assigned\nWhen: Flex 1\nTeacher: Ms Rivera");

@@ -10,9 +10,6 @@ async function loadEnv(overrides: Record<string, string | undefined>) {
     AUTH_SECRET: "a-secret",
     AUTH_GOOGLE_ID: "client-id",
     AUTH_GOOGLE_SECRET: "client-secret",
-    GOOGLE_SERVICE_ACCOUNT_EMAIL: "svc@project.iam.gserviceaccount.com",
-    GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:
-      "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----",
     ALLOWED_EMAIL_DOMAIN: "school.org",
     SCHOOL_TIMEZONE: "America/New_York",
     FLEX_1_START: "09:00",
@@ -82,11 +79,23 @@ describe("env", () => {
     expect(() => env()).toThrow(/must be later than/);
   });
 
-  it("rejects a private key that isn't a PEM block", async () => {
+  // Calendar events are created by the covering teacher over OAuth, not by a
+  // service account, so these are no longer read anywhere. Boot must not fail
+  // for a missing credential that could not affect anything — and must not fail
+  // for a stale one left behind in a deployed environment either.
+  it("does not require the retired service-account credentials", async () => {
+    const { env } = await loadEnv({
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: undefined,
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: undefined,
+    });
+    expect(() => env()).not.toThrow();
+  });
+
+  it("ignores a stale service-account key rather than validating it", async () => {
     const { env } = await loadEnv({
       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: "not-a-key",
     });
-    expect(() => env()).toThrow(/PEM key/);
+    expect(() => env()).not.toThrow();
   });
 
   it("reports every problem at once rather than only the first", async () => {

@@ -61,24 +61,12 @@ const envSchema = z
     AUTH_GOOGLE_ID: z.string({ error: REQUIRED("AUTH_GOOGLE_ID") }).min(1),
     AUTH_GOOGLE_SECRET: z.string({ error: REQUIRED("AUTH_GOOGLE_SECRET") }).min(1),
 
-    GOOGLE_SERVICE_ACCOUNT_EMAIL: z
-      .string({
-        error:
-          "GOOGLE_SERVICE_ACCOUNT_EMAIL is required — without it no calendar invites can be sent",
-      })
-      .min(1)
-      .email("GOOGLE_SERVICE_ACCOUNT_EMAIL must be an email address"),
-
-    GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z
-      .string({
-        error:
-          "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY is required — without it no calendar invites can be sent",
-      })
-      .min(1)
-      .refine(
-        (v) => v.includes("PRIVATE KEY"),
-        'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY does not look like a PEM key — it should contain "-----BEGIN ... PRIVATE KEY-----" (with literal newlines replaced by \\n)'
-      ),
+    // No GOOGLE_SERVICE_ACCOUNT_* here any more. Calendar events are created by
+    // the covering teacher over OAuth (src/lib/google-oauth.ts), using the
+    // AUTH_GOOGLE_* client above, because Google refuses to let a service account
+    // invite attendees without Domain-Wide Delegation of Authority — which this
+    // Workspace does not grant. Requiring credentials nothing reads would fail a
+    // boot for a missing key that could not affect anything.
 
     // A leading "@" here is the silent-lockout trap: the sign-in check builds
     // `@${domain}`, so "@school.org" becomes "@@school.org" and matches nobody.

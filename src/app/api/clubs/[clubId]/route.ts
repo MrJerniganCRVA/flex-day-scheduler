@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSchema } from "@/lib/validations";
-import { deleteCalendar } from "@/lib/google-calendar";
 import {
   getDefaultRoomConflictIds,
   reconcileFutureSessions,
@@ -201,14 +200,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found or forbidden" }, { status: 404 });
   }
 
+  // Deleting the club cascades its sessions away, and each session's events are
+  // withdrawn by the session delete path. There is no club-owned calendar left to
+  // remove — invites live on the covering teachers' own calendars.
   await prisma.club.delete({ where: { id: clubId } });
-
-  // Delete the Google Calendar (non-blocking)
-  if (club.googleCalendarId) {
-    deleteCalendar(club.googleCalendarId).catch((err) =>
-      console.error("Failed to delete Google Calendar:", err)
-    );
-  }
 
   return new NextResponse(null, { status: 204 });
 }

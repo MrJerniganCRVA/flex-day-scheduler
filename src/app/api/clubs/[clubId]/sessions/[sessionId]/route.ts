@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionSchema } from "@/lib/validations";
-import { deleteEvent, updateEventForSession } from "@/lib/google-calendar";
-import { resolveRoomName, sessionEventTitle } from "@/lib/session-event";
+import {
+  SESSION_EVENTS_SELECT,
+  resyncSessionEvents,
+  withdrawEvents,
+} from "@/lib/session-calendar";
+import { resolveRoomName } from "@/lib/session-event";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
 
@@ -61,7 +65,6 @@ export async function PUT(
     select: {
       ownerId: true,
       maxCapacity: true,
-      googleCalendarId: true,
       defaultRoomId: true,
       defaultRoom: { select: { name: true } },
       cosponsorId: true,
@@ -83,10 +86,15 @@ export async function PUT(
     );
   }
 
-  // Fetch the existing session to get flexDayId, googleEventId, and room for calendar sync
+  // Fetch the existing session for flexDayId, its calendar events, and room.
   const existingSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
-    select: { flexDayId: true, googleEventId: true, roomOverrideId: true, rotations: true },
+    select: {
+      flexDayId: true,
+      roomOverrideId: true,
+      rotations: true,
+      sessionEvents: { select: SESSION_EVENTS_SELECT },
+    },
   });
   if (!existingSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -190,35 +198,28 @@ export async function PUT(
     },
   });
 
-  // Sync the Google Calendar event if rotations or room changed
+  // Bring the existing events in line if rotations or room changed. A rotation
+  // dropped has its invite withdrawn here; a rotation *added* gets no invite
+  // until the day is re-finalized, because picking its organizer needs coverage
+  // this route has not loaded. See resyncSessionEvents.
   const rotationsChanged = Boolean(parsed.data.rotations);
   const roomChanged = parsed.data.roomOverrideId !== undefined;
   if (
     (rotationsChanged || roomChanged) &&
-    club.googleCalendarId &&
-    existingSession.googleEventId
+    existingSession.sessionEvents.length > 0
   ) {
     const location = resolveRoomName({
       roomOverride: updatedSession.roomOverride,
       club: { defaultRoom: club.defaultRoom },
     });
-    updateEventForSession({
-      calendarId: club.googleCalendarId,
-      eventId: existingSession.googleEventId,
-      summary: sessionEventTitle({
-        name: updatedSession.club!.name,
-        roomName: location,
-        rotations: updatedSession.rotations,
-      }),
-      location,
-      flexDayDate: updatedSession.flexDay.date,
+    void resyncSessionEvents({
+      events: existingSession.sessionEvents,
       rotations: updatedSession.rotations,
-    }).catch((err) =>
-      console.error(
-        `Failed to update calendar event for session ${sessionId}:`,
-        err
-      )
-    );
+      name: updatedSession.club!.name,
+      roomName: location,
+      flexDayDate: updatedSession.flexDay.date,
+      context: `Edited session ${sessionId}`,
+    });
   }
 
   return NextResponse.json(updatedSession);
@@ -245,19 +246,19 @@ export async function DELETE(
 
   const clubSession = await prisma.clubSession.findUnique({
     where: { id: sessionId },
+    select: { sessionEvents: { select: SESSION_EVENTS_SELECT } },
   });
   if (!clubSession) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
+  // Read before deleting: the rows cascade away with the session.
+  const eventsToCancel = clubSession.sessionEvents;
+
   await prisma.clubSession.delete({ where: { id: sessionId } });
 
-  // Delete Google Calendar event (non-blocking)
-  if (club.googleCalendarId && clubSession.googleEventId) {
-    deleteEvent(club.googleCalendarId, clubSession.googleEventId).catch((err) =>
-      console.error("Failed to delete Google Calendar event:", err)
-    );
-  }
+  // Non-blocking: the database is the source of truth and the row is gone.
+  void withdrawEvents(eventsToCancel, `Deleted session ${sessionId}`);
 
   return new NextResponse(null, { status: 204 });
 }

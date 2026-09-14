@@ -7,7 +7,7 @@ A Next.js web app for scheduling school flex days. Students sign up for club ses
 - **Framework**: Next.js 16 (App Router) + React 19
 - **Database**: PostgreSQL via Prisma ORM
 - **Auth**: NextAuth.js v5 (Google OAuth, domain-restricted)
-- **Calendar**: Google Calendar API (service account)
+- **Calendar**: Google Calendar API (OAuth, as the covering teacher)
 - **Styling**: Tailwind CSS v4
 
 ## Prerequisites
@@ -15,8 +15,8 @@ A Next.js web app for scheduling school flex days. Students sign up for club ses
 - Node.js 20+
 - A PostgreSQL database (local or hosted — Supabase, Railway, etc.)
 - A Google Cloud project with:
-  - OAuth 2.0 credentials (for user login)
-  - A service account with Google Calendar API enabled (for calendar sync)
+  - OAuth 2.0 credentials (used for both user login and calendar invites)
+  - The Google Calendar API enabled
 
 ## Setup
 
@@ -41,8 +41,6 @@ Fill in each value in `.env.local`:
 | `NEXTAUTH_URL` | Base URL of the app (e.g. `http://localhost:3000`) |
 | `AUTH_GOOGLE_ID` | Google OAuth client ID |
 | `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account email for Calendar API |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Service account private key (replace literal newlines with `\n`) |
 | `ALLOWED_EMAIL_DOMAIN` | Only users from this domain can sign in (e.g. `school.org`) |
 | `SCHOOL_TIMEZONE` | IANA timezone name (e.g. `America/New_York`) |
 | `FLEX_1_START` / `FLEX_1_END` | Bell times for rotation 1 (24h, e.g. `09:00`) |
@@ -58,10 +56,24 @@ Fill in each value in `.env.local`:
 3. Add `{NEXTAUTH_URL}/api/auth/callback/google` as an authorized redirect URI
 4. Copy the client ID and secret into `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
 
-**Service account** (for Google Calendar):
-1. Go to IAM & Admin → Service Accounts → Create service account
-2. Enable the Google Calendar API for the project
-3. Create a JSON key, download it, and extract `client_email` → `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `private_key` → `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+**Calendar access** (same OAuth client, no service account):
+
+Invites are created by the teacher covering each block, not by the app's own
+identity — see [Calendars](#calendars) for why. That needs two additions to the
+OAuth client you just made:
+
+1. OAuth consent screen → add the scope `https://www.googleapis.com/auth/calendar.events`.
+   Confirm **User type is Internal**: an internal app needs no Google verification
+   for a sensitive scope, an External one does.
+2. Credentials → your OAuth 2.0 Client ID → Authorized redirect URIs → add
+   `{NEXTAUTH_URL}/api/calendar/callback`.
+3. Enable the Google Calendar API for the project.
+
+If your Workspace restricts third-party apps (Admin console → Security → API
+controls → App access control), the app may also need allowlisting there.
+
+Each teacher then allows access once, from their own dashboard. No service
+account is involved, and `GOOGLE_SERVICE_ACCOUNT_*` are no longer read.
 
 ### 4. Set up the database
 
@@ -109,7 +121,7 @@ Yearbook staff, club officers. See below.
 
 **Duty posts** are supervision spots that aren't clubs — hallways, the cafeteria, the front doors. Admins define them under **Duty Posts** and staff them per rotation from the Coverage page.
 
-**Finalization** triggers a Google Calendar sync: attendees (students + assigned teachers) are added to each session's calendar event. The flex day can be unfinalized to make corrections and re-send.
+**Finalization** sends the invites: one calendar event per *rotation* of each session, created by that rotation's T1 on their own calendar, with the block's other teachers and every signed-up student as guests. The flex day can be unfinalized to make corrections and re-send.
 
 ## Scripts
 
@@ -148,9 +160,30 @@ Validation is lazy at import, so `npm run build` does not need runtime secrets.
 
 ## What an Invite Says
 
-Finalizing a Flex Day sends one Google Calendar event per session, to the
-students signed up for it and the teachers covering it. Both audiences get the
-same event.
+Finalizing a Flex Day sends **one calendar event per rotation of each session**,
+to the students signed up for that session and the teachers covering that block.
+
+**One event per rotation, not one per session.** A club linked across Flex 1 to
+Flex 3 sends three invites — 09:00–09:50, 10:00–10:50, 11:00–11:50 — rather than
+a single 09:00–11:50 block. Two reasons, and both matter:
+
+- The transition gaps between rotations stay free on everyone's calendar. The
+  school uses them to move between rooms; a spanning event swallowed them.
+- Each event carries only *its own* block's coverage. A sponsor who runs this
+  club in Flex 1 and Flex 3 but a different one in Flex 2 is on the Flex 1 and
+  Flex 3 invites and not on the Flex 2 one — whether an admin marked them absent
+  or assigned somebody else. Under one spanning event that was impossible:
+  Google has no concept of a guest attending part of an event.
+
+**Sent by the teacher, not by the app.** Each event is created by that
+rotation's **T1 on the Coverage page**, on their own Google Calendar, so the
+invite comes from the person standing in the room. Different blocks of one
+session can therefore have different senders. See [Calendars](#calendars).
+
+**Who is invited.** The block's other teachers — its T2, and a different T1 on
+another rotation — plus every student signed up for the session. The organizer
+is not listed as a guest because Google adds them as organizer already.
+Absences are subtracted first, per rotation.
 
 **Title: `Art Club (Room 205)`** — the club's name (or a one-off's own title)
 and the room it meets in. The room is in the *title* deliberately, not only in
@@ -159,9 +192,8 @@ the event, and the point is for a student scanning a week at a glance to see
 which door to walk through. Location is populated too, so the event's "where"
 row and map link still work.
 
-The rotation is **not** in the title. It used to be, and it was redundant — the
-event's start and end times already say which block it is, and a club linked
-across Flex 1 and Flex 2 is a single long event either way.
+The rotation is **not** in the title — the event's start and end times already
+say which block it is.
 
 **Body:**
 
@@ -171,9 +203,9 @@ When: Flex 1
 Teacher: Ms Rivera
 ```
 
-Teachers are the ones resolved for that session — explicit coverage, else the
-club's owner and cosponsor — so an admin-managed club with nobody assigned
-simply omits the line rather than printing an empty one.
+`When` names this event's own block, and `Teacher` the teachers covering it — so
+an admin-managed club with nobody assigned omits the line rather than printing
+an empty one.
 
 **A club with no room** falls back to the rotation: `Art Club (Flex 1)`, and the
 body reads `Room: not yet assigned`. Every club has a room today, so this should
@@ -187,34 +219,86 @@ club's `defaultRoom` — through `resolveRoomName` in that same module.
 
 ### Re-finalizing updates the whole event
 
-Unfinalize, fix a room, re-finalize, and the invite is corrected: title,
+Unfinalize, fix a room, re-finalize, and the invites are corrected: title,
 location, body and attendee list are all patched together, and attendees are
 notified. This previously synced the attendee list *only*, so a corrected room
 never reached anybody's calendar.
 
-Two narrower paths still don't resync, and are worth knowing before you rely on
-them: renaming a club or changing its default room after finalize leaves
-existing events on the old text, and the per-day one-off editor can change a
-room without touching Google (the club-scoped session editor does it correctly).
-Re-finalizing the day fixes either.
+If a block's T1 has **changed** since the last send, the old event is withdrawn
+and a new one issued from the teacher now covering it. Google cannot move an
+event between calendars, so this is the only way to make the invite come from
+the right person. If a rotation was **removed** from the session, its event is
+cancelled.
+
+Two narrower paths still don't fully resync, and are worth knowing before you
+rely on them: renaming a club after finalize leaves existing events on the old
+text, and the per-day one-off editor can change a room without touching Google
+(the club-scoped session editor does it correctly, including cancelling a
+dropped rotation's invite — but it cannot *create* one for a newly added
+rotation, because picking that block's sender needs coverage it hasn't loaded).
+Re-finalizing the day fixes any of these.
 
 ## Calendars
 
-Each club gets its own Google Calendar, created when the club is created and
-shared with its owning teacher the first time one of its Flex Days is finalized.
+There are no app-owned calendars. Every event lives on the **personal calendar
+of the teacher who sent it**, and there is no per-club calendar, no shared
+one-off calendar, and no calendar sharing of any kind.
 
-**One-off sessions** have no club, so they have no club calendar. They live on a
-single app-owned calendar ("Flex Day — One-Off Sessions"), created automatically
-the first time it's needed and recorded in the `AppConfig` table. It is not
-shared with anyone — the session's creator is added as an event *attendee*, which
-is what puts it on their personal calendar. Event titles use the session's own
-title, so no club name appears on a one-off invite.
+### Why, and the one thing it asks of teachers
 
-If a club's calendar could not be created (a Calendar API outage, bad service
-account credentials), the club still works for signups but **cannot send
-invites**. The admin Clubs page flags such clubs and offers "Retry calendar
-setup". Finalizing a Flex Day reports any session it had to skip for this reason
-rather than reporting success.
+The app originally created events with a Google **service account**. That does
+not work, and cannot be made to work here: Google rejects an event carrying
+attendees from an unimpersonated service account —
+
+> Service accounts cannot invite attendees without Domain-Wide Delegation of
+> Authority.
+
+Domain-Wide Delegation is granted by a Workspace **super-admin**, which this
+deployment does not have. The alternative Google supports is ordinary OAuth: a
+real signed-in user may invite whoever they like.
+
+So each teacher allows calendar access **once**, from a banner on their
+dashboard (a first visit redirects there automatically, so it reads as part of
+signing in). Google returns a refresh token that stays valid until they revoke
+it. This is the one step that cannot be automated away — and it is the reason
+invites now visibly come from the teacher running the room, which is better than
+a faceless service account regardless.
+
+**Students are never asked for anything.** The calendar scope is requested only
+from teachers and admins. A student receives an ordinary event invitation with
+Yes / No / Maybe, never a request to subscribe to a calendar.
+
+**No sign-out is needed** to roll this out to teachers who are already signed
+in. The consent is a separate authorization against the same OAuth client, not a
+login, so their session is untouched. (This is why the scope is deliberately
+*not* added to the Google provider in `src/auth.ts` — Auth.js would not re-run
+authorization for existing sessions, and every teacher would have to sign out
+and back in first.)
+
+### When a teacher hasn't connected
+
+Their students still get invited. Finalize falls back to the calendar of the
+admin pressing the button — or any admin who has connected — and reports each
+block it had to send that way, naming the teacher. The admin **Coverage** page
+also lists teachers on the upcoming Flex Day who have not connected, so they can
+be chased before invites go out rather than after.
+
+If no admin has connected either, those blocks are skipped and reported. A
+finalize where *nothing* could be sent refuses outright rather than marking the
+day green.
+
+### Where the record lives
+
+`SessionCalendarEvent` holds one row per `[session, rotation]`: the Google event
+id and the id of the user whose calendar it is on. That owner column is what
+makes an event findable again — with events spread across teachers' own
+calendars, it cannot be derived from the club the way a club calendar id once
+was.
+
+Splitting or linking sessions does not touch Google at all: the rows simply
+follow their rotation to the session that now owns it, so restructuring a day
+re-sends nothing to anybody.
+
 
 ## Roster CSV Export (the offline fallback)
 
@@ -466,7 +550,8 @@ change anything themselves. Admins can still make exceptions, from either of two
 screens. Both bypass the deadline and the finalized flag, both require a reason,
 both are recorded in the **Changes** tab for that Flex Day, and both update the
 calendar **for the affected student only** — other students on the session are
-not re-notified.
+not re-notified. A session linked across rotations has an invite per block, and
+the student is added to or removed from all of them.
 
 ### From the session: Move and Remove
 
@@ -490,7 +575,7 @@ already know which sessions they are in, or when you need to change several Flex
 Days at once. Three differences from the per-session override are worth knowing:
 
 - **It works before finalization too.** A session whose invites have not been
-  sent has no calendar event, so the calendar step simply finds nothing to do
+  sent has no calendar events, so the calendar step simply finds nothing to do
   and the signup still moves. There is no need to wait for, or undo, a
   finalize.
 - **Room capacity is a warning, not a wall.** Going over capacity asks you to
