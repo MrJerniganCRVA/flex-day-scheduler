@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { auth } from "@/auth";
 import {
   CALENDAR_STATE_COOKIE,
+  appBaseUrl,
   calendarRedirectUri,
   exchangeCodeForGrant,
 } from "@/lib/google-oauth";
@@ -19,9 +20,16 @@ import {
  * with no way back into the app.
  */
 
-/** Where a teacher ends up, whatever happened. */
+/**
+ * Where a teacher ends up, whatever happened.
+ *
+ * Built from `appBaseUrl`, never from `req.nextUrl.origin`. A route handler is
+ * not handed the public host: on Railway that origin is `https://localhost:8080`
+ * — the container's own address — so every outcome, a *successful* connect
+ * included, used to redirect the teacher to a URL only the server could reach.
+ */
 function backToDashboard(req: NextRequest, status: string): NextResponse {
-  const url = new URL("/teacher", req.nextUrl.origin);
+  const url = new URL("/teacher", appBaseUrl(req.nextUrl.origin));
   url.searchParams.set("calendar", status);
   return NextResponse.redirect(url);
 }
