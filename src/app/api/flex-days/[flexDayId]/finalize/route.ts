@@ -5,8 +5,13 @@ import {
   createEventForSession,
   getOrCreateOneOffCalendarId,
   shareCalendarWithTeacher,
-  syncEventAttendees,
+  syncEventForSession,
 } from "@/lib/google-calendar";
+import {
+  resolveRoomName,
+  sessionEventDescription,
+  sessionEventTitle,
+} from "@/lib/session-event";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
@@ -59,12 +64,12 @@ export async function POST(
               calendarSharedAt: true,
               ownerId: true,
               cosponsorId: true,
-              owner: { select: { email: true } },
-              cosponsor: { select: { email: true } },
+              owner: { select: { name: true, email: true } },
+              cosponsor: { select: { name: true, email: true } },
               defaultRoom: { select: { name: true } },
             },
           },
-          oneOffOwner: { select: { id: true, email: true } },
+          oneOffOwner: { select: { id: true, name: true, email: true } },
           roomOverride: { select: { name: true } },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
           // A teacher who has stepped back from this session must not be invited
@@ -117,15 +122,22 @@ export async function POST(
 
   // Teacher emails by id, for turning resolved coverage into attendees.
   const teacherEmailById = new Map<string, string>();
+  // Names, for the invite body. Same ids, same lookups — the description says
+  // who is in the room, which the title has no space for and the attendee list
+  // only conveys as an email address.
+  const teacherNameById = new Map<string, string>();
   for (const cs of flexDay.clubSessions) {
     if (cs.club?.ownerId && cs.club.owner?.email) {
       teacherEmailById.set(cs.club.ownerId, cs.club.owner.email);
+      teacherNameById.set(cs.club.ownerId, cs.club.owner.name);
     }
     if (cs.club?.cosponsorId && cs.club.cosponsor?.email) {
       teacherEmailById.set(cs.club.cosponsorId, cs.club.cosponsor.email);
+      teacherNameById.set(cs.club.cosponsorId, cs.club.cosponsor.name);
     }
     if (cs.oneOffOwner?.id && cs.oneOffOwner.email) {
       teacherEmailById.set(cs.oneOffOwner.id, cs.oneOffOwner.email);
+      teacherNameById.set(cs.oneOffOwner.id, cs.oneOffOwner.name);
     }
   }
   // Explicitly-assigned coverage teachers may be neither owner nor cosponsor of
@@ -143,9 +155,12 @@ export async function POST(
   if (missingIds.length > 0) {
     const extra = await prisma.user.findMany({
       where: { id: { in: missingIds } },
-      select: { id: true, email: true },
+      select: { id: true, name: true, email: true },
     });
-    for (const u of extra) teacherEmailById.set(u.id, u.email);
+    for (const u of extra) {
+      teacherEmailById.set(u.id, u.email);
+      teacherNameById.set(u.id, u.name);
+    }
   }
 
   const syncable = flexDay.clubSessions.filter((cs) => calendarIdFor(cs) !== null);
@@ -220,12 +235,16 @@ export async function POST(
           cs.teacherAbsences
         );
         const teacherEmails = new Set<string>();
+        const teacherNames = new Set<string>();
         for (const id of teacherIds) {
           const email = teacherEmailById.get(id);
           if (email) teacherEmails.add(email);
+          const teacherName = teacherNameById.get(id);
+          if (teacherName) teacherNames.add(teacherName);
         }
         if (cs.clubId === null && cs.oneOffOwner?.email) {
           teacherEmails.add(cs.oneOffOwner.email);
+          if (cs.oneOffOwner.name) teacherNames.add(cs.oneOffOwner.name);
         }
 
         const attendeeEmails = [
@@ -235,21 +254,42 @@ export async function POST(
             .filter((email): email is string => Boolean(email)),
         ];
 
+        // Composed once and used by both branches, so a first send and a
+        // re-finalize produce byte-identical text. They used to diverge: only
+        // the create branch set a title at all.
+        const location = resolveRoomName(cs);
+        const summary = sessionEventTitle({
+          name,
+          roomName: location,
+          rotations: cs.rotations,
+        });
+        const description = sessionEventDescription({
+          roomName: location,
+          rotations: cs.rotations,
+          teacherNames: [...teacherNames],
+        });
+
         if (cs.googleEventId) {
-          // Already has an event (e.g. re-finalize after unfinalize) — sync
-          // the attendee list on it.
-          await syncEventAttendees({
+          // Already has an event (e.g. re-finalize after unfinalize) — bring it
+          // back in line with the database, room and all, not just its
+          // attendees. See syncEventForSession.
+          await syncEventForSession({
             calendarId,
             eventId: cs.googleEventId,
+            summary,
+            description,
+            location,
+            flexDayDate: flexDay.date,
+            rotations: cs.rotations,
             attendeeEmails,
           });
         } else {
           // No event yet — create it now, with attendees baked in, so the
           // invite goes out the moment the event is created.
-          const location = cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null;
           const eventId = await createEventForSession({
             calendarId,
-            title: name,
+            summary,
+            description,
             location,
             flexDayDate: flexDay.date,
             rotations: cs.rotations,

@@ -9,6 +9,7 @@ import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
+import { resolveRoomName } from "@/lib/session-event";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
@@ -41,8 +42,10 @@ export default async function AdminFlexDayDetailPage({
               maxCapacity: true,
               ownerId: true,
               cosponsorId: true,
+              defaultRoom: { select: { name: true } },
             },
           },
+          roomOverride: { select: { name: true } },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
           teacherAbsences: { select: SESSION_ABSENCE_SELECT },
           oneOffOwner: { select: { name: true } },
@@ -255,6 +258,19 @@ export default async function AdminFlexDayDetailPage({
                                   {cs.oneOffOwner && ` · ${cs.oneOffOwner.name}`}
                                 </span>
                               )}
+                              {/* The room goes in the calendar invite's title,
+                                  so a session without one ships "Art Club
+                                  (Flex 1)" to everybody. Flagged here because
+                                  this is the page Finalize is on — the last
+                                  place it can be caught before invites go. */}
+                              {resolveRoomName(cs) === null && (
+                                <span
+                                  title="No room set for this session, and its club has no default room. The calendar invite will name the rotation instead of a room."
+                                  className="rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2 py-0.5 text-xs font-medium"
+                                >
+                                  No room
+                                </span>
+                              )}
                               {uncovered.length > 0 && (
                                 <span
                                   title={`No teacher for ${uncovered
@@ -285,6 +301,9 @@ export default async function AdminFlexDayDetailPage({
                                 Edit
                               </a>
                               <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {resolveRoomName(cs) && (
+                                  <span className="mr-1">{resolveRoomName(cs)} ·</span>
+                                )}
                                 {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? "?"}
                                 {recorded > 0 && (
                                   <span className="ml-1 text-green-600 dark:text-green-400">

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
+import { resolveRoomName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import RotationClashNotice from "@/components/sessions/RotationClashNotice";
@@ -45,6 +46,7 @@ export default async function TeacherDashboard() {
           ],
         },
         include: {
+          roomOverride: { select: { name: true } },
           club: {
             select: {
               id: true,
@@ -52,6 +54,7 @@ export default async function TeacherDashboard() {
               maxCapacity: true,
               ownerId: true,
               cosponsorId: true,
+              defaultRoom: { select: { name: true } },
             },
           },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
@@ -235,6 +238,16 @@ export default async function TeacherDashboard() {
                                   {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
                                 </span>
                               </div>
+
+                              {/* Where to be. A duty post's location is shown
+                                  directly above this; a club's room was not,
+                                  which left the teacher running a club worse
+                                  informed than the one covering a hallway. */}
+                              {resolveRoomName(cs) && (
+                                <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                                  {resolveRoomName(cs)}
+                                </div>
+                              )}
 
                               {/* capacity bar */}
                               <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">

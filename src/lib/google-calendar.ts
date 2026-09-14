@@ -133,17 +133,40 @@ export async function getOrCreateOneOffCalendarId(): Promise<string> {
 }
 
 /**
+ * Window a session occupies: the start of its first rotation to the end of its
+ * last. Extracted because three callers computed it identically, and a session
+ * spanning Flex 1 and Flex 2 is one event covering both, not two.
+ *
+ * `.sort()` on the raw enum is correct here — FLEX_1 < FLEX_2 < FLEX_3
+ * lexicographically — and is what puts the earliest bell first.
+ */
+function eventWindow(flexDayDate: Date, rotations: RotationSlot[]) {
+  const tz = env().SCHOOL_TIMEZONE;
+  const dateStr = flexDayDate.toISOString().split("T")[0];
+
+  const sorted = [...rotations].sort();
+  const startTime = getRotationTime(sorted[0]).start;
+  const endTime = getRotationTime(sorted[sorted.length - 1]).end;
+
+  return {
+    start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
+    end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
+  };
+}
+
+/**
  * Create a calendar event for a club session on a flex day.
- * If the session spans multiple rotations, the event spans from the start
- * of the first rotation to the end of the last rotation.
  * Returns the event ID to store in ClubSession.googleEventId.
  *
- * `title` is the club's name for club sessions and the session's own title for
- * one-off sessions — a student sees the name they signed up for either way.
+ * `summary` and `description` arrive already composed — see
+ * src/lib/session-event.ts. Deciding what an invite says needs the room, the
+ * resolved teachers and the school's own title convention, none of which belong
+ * in the module whose job is talking to Google.
  */
 export async function createEventForSession(params: {
   calendarId: string;
-  title: string;
+  summary: string;
+  description?: string;
   location: string | null | undefined;
   flexDayDate: Date;
   rotations: RotationSlot[];
@@ -151,28 +174,15 @@ export async function createEventForSession(params: {
   sendUpdates?: "all" | "none";
 }): Promise<string> {
   const calendar = getCalendarClient();
-  const tz = env().SCHOOL_TIMEZONE;
-  const dateStr = params.flexDayDate.toISOString().split("T")[0];
-
-  const sortedRotations = [...params.rotations].sort();
-  const firstRotation = sortedRotations[0];
-  const lastRotation = sortedRotations[sortedRotations.length - 1];
-
-  const startTime = getRotationTime(firstRotation).start;
-  const endTime = getRotationTime(lastRotation).end;
-
-  const rotationLabel = sortedRotations
-    .map((r) => r.replace("FLEX_", "Flex "))
-    .join(" + ");
 
   const response = await calendar.events.insert({
     calendarId: params.calendarId,
     sendUpdates: params.sendUpdates ?? "none",
     requestBody: {
-      summary: `${params.title} (${rotationLabel})`,
+      summary: params.summary,
+      description: params.description || undefined,
       location: params.location ?? undefined,
-      start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
-      end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
+      ...eventWindow(params.flexDayDate, params.rotations),
       attendees: (params.attendeeEmails ?? []).map((email) => ({ email })),
       guestsCanSeeOtherGuests: true,
     },
@@ -183,52 +193,59 @@ export async function createEventForSession(params: {
 
 /**
  * Update a calendar event's title, time, and location when a session's rotations
- * or room changes. Attendees are left untouched.
+ * or room changes. Attendees and description are left untouched.
+ *
+ * The description is deliberately not rewritten: the caller (the club-scoped
+ * session editor) has no coverage data loaded, so it could only write a
+ * teacher-less body over a correct one. A rotation change therefore leaves the
+ * description's "When" line stale until the day is re-finalized — cosmetic,
+ * because the event's actual start and end times are updated here and those are
+ * what a calendar shows.
  */
 export async function updateEventForSession(params: {
   calendarId: string;
   eventId: string;
-  title: string;
+  summary: string;
   location: string | null | undefined;
   flexDayDate: Date;
   rotations: RotationSlot[];
 }): Promise<void> {
   const calendar = getCalendarClient();
-  const tz = env().SCHOOL_TIMEZONE;
-  const dateStr = params.flexDayDate.toISOString().split("T")[0];
-
-  const sortedRotations = [...params.rotations].sort();
-  const firstRotation = sortedRotations[0];
-  const lastRotation = sortedRotations[sortedRotations.length - 1];
-
-  const startTime = getRotationTime(firstRotation).start;
-  const endTime = getRotationTime(lastRotation).end;
-
-  const rotationLabel = sortedRotations
-    .map((r) => r.replace("FLEX_", "Flex "))
-    .join(" + ");
-
   await calendar.events.patch({
     calendarId: params.calendarId,
     eventId: params.eventId,
     sendUpdates: "none",
     requestBody: {
-      summary: `${params.title} (${rotationLabel})`,
+      summary: params.summary,
       location: params.location ?? undefined,
-      start: { dateTime: `${dateStr}T${startTime}:00`, timeZone: tz },
-      end: { dateTime: `${dateStr}T${endTime}:00`, timeZone: tz },
+      ...eventWindow(params.flexDayDate, params.rotations),
     },
   });
 }
 
 /**
- * Replace the full attendee list on a calendar event with the provided emails.
- * Used during finalization to batch-sync all signups at once.
- * sendUpdates: "all" ensures each student receives a calendar invite email.
+ * Bring an existing event fully back in line with the database: its title, its
+ * room, its body and its attendee list, in one patch.
+ *
+ * Used by the re-finalize path. It was previously `syncEventAttendees` and
+ * patched the attendee list *only*, which made the documented way of correcting
+ * a Flex Day quietly wrong: unfinalize, fix a room, re-finalize, and the invite
+ * still named the old room. Anyone checking their calendar would have walked to
+ * the wrong door. Renamed rather than extended in place, because a function
+ * called `syncEventAttendees` that also rewrites the title is a worse trap than
+ * the bug it fixes.
+ *
+ * sendUpdates: "all" — a re-finalize is an announcement, and a changed room is
+ * exactly the thing attendees need to be told about.
  */
-export async function syncEventAttendees(params: {
+export async function syncEventForSession(params: {
   calendarId: string;
   eventId: string;
+  summary: string;
+  description?: string;
+  location: string | null | undefined;
+  flexDayDate: Date;
+  rotations: RotationSlot[];
   attendeeEmails: string[];
 }): Promise<void> {
   const calendar = getCalendarClient();
@@ -237,6 +254,10 @@ export async function syncEventAttendees(params: {
     eventId: params.eventId,
     sendUpdates: "all",
     requestBody: {
+      summary: params.summary,
+      description: params.description || undefined,
+      location: params.location ?? undefined,
+      ...eventWindow(params.flexDayDate, params.rotations),
       attendees: params.attendeeEmails.map((email) => ({ email })),
     },
   });

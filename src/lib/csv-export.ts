@@ -4,9 +4,14 @@ import type { RotationSlot } from "@prisma/client";
  * Flex Day roster export.
  *
  * This is the paper backup: if the app is down on a Flex Day morning, this file
- * is what tells staff which student is in which room for each rotation. It is
+ * is what tells staff which student is in which *club* for each rotation. It is
  * therefore deliberately dumb and self-contained — one row per student, one
  * column per rotation, no lookups needed to read it.
+ *
+ * Note what it does not carry: the **room**. The columns hold club names, so
+ * reading a room off this file still needs a second list pinned somewhere. That
+ * has been true since the file was written — the comment here used to claim
+ * otherwise — and is worth fixing if the printout is ever relied on in earnest.
  *
  * Column order is fixed and must not be rearranged; downstream tooling reads it
  * positionally.

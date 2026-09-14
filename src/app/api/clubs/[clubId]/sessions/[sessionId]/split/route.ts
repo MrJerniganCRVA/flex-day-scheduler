@@ -1,3 +1,4 @@
+import { resolveRoomName, sessionEventTitle } from "@/lib/session-event";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
@@ -85,8 +86,10 @@ export async function POST(
   const studentEmails = original.signups
     .map((s) => s.student.email)
     .filter((email): email is string => Boolean(email));
-  const location =
-    original.roomOverride?.name ?? club?.defaultRoom?.name ?? null;
+  const location = resolveRoomName({
+    roomOverride: original.roomOverride,
+    club: club ? { defaultRoom: club.defaultRoom } : null,
+  });
 
   // Per-rotation attendees for the split-off sessions, used only when the
   // original session was already finalized/invited.
@@ -164,7 +167,11 @@ export async function POST(
     for (const { id: newSessionId, rotation } of newSessions) {
       createEventForSession({
         calendarId: original.club.googleCalendarId!,
-        title: original.club.name!,
+        summary: sessionEventTitle({
+          name: original.club.name!,
+          roomName: location,
+          rotations: [rotation],
+        }),
         location,
         flexDayDate: original.flexDay.date,
         rotations: [rotation],

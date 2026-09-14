@@ -12,6 +12,7 @@ import type {
   ResolvedAssignment,
 } from "@/components/admin/CoverageDashboard";
 import type { RotationSlot } from "@prisma/client";
+import { resolveRoomName } from "@/lib/session-event";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
@@ -151,7 +152,7 @@ export default async function AdminCoveragePage({
       // Only used to label the "fall back to the owner/cosponsor" options.
       ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
       cosponsorName: cs.club?.cosponsor?.name ?? null,
-      roomName: cs.roomOverride?.name ?? cs.club?.defaultRoom?.name ?? null,
+      roomName: resolveRoomName(cs),
       rotations: cs.rotations,
       studentCount: cs._count.signups,
       assignments,

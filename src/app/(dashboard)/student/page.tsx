@@ -7,6 +7,7 @@ import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
 import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
+import { resolveRoomName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
 
 export default async function StudentDashboard() {
@@ -35,8 +36,10 @@ export default async function StudentDashboard() {
     include: {
       clubSessions: {
         include: {
+          roomOverride: { select: { name: true } },
           club: {
             select: {
+              defaultRoom: { select: { name: true } },
               id: true,
               name: true,
               description: true,
@@ -100,6 +103,7 @@ export default async function StudentDashboard() {
       sessionName: cs.title ?? cs.club?.name ?? "Session",
       description: cs.club?.description ?? null,
       teacherName: cs.oneOffOwner?.name ?? cs.club?.owner?.name ?? null,
+      roomName: resolveRoomName(cs),
       rotations: cs.rotations,
       enrolledCount: cs._count.signups,
       capacity,
