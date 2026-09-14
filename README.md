@@ -410,14 +410,54 @@ picking one silently would hide a scheduling mistake.
 ## Changing a Roster After Invites Are Sent
 
 Once a Flex Day is finalized, students are past their signup deadline and cannot
-change anything themselves. Admins can still make exceptions — a student turning
-up without a required permission slip, for example — from the Flex Day's roster
-list: expand a session's roster and use **Move** or **Remove** beside a student.
+change anything themselves. Admins can still make exceptions, from either of two
+screens. Both bypass the deadline and the finalized flag, both require a reason,
+both are recorded in the **Changes** tab for that Flex Day, and both update the
+calendar **for the affected student only** — other students on the session are
+not re-notified.
 
-These overrides bypass the deadline but still enforce room capacity and rotation
-conflicts. Each one requires a reason, is recorded in the **Changes** tab for
-that Flex Day, and updates the calendar for the affected student only — other
-students on the session are not re-notified.
+### From the session: Move and Remove
+
+On the Flex Day page, expand a session's roster and use **Move** or **Remove**
+beside a student. This is the quickest route when you are already looking at a
+roster and one name in it is wrong. It enforces room capacity and rotation
+conflicts, and only appears once the day is finalized — before that, students
+manage their own signups.
+
+### From the student: Student Signups
+
+**Student Signups** (admin nav) starts from the student instead. Type their
+email — the whole address, or just the part before the `@` — and their placement
+on every upcoming Flex Day appears as three rotation slots. Change the clubs,
+type one reason, and **Apply changes & update invites** writes the lot: one
+transaction, one audit reason copied onto every change it records, and exactly
+the calendar removals and additions the change implies.
+
+Use this one when a student's whole day needs rearranging, when you do not
+already know which sessions they are in, or when you need to change several Flex
+Days at once. Three differences from the per-session override are worth knowing:
+
+- **It works before finalization too.** A session whose invites have not been
+  sent has no calendar event, so the calendar step simply finds nothing to do
+  and the signup still moves. There is no need to wait for, or undo, a
+  finalize.
+- **Room capacity is a warning, not a wall.** Going over capacity asks you to
+  confirm and then allows it — the same rule as required members, where a
+  student who has to be in a room is in it whether or not the room is nominally
+  full. A **rotation clash is still refused outright**: that is a student in two
+  rooms at once, which is not a policy to override.
+- **Multi-day edits are all-or-nothing.** Change two Flex Days in one apply and
+  either both are written or neither is.
+
+Picking a club that spans several rotations fills all of them, and gives up
+whatever was in those rotations before — each displacement shows as its own line
+in the staged-changes list before you commit, so nothing moves silently.
+
+Removing a **required member's** signup works, but does not end the membership:
+the club will sign them up again for its next session. To stop that, remove them
+from the club's Required Members panel instead.
+
+Past Flex Days are listed read-only. Those signups are attendance history.
 
 ## Testing
 

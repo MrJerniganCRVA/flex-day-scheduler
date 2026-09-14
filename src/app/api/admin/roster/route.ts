@@ -5,10 +5,10 @@ import { Prisma } from "@prisma/client";
 import type { RotationSlot } from "@prisma/client";
 import { rosterOverrideSchema } from "@/lib/validations";
 import {
-  addAttendeeToEvent,
-  getOneOffCalendarId,
-  removeAttendeeFromEvent,
-} from "@/lib/google-calendar";
+  applyAttendeeOps,
+  resolveSessionCalendarId,
+  type AttendeeOp,
+} from "@/lib/session-calendar";
 import {
   MAX_TX_ATTEMPTS,
   conflictBackoffMs,
@@ -72,11 +72,6 @@ const sessionSelect = {
 const displayName = (s: SessionForOverride) =>
   s.title ?? s.club?.name ?? "Session";
 
-/** Calendar work to perform after the transaction commits. */
-type CalendarOp =
-  | { op: "remove"; calendarId: string; eventId: string; email: string }
-  | { op: "add"; calendarId: string; eventId: string; email: string };
-
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") {
@@ -100,7 +95,7 @@ export async function POST(request: NextRequest) {
     try {
       const result = await prisma.$transaction(
         async (tx) => {
-          const calendarOps: CalendarOp[] = [];
+          const calendarOps: AttendeeOp[] = [];
 
           // ── Resolve the student and the session being left, if any ─────────
           let studentId: string;
@@ -157,7 +152,7 @@ export async function POST(request: NextRequest) {
             await tx.signup.delete({ where: { id: input.signupId } });
 
             if (fromSession?.googleEventId && student.email) {
-              const calendarId = await resolveCalendarId(fromSession);
+              const calendarId = await resolveSessionCalendarId(fromSession);
               if (calendarId) {
                 calendarOps.push({
                   op: "remove",
@@ -203,7 +198,7 @@ export async function POST(request: NextRequest) {
             });
 
             if (toSession.googleEventId && student.email) {
-              const calendarId = await resolveCalendarId(toSession);
+              const calendarId = await resolveSessionCalendarId(toSession);
               if (calendarId) {
                 calendarOps.push({
                   op: "add",
@@ -249,24 +244,9 @@ export async function POST(request: NextRequest) {
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
 
-      // Calendar work happens after commit — a Google API hiccup must not roll
-      // back a roster change the admin has already been told about, and the
-      // reverse (committing after a successful send) would risk the student
-      // holding an invite for a signup that doesn't exist.
-      for (const op of result.calendarOps) {
-        const fn = op.op === "add" ? addAttendeeToEvent : removeAttendeeFromEvent;
-        await fn({
-          calendarId: op.calendarId,
-          eventId: op.eventId,
-          studentEmail: op.email,
-          sendUpdates: "all",
-        }).catch((err) =>
-          console.error(
-            `Roster override committed, but the calendar ${op.op} for ${op.email} on event ${op.eventId} failed:`,
-            err
-          )
-        );
-      }
+      // Calendar work happens after commit. See applyAttendeeOps for why, and
+      // for why removals are applied before adds.
+      await applyAttendeeOps(result.calendarOps, "Roster override committed");
 
       return NextResponse.json({
         ok: true,
@@ -350,16 +330,4 @@ export async function POST(request: NextRequest) {
 
   // Unreachable: every iteration returns or throws.
   throw new Error("Unreachable");
-}
-
-/**
- * The calendar a session's event lives on. Club sessions use their club's
- * calendar; one-off sessions use the shared host calendar, read without
- * creating one (nothing to reconcile if it was never provisioned).
- */
-async function resolveCalendarId(
-  session: SessionForOverride
-): Promise<string | null> {
-  if (session.clubId === null) return getOneOffCalendarId();
-  return session.club?.googleCalendarId ?? null;
 }

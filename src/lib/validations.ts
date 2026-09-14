@@ -93,6 +93,54 @@ export const rosterOverrideSchema = z.discriminatedUnion("action", [
 ]);
 
 /**
+ * Rewriting one student's whole placement, from the admin Student Signups
+ * screen. The declarative counterpart to `rosterOverrideSchema` above: that one
+ * says "move this signup there", this one says "these are the sessions this
+ * student should end up in", and the server works out the difference.
+ *
+ * `reason` is required for the same purpose and copied onto every audit row the
+ * batch writes — one edit of three rotations is one decision, and asking for it
+ * three times would only teach the admin to type "x".
+ */
+export const studentScheduleUpdateSchema = z.object({
+  studentId: z.string().cuid(),
+  reason: z.string().trim().min(3, "A reason is required").max(500),
+  /**
+   * One entry per Flex Day being changed. Capped because this is a whole-day
+   * rewrite per entry, not because twenty is a meaningful limit — the screen
+   * sends only the days the admin actually touched.
+   */
+  days: z
+    .array(
+      z.object({
+        flexDayId: z.string().cuid(),
+        /**
+         * The target session for each rotation. An absent key means "leave that
+         * rotation alone"; an explicit null means "empty it".
+         *
+         * Spelled out rather than z.record(z.enum([...]), …): in Zod 4 an
+         * enum-keyed record is exhaustive, so that form would demand all three
+         * rotations on every request and lose the absent/null distinction the
+         * planner depends on.
+         */
+        slots: z.object({
+          FLEX_1: z.string().cuid().nullable().optional(),
+          FLEX_2: z.string().cuid().nullable().optional(),
+          FLEX_3: z.string().cuid().nullable().optional(),
+        }),
+      })
+    )
+    .min(1)
+    .max(20),
+  /**
+   * Set only after the admin has confirmed an over-capacity warning. Capacity
+   * is a stated preference about a room, not a physical impossibility like a
+   * rotation clash, so it is forceable — see src/lib/student-schedule.ts.
+   */
+  force: z.boolean().optional(),
+});
+
+/**
  * Adding a student to a club's required-member roster. No reason field, unlike
  * rosterOverrideSchema: this is a standing statement about who belongs to the
  * club, not a one-off exception to the signup rules that someone will later be

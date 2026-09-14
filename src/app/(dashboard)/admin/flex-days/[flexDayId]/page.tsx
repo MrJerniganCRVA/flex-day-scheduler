@@ -138,6 +138,16 @@ export default async function AdminFlexDayDetailPage({
           </h1>
           <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {flexDay.clubSessions.length} sessions · {totalSignups} total signups
+            {" · "}
+            {/* The rosters below edit one signup at a time, from the session's
+                side. Rearranging a whole student is the other screen's job, and
+                it is not findable from here without saying so. */}
+            <Link
+              href="/admin/student-signups"
+              className="text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Edit one student&apos;s signups
+            </Link>
           </div>
         </div>
         <div className="flex items-center gap-3">
