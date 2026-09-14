@@ -146,6 +146,58 @@ Validation catches the mistakes that used to be silent:
 
 Validation is lazy at import, so `npm run build` does not need runtime secrets.
 
+## What an Invite Says
+
+Finalizing a Flex Day sends one Google Calendar event per session, to the
+students signed up for it and the teachers covering it. Both audiences get the
+same event.
+
+**Title: `Art Club (Room 205)`** — the club's name (or a one-off's own title)
+and the room it meets in. The room is in the *title* deliberately, not only in
+Google's Location field: most calendar views don't show Location until you open
+the event, and the point is for a student scanning a week at a glance to see
+which door to walk through. Location is populated too, so the event's "where"
+row and map link still work.
+
+The rotation is **not** in the title. It used to be, and it was redundant — the
+event's start and end times already say which block it is, and a club linked
+across Flex 1 and Flex 2 is a single long event either way.
+
+**Body:**
+
+```
+Room: Room 205
+When: Flex 1
+Teacher: Ms Rivera
+```
+
+Teachers are the ones resolved for that session — explicit coverage, else the
+club's owner and cosponsor — so an admin-managed club with nobody assigned
+simply omits the line rather than printing an empty one.
+
+**A club with no room** falls back to the rotation: `Art Club (Flex 1)`, and the
+body reads `Room: not yet assigned`. Every club has a room today, so this should
+never appear; the admin Flex Day page shows an amber **No room** badge on any
+session that would produce it, which is the last place to catch it before
+pressing Finalize.
+
+Wording lives in `src/lib/session-event.ts` and is unit-tested. The room itself
+is resolved the same way everywhere — a session's `roomOverride` wins over its
+club's `defaultRoom` — through `resolveRoomName` in that same module.
+
+### Re-finalizing updates the whole event
+
+Unfinalize, fix a room, re-finalize, and the invite is corrected: title,
+location, body and attendee list are all patched together, and attendees are
+notified. This previously synced the attendee list *only*, so a corrected room
+never reached anybody's calendar.
+
+Two narrower paths still don't resync, and are worth knowing before you rely on
+them: renaming a club or changing its default room after finalize leaves
+existing events on the old text, and the per-day one-off editor can change a
+room without touching Google (the club-scoped session editor does it correctly).
+Re-finalizing the day fixes either.
+
 ## Calendars
 
 Each club gets its own Google Calendar, created when the club is created and

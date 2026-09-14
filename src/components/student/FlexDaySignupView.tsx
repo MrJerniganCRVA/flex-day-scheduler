@@ -10,6 +10,8 @@ export interface SessionViewData {
   sessionName: string;
   description: string | null;
   teacherName: string | null;
+  /** Room the session meets in. Null only if neither it nor its club has one. */
+  roomName: string | null;
   rotations: RotationSlot[];
   enrolledCount: number;
   capacity: number;
@@ -100,7 +102,8 @@ export default function FlexDaySignupView({
       (s) =>
         s.sessionName.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q) ||
-        s.teacherName?.toLowerCase().includes(q)
+        s.teacherName?.toLowerCase().includes(q) ||
+        s.roomName?.toLowerCase().includes(q)
     );
   }, [sessions, searchQuery]);
 
@@ -241,9 +244,14 @@ export default function FlexDaySignupView({
                             {cs.description}
                           </p>
                         )}
-                        {cs.teacherName && (
+                        {/* Who and where, together. Students used to see the
+                            room only after signing up, on My Signups — too late
+                            to be part of the choice. */}
+                        {(cs.teacherName || cs.roomName) && (
                           <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                            {cs.teacherName}
+                            {[cs.teacherName, cs.roomName]
+                              .filter(Boolean)
+                              .join(" · ")}
                           </div>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">

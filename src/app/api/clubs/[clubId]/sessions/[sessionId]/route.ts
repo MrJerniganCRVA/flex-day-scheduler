@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { updateClubSessionSchema } from "@/lib/validations";
 import { deleteEvent, updateEventForSession } from "@/lib/google-calendar";
+import { resolveRoomName, sessionEventTitle } from "@/lib/session-event";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
 
@@ -197,12 +198,18 @@ export async function PUT(
     club.googleCalendarId &&
     existingSession.googleEventId
   ) {
-    const location =
-      updatedSession.roomOverride?.name ?? club.defaultRoom?.name ?? null;
+    const location = resolveRoomName({
+      roomOverride: updatedSession.roomOverride,
+      club: { defaultRoom: club.defaultRoom },
+    });
     updateEventForSession({
       calendarId: club.googleCalendarId,
       eventId: existingSession.googleEventId,
-      title: updatedSession.club!.name,
+      summary: sessionEventTitle({
+        name: updatedSession.club!.name,
+        roomName: location,
+        rotations: updatedSession.rotations,
+      }),
       location,
       flexDayDate: updatedSession.flexDay.date,
       rotations: updatedSession.rotations,

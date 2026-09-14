@@ -5,6 +5,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import Link from "next/link";
 import CancelButton from "@/components/signups/CancelButton";
+import { resolveRoomName } from "@/lib/session-event";
 import {
   getSignupDeadline,
   isPastSignupDeadline,
@@ -65,10 +66,7 @@ function SignupTable({
           {rows.map((signup) => {
             const deadlinePast = isPastSignupDeadline(signup.clubSession.flexDay.date);
             const deadline = getSignupDeadline(signup.clubSession.flexDay.date);
-            const location =
-              signup.clubSession.roomOverride?.name ??
-              signup.clubSession.club?.defaultRoom?.name ??
-              null;
+            const location = resolveRoomName(signup.clubSession);
 
             return (
               <tr key={signup.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
