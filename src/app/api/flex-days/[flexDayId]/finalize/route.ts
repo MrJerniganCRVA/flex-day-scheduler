@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { calendar_v3 } from "googleapis";
 import { RotationSlot } from "@prisma/client";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import {
-  createEventForSession,
-  deleteEvent,
-  syncEventForSession,
-} from "@/lib/google-calendar";
-import { getCalendarClientForUser } from "@/lib/google-oauth";
+import { createEvent, deleteEvent, syncEvent } from "@/lib/google-calendar";
 import {
   resolveRoomName,
   rotationName,
@@ -21,6 +15,17 @@ import {
   resolveSessionCoverage,
   sessionRef,
 } from "@/lib/coverage";
+import {
+  type BlockOutcome,
+  describeProblems,
+  isFailed,
+  isMissingEvent,
+  isSent,
+  isSkipped,
+  type SentOutcome,
+} from "@/lib/calendar-outcome";
+import { type Sender, makeBackstop, makeClientCache } from "@/lib/calendar-sender";
+import { sendDutyInvites } from "@/lib/duty-calendar";
 
 /**
  * Finalizing a Flex Day: send every invite it implies.
@@ -40,43 +45,22 @@ import {
  * A teacher who has not yet granted access does not cost their students an
  * invite: the block falls back to an admin's calendar and is reported by name, so
  * the day still goes out and the gap is visible rather than silent.
+ *
+ * Finalizing also issues the day's **duty** events — the hallway, the cafeteria,
+ * the front doors — through src/lib/duty-calendar.ts. That pass lives in its own
+ * module rather than here because it has to be runnable on its own, against a day
+ * whose student invites have already gone out: see the route at
+ * /api/flex-days/[flexDayId]/duty-invites for why re-finalizing is not a safe way
+ * to backfill them.
  */
 
-/** One rotation of one session — what an invite actually covers. */
+/** One rotation of one session, as this pass carries it between steps. */
 type BlockRef = {
   sessionId: string;
   rotation: RotationSlot;
   /** "Art Club — Flex 2", for the admin-facing report. */
   label: string;
 };
-
-/**
- * The block's invite went out. `fellBackFrom` is set when it was sent from an
- * admin because the assigned teacher could not send it themselves: `teacherName`
- * names them, or is null when nobody was assigned to the block at all.
- */
-type SentOutcome = BlockRef & {
-  kind: "sent";
-  fellBackFrom: { teacherName: string | null } | null;
-};
-
-/** Google rejected the request. */
-type FailedOutcome = BlockRef & { kind: "failed"; error: unknown };
-
-/** Nobody could send it — not the assigned teacher, and not any admin. */
-type SkippedOutcome = BlockRef & {
-  kind: "skipped";
-  teacherName: string | null;
-};
-
-type BlockOutcome = SentOutcome | FailedOutcome | SkippedOutcome;
-
-const isSent = (o: BlockOutcome): o is SentOutcome => o.kind === "sent";
-const isFailed = (o: BlockOutcome): o is FailedOutcome => o.kind === "failed";
-const isSkipped = (o: BlockOutcome): o is SkippedOutcome => o.kind === "skipped";
-
-/** A calendar client with the id of whose calendar it writes to. */
-type Sender = { client: calendar_v3.Calendar; userId: string };
 
 export async function POST(
   _req: NextRequest,
@@ -188,47 +172,11 @@ export async function POST(
     }
   }
 
-  // One client per teacher, however many blocks they cover. Memoized on the
-  // promise rather than the result so concurrent blocks share one token refresh
-  // instead of racing to perform their own.
-  const clientCache = new Map<string, Promise<calendar_v3.Calendar | null>>();
-  const clientFor = (userId: string): Promise<calendar_v3.Calendar | null> => {
-    let pending = clientCache.get(userId);
-    if (!pending) {
-      pending = getCalendarClientForUser(userId);
-      clientCache.set(userId, pending);
-    }
-    return pending;
-  };
-
-  /**
-   * The admin whose calendar covers blocks their assigned teacher cannot send
-   * from. Prefers whoever pressed Finalize — they are present, and the resulting
-   * invite comes from a person the school can ask about it — and otherwise any
-   * admin who has connected. Null when no admin has connected either.
-   */
-  let backstopPromise: Promise<Sender | null> | null = null;
-  const getBackstop = (): Promise<Sender | null> => {
-    backstopPromise ??= (async () => {
-      const own = await clientFor(actorId);
-      if (own) return { client: own, userId: actorId };
-
-      const admins = await prisma.user.findMany({
-        where: {
-          role: "ADMIN",
-          id: { not: actorId },
-          calendarGrant: { is: { revokedAt: null } },
-        },
-        select: { id: true },
-      });
-      for (const admin of admins) {
-        const client = await clientFor(admin.id);
-        if (client) return { client, userId: admin.id };
-      }
-      return null;
-    })();
-    return backstopPromise;
-  };
+  // Shared by both passes below, so a teacher covering a club and a duty post
+  // costs one token refresh, and the backstop admin is resolved once for the
+  // whole day rather than once per pass.
+  const clientFor = makeClientCache();
+  const getBackstop = makeBackstop(actorId, clientFor);
 
   // Settle each session independently. Blocks within a session run in sequence:
   // they share a stale-row cleanup and an upsert per rotation, and a linked
@@ -308,6 +256,10 @@ export async function POST(
                 teacherName: organizerId
                   ? (teacherNameById.get(organizerId) ?? null)
                   : null,
+                // Always "no-calendar" for a session, never "unstaffed": a
+                // session with nobody assigned still falls back to an admin, so
+                // reaching here means no calendar could be found at all.
+                reason: "no-calendar",
               });
               continue;
             }
@@ -364,7 +316,7 @@ export async function POST(
             // Same sender as last time — bring the event back in line with the
             // database, room and all, not just its attendees.
             try {
-              await syncEventForSession({
+              await syncEvent({
                 calendar: sender.client,
                 eventId: existing!.googleEventId,
                 summary,
@@ -411,7 +363,7 @@ export async function POST(
               }
             }
 
-            const eventId = await createEventForSession({
+            const eventId = await createEvent({
               calendar: sender.client,
               summary,
               description,
@@ -444,7 +396,16 @@ export async function POST(
     })
   );
 
-  const blocks = settled.flat();
+  // The day's duty posts, after its sessions: sharing the client cache means a
+  // teacher who runs a club in Flex 1 and stands the cafeteria in Flex 2 has
+  // their token refreshed once for both.
+  const dutyBlocks = await sendDutyInvites({
+    flexDayId,
+    clientFor,
+    getBackstop,
+  });
+
+  const blocks: BlockOutcome[] = [...settled.flat(), ...dutyBlocks];
   const sent = blocks.filter(isSent);
   const failed = blocks.filter(isFailed);
   const skipped = blocks.filter(isSkipped);
@@ -455,20 +416,29 @@ export async function POST(
   for (const s of skipped) {
     console.error(
       `Skipped ${s.label} during finalize: ${
-        s.teacherName
-          ? `${s.teacherName} has not connected a Google Calendar`
-          : "nobody is assigned to cover it"
-      }, and no admin has connected one either.`
+        s.reason === "unstaffed"
+          ? "nobody is assigned to cover it"
+          : `${
+              s.teacherName
+                ? `${s.teacherName} has not connected a Google Calendar`
+                : "nobody is assigned to cover it"
+            }, and no admin has connected one either`
+      }.`
     );
   }
 
   // If nothing at all went out, finalizing would be a lie — the button would go
   // green while every student received nothing. Refuse, and say why. This also
   // covers the case where every block was *skipped* rather than failed.
-  // Compared against sessions, not blocks: a day that has sessions but produced
-  // no blocks at all (every session somehow carrying no rotations) sent nobody
-  // anything, and marking it green would be the same lie.
-  if (flexDay.clubSessions.length > 0 && sent.length === 0) {
+  //
+  // "Had something to send" is sessions *or* duty blocks: a day made only of
+  // duty posts has no clubSessions to compare against, and checking sessions
+  // alone would let it finalize green having sent nobody anything. A session
+  // carrying no rotations produces no blocks, which is why the session side is
+  // still counted from the table rather than from `blocks`.
+  const hadSomethingToSend =
+    flexDay.clubSessions.length > 0 || dutyBlocks.length > 0;
+  if (hadSomethingToSend && sent.length === 0) {
     return NextResponse.json(
       {
         error:
@@ -476,7 +446,7 @@ export async function POST(
         sessionsSent: 0,
         sessionsFailed: failed.length,
         sessionsSkipped: skipped.length,
-        problems: describeProblems(failed, skipped, sent),
+        problems: describeProblems(blocks),
       },
       { status: 500 }
     );
@@ -492,91 +462,6 @@ export async function POST(
     sessionsSent: sent.length,
     sessionsFailed: failed.length,
     sessionsSkipped: skipped.length,
-    problems: describeProblems(failed, skipped, sent),
+    problems: describeProblems(blocks),
   });
-}
-
-/**
- * Whether Google is saying the event we tried to patch is not there.
- *
- * 404 for an event that never existed or was hard-deleted, 410 for one Google
- * still remembers as cancelled. Both mean the same thing to the caller: stop
- * patching and issue a new one.
- */
-function isMissingEvent(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const err = error as {
-    code?: number | string;
-    status?: number;
-    response?: { status?: number };
-  };
-  const status =
-    err.response?.status ??
-    err.status ??
-    (typeof err.code === "number" ? err.code : Number(err.code));
-  return status === 404 || status === 410;
-}
-
-/**
- * Google's own explanation of a rejection.
- *
- * Worth digging for: every failure used to be reported to the admin as
- * "Google Calendar rejected the request", which is how a whole day of invites
- * failing on one fixable cause — a service account that was never allowed to
- * invite anybody — could only be diagnosed by reading server logs.
- */
-function googleErrorReason(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-
-  const err = error as {
-    errors?: { message?: string; reason?: string }[];
-    response?: { data?: { error?: { message?: string } | string } };
-    message?: string;
-  };
-
-  const first = Array.isArray(err.errors) ? err.errors[0] : undefined;
-  const nested = err.response?.data?.error;
-  const nestedMessage = typeof nested === "string" ? nested : nested?.message;
-
-  const reason =
-    first?.message ?? first?.reason ?? nestedMessage ?? err.message ?? null;
-  return reason ? reason.trim().replace(/\.$/, "") : null;
-}
-
-/** Admin-readable one-liners for anything an admin should act on. */
-function describeProblems(
-  failed: FailedOutcome[],
-  skipped: SkippedOutcome[],
-  sent: SentOutcome[]
-): string[] {
-  const problems: string[] = [];
-
-  for (const f of failed) {
-    const reason = googleErrorReason(f.error);
-    problems.push(
-      reason
-        ? `${f.label}: Google Calendar rejected the request — ${reason}.`
-        : `${f.label}: Google Calendar rejected the request.`
-    );
-  }
-
-  for (const s of skipped) {
-    problems.push(
-      s.teacherName
-        ? `${s.label}: ${s.teacherName} has not connected their Google Calendar and no admin has either, so no invites were sent. Ask them to open the app and connect it, then re-send.`
-        : `${s.label}: nobody is assigned to cover this block and no admin has connected a Google Calendar, so no invites were sent.`
-    );
-  }
-
-  // Sent, but not by the person who should have sent it. Not a failure — the
-  // students have their invite — so it is reported after the real problems.
-  for (const s of sent.filter((o) => o.fellBackFrom !== null)) {
-    problems.push(
-      s.fellBackFrom!.teacherName
-        ? `${s.label}: ${s.fellBackFrom!.teacherName} has not connected their Google Calendar, so the invite was sent from an admin instead.`
-        : `${s.label}: nobody is assigned to cover this block, so the invite was sent from an admin instead.`
-    );
-  }
-
-  return problems;
 }

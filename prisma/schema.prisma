@@ -106,6 +106,7 @@ model User {
   dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
   requiredIn       RequiredMember[]          @relation("RequiredMembership")
   sessionEventsOwned SessionCalendarEvent[]  @relation("SessionEventOwner")
+  dutyEventsOwned    DutyCalendarEvent[]     @relation("DutyEventOwner")
   calendarGrant    CalendarGrant?
 
   @@index([email])
@@ -498,7 +499,52 @@ model DutyAssignment {
   /// unstaffed rather than silently dropping the requirement to staff it.
   teacher  User?    @relation("DutyTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
 
+  calendarEvent DutyCalendarEvent?
+
   @@unique([dutyPostId, flexDayId, rotation])
   @@index([flexDayId])
   @@index([teacherId])
+}
+
+/// One Google Calendar event for one staffed duty block.
+///
+/// The duty counterpart of SessionCalendarEvent, and it exists for the same
+/// reason: events live on individual teachers' calendars, so without a stored id
+/// there is no way to find one again to patch, move or withdraw it. Before this
+/// existed a duty assignment produced no calendar entry at all — a teacher sent
+/// to the cafeteria for Flex 2 was told by a dashboard and nothing else, while
+/// every club sponsor got a real invite.
+///
+/// Keyed on the assignment rather than on [dutyPostId, flexDayId, rotation],
+/// even though DutyAssignment already carries that unique triple. Assignments are
+/// upserted rather than deleted when the covering teacher changes (see the PUT in
+/// /api/admin/duty-assignments), so keying on the assignment means this row
+/// survives a reassignment — which is exactly when it is needed, to withdraw the
+/// old teacher's event before issuing the new one.
+///
+/// Unlike a session's event this one carries no attendees: the only person
+/// expected at a duty post is whoever is standing there, and they are the
+/// calendar's owner. The sole exception is the fallback described on `ownerId`.
+model DutyCalendarEvent {
+  id               String @id @default(cuid())
+  dutyAssignmentId String @unique
+  googleEventId    String
+
+  /// Whose calendar the event lives on: normally the assigned teacher.
+  ///
+  /// It is the admin who pressed the button when that teacher has not connected
+  /// their own calendar — and in that case, and only that case, the teacher is
+  /// added as the event's single attendee, so it still reaches them.
+  ///
+  /// SetNull rather than Cascade, as on SessionCalendarEvent: losing the owner
+  /// must not silently delete the record of an event that still exists in
+  /// Google, which would strand it on a calendar with nothing pointing at it.
+  ownerId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dutyAssignment DutyAssignment @relation(fields: [dutyAssignmentId], references: [id], onDelete: Cascade)
+  owner          User?          @relation("DutyEventOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
 }

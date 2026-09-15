@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { updateDutyPostSchema } from "@/lib/validations";
+import { deleteEvent } from "@/lib/google-calendar";
+import { makeClientCache } from "@/lib/calendar-sender";
+import { rotationName } from "@/lib/session-event";
 
 /** ADMIN only — see the note in ../route.ts on why this is not left to middleware. */
 async function requireAdmin() {
@@ -74,16 +77,61 @@ export async function DELETE(
 
   const dutyPost = await prisma.dutyPost.findUnique({
     where: { id: dutyPostId },
-    select: { id: true, _count: { select: { assignments: true } } },
+    select: {
+      id: true,
+      name: true,
+      _count: { select: { assignments: true } },
+      // Read *before* the delete. Deleting a post cascades its assignments and
+      // those cascade their DutyCalendarEvent rows, and after that there is no
+      // record of which events to cancel — leaving every teacher who was staffing
+      // it holding an invite to a post that no longer exists. Same ordering
+      // src/lib/session-calendar.ts documents for sessions.
+      assignments: {
+        select: {
+          rotation: true,
+          calendarEvent: { select: { googleEventId: true, ownerId: true } },
+        },
+      },
+    },
   });
   if (!dutyPost) {
     return NextResponse.json({ error: "Duty post not found" }, { status: 404 });
   }
 
+  const liveEvents = dutyPost.assignments.flatMap((a) =>
+    a.calendarEvent
+      ? [{ rotation: a.rotation, ...a.calendarEvent }]
+      : []
+  );
+
   await prisma.dutyPost.delete({ where: { id: dutyPostId } });
+
+  // After the delete, and never thrown from: the post is already gone, and the
+  // calendar is a copy of a decision made in the database. A failure is logged
+  // with the event id so it can be removed by hand.
+  if (liveEvents.length > 0) {
+    const clientFor = makeClientCache();
+    for (const event of liveEvents) {
+      const label = `${dutyPost.name} duty — ${rotationName(event.rotation)}`;
+      const calendar = event.ownerId ? await clientFor(event.ownerId) : null;
+      if (!calendar) {
+        console.error(
+          `Cannot cancel the ${label} event ${event.googleEventId} after deleting the post: nobody can send from its calendar any more, so it may linger there.`
+        );
+        continue;
+      }
+      await deleteEvent(calendar, event.googleEventId, "all").catch((err) =>
+        console.error(
+          `Failed to cancel the ${label} event ${event.googleEventId} after deleting the post:`,
+          err
+        )
+      );
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     assignmentsRemoved: dutyPost._count.assignments,
+    eventsWithdrawn: liveEvents.length,
   });
 }

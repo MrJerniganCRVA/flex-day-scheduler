@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import FinalizeButton from "@/components/flex-days/FinalizeButton";
+import DutyInvitesButton from "@/components/flex-days/DutyInvitesButton";
 import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
@@ -186,6 +187,7 @@ export default async function AdminFlexDayDetailPage({
             </svg>
             Export CSV
           </a>
+          <DutyInvitesButton flexDayId={flexDay.id} />
           <FinalizeButton
             flexDayId={flexDay.id}
             isFinalized={flexDay.isFinalized}
