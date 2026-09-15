@@ -106,6 +106,16 @@ Roles are assigned automatically based on the signing-in user's email subdomain:
 
 Admins can promote any user to ADMIN (or change roles) from the admin panel. The first admin must be set via `SEED_ADMIN_EMAIL` and seeded.
 
+**Support staff hold TEACHER, and that is deliberate.** Front office, counselling
+and other staff who never host a club still sign in from `@domain`, so they land
+on TEACHER like everybody else. There is no fourth role for them: what they
+actually need on a Flex Day is to know what is running and where, which is the
+read-only **Who's Where** board below — safe for any member of staff to see, and
+already visible to most of them, since coverage puts teachers on that grid.
+Giving them ADMIN instead would let them reassign coverage; giving them a role of
+their own would mean a migration, another branch in `src/proxy.ts` and a re-audit
+of every role check in the API for no gain.
+
 ## How It Works
 
 **Flex Days** are scheduled events (always Wednesdays at this school) with up to three rotation slots (Flex 1, Flex 2, Flex 3).
@@ -119,9 +129,66 @@ Yearbook staff, club officers. See below.
 
 **Coverage** is assigned by admins — each session needs a primary teacher (and optionally a secondary for large groups). Teacher availability across rotations is shown in real time, and anyone expected in two places at once is flagged.
 
+**Who's Where** (`/teacher/building`) is the same grid without the dropdowns,
+open to every teacher: the whole building's next Flex Day, a row per club and a
+column per rotation, showing the room, the teachers covering each block, the head
+count, and every duty post with its location. It is read-only and there is no
+route behind it to write to. See [Who's Where](#whos-where) below.
+
 **Duty posts** are supervision spots that aren't clubs — hallways, the cafeteria, the front doors. Admins define them under **Duty Posts** and staff them per rotation from the Coverage page.
 
 **Finalization** sends the invites: one calendar event per *rotation* of each session, created by that rotation's T1 on their own calendar, with the block's other teachers and every signed-up student as guests. The flex day can be unfinalized to make corrections and re-send.
+
+## Who's Where
+
+`/teacher/building` answers one question — *what is happening in each part of the
+building on the next Flex Day?* — for anyone on staff.
+
+It exists because the people who most need that answer had no way to get it. The
+admin **Coverage** page has always held it, but Coverage is also where coverage
+is *changed*, so it is ADMIN-only. Support staff are not admins and run no clubs,
+which left them with an empty teacher dashboard and nowhere to look. This is the
+Coverage grid with every control removed:
+
+- one row per club, alphabetical, three columns for Flex 1 / 2 / 3, so a club can
+  be followed across the day
+- each cell names the teachers covering that block, the head count, and the room
+  when the row's sessions disagree about it
+- duty posts share the grid, marked with a **Duty** pill and showing their
+  location — the hallways and doors are as much a part of the building as the
+  classrooms
+- a club with nobody assigned reads *"No teacher listed"* in grey, not red.
+  Coverage colours a gap because a gap is a job an admin can do something about;
+  here it is only a fact, and colouring a fact somebody cannot act on trains them
+  to ignore the colour
+
+It shows the soonest upcoming active Flex Day, with no day picker, exactly as
+Coverage does.
+
+**Student names are deliberately absent.** The head count says how busy a room
+will be, which is what somebody walking the corridors needs; the roster is the
+business of whoever is standing in it.
+
+### Where the shared logic lives
+
+Both grids are drawn from `src/lib/flex-day-board.ts` (the query, with coverage
+resolved through `src/lib/coverage.ts`) and `src/lib/board-rows.ts` (the pure
+rules for folding sessions into rows — an unlinked club is three `ClubSession`
+rows and one grid row). That split is the same argument the header of
+`src/lib/coverage.ts` makes: two copies of these rules would be two chances for
+the read-only board to quietly disagree with the page an admin is editing.
+
+`board-rows.ts` imports no Prisma, for the reason `src/lib/reconcile.ts` gives —
+`src/lib/prisma.ts` throws without `DATABASE_URL`, which would make every test of
+those rules need a database it has no use for. The rules are unit-tested in
+`src/lib/board-rows.test.ts`.
+
+The two screens do *not* share a renderer. `CoverageDashboard.tsx` is a client
+component whose cells take `onAssign`, `saveStatus` and `onUndoAbsence`, and
+whose parent holds optimistic state and a pending-save counter; threading "but
+not really" through all of it would make the editable page harder to reason about
+in order to save the ~240-line server component in
+`src/components/dashboard/BuildingBoard.tsx`.
 
 ## Scripts
 
