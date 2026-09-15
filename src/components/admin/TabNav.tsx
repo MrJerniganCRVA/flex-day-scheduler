@@ -43,7 +43,9 @@ export default function TabNav({
     >
       <nav
         aria-label="Tabs"
-        className="flex gap-1 overflow-x-auto whitespace-nowrap"
+        /* no-scrollbar: the strip is one row tall, so the gutter a classic
+           scrollbar reserves is most of it. It still scrolls. */
+        className="flex gap-1 overflow-x-auto whitespace-nowrap no-scrollbar"
       >
         {tabs.map((t) => (
           <Link
@@ -52,8 +54,8 @@ export default function TabNav({
             aria-current={active === t.key ? "page" : undefined}
             className={
               active === t.key
-                ? "flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px"
-                : "flex shrink-0 items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                ? "flex shrink-0 items-center gap-1.5 px-4 py-3 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px"
+                : "flex shrink-0 items-center gap-1.5 px-4 py-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             }
           >
             {t.label}

@@ -32,3 +32,40 @@
     color: #9ca3af; /* gray-400 */
   }
 }
+
+/* A single-row strip that says `overflow-x-auto` still reserves a scrollbar
+   gutter on every platform with classic (non-overlay) scrollbars — Windows,
+   most Linux, macOS set to "always show scroll bars". On the tab strips that is
+   a stubby horizontal bar sitting under "Clubs / Building" and "Students /
+   Teachers / …", which reads as a rendering fault rather than an affordance.
+   Hiding the bar leaves the element scrollable: drag, trackpad and touch all
+   still work, which is how the strip is actually moved at phone width. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Printing. Only /rosters/[flexDayId] is meant to reach paper, and it draws
+   itself in explicit light colours — but the root layout's body still carries
+   `dark:bg-gray-950`, which prints as a black page for anyone whose OS is in
+   dark mode. Overridden here rather than on that page because `body` is not
+   the page's to style. */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Screen-only chrome: the Print button, the "back" link. */
+  .no-print {
+    display: none !important;
+  }
+}

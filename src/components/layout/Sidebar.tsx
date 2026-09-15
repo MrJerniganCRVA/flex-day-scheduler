@@ -73,7 +73,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Main"
-      className="md:hidden border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-x-auto"
+      className="md:hidden border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-x-auto no-scrollbar"
     >
       <ul className="flex gap-1 px-3 py-2 whitespace-nowrap">
         {links.map((item) => (

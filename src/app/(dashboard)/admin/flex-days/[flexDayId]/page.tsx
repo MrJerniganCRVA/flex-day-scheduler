@@ -12,6 +12,7 @@ import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
 import { resolveRoomName } from "@/lib/session-event";
+import { sortByLastName } from "@/lib/student-name";
 import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
@@ -317,7 +318,12 @@ export default async function AdminFlexDayDetailPage({
                                 Roster ({cs.signups.length})
                               </summary>
                               <ul className="mt-2 space-y-1">
-                                {cs.signups.map((s) => (
+                                {/* Roster order, matching what the teacher
+                                    running the session sees and prints. */}
+                                {sortByLastName(
+                                  cs.signups,
+                                  (s) => s.student.name
+                                ).map((s) => (
                                   <li
                                     key={s.id}
                                     className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"

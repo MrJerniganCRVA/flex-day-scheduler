@@ -11,6 +11,8 @@ import {
   findTeacherClashes,
   sessionPlacement,
 } from "@/lib/coverage";
+import { mySessionsFilter } from "@/lib/my-sessions";
+import { sortByLastName } from "@/lib/student-name";
 
 /**
  * One person's own Flex Day: the rotations they are expected in, the duty posts
@@ -48,27 +50,6 @@ const SESSION_INCLUDE = {
   },
   _count: { select: { signups: true } },
 } as const;
-
-/**
- * Sessions this person is attached to.
- *
- * Coverage assignments are in here deliberately. Filtering on club ownership and
- * cosponsorship alone meant a teacher an admin had assigned to cover someone
- * else's club never saw that session anywhere in the app — and for a club with
- * no owner, coverage is the *only* way anyone is attached to it, which made
- * those clubs invisible to the very people running them.
- */
-function mySessionsFilter(userId: string) {
-  return {
-    OR: [
-      { club: { ownerId: userId } },
-      { club: { cosponsorId: userId } },
-      { oneOffOwnerId: userId },
-      { rotationCoverage: { some: { primaryTeacherId: userId } } },
-      { rotationCoverage: { some: { secondaryTeacherId: userId } } },
-    ],
-  };
-}
 
 async function loadFlexDay(userId: string, flexDayId?: string) {
   const where = mySessionsFilter(userId);
@@ -174,6 +155,8 @@ export default async function MyFlexDay({
   today.setUTCHours(0, 0, 0, 0);
   const isToday = nextFlexDay.date.getTime() === today.getTime();
 
+  const hasSessions = nextFlexDay.clubSessions.length > 0;
+
   const coveredRotations = new Set(
     nextFlexDay.clubSessions.flatMap((cs) => cs.rotations)
   );
@@ -188,26 +171,62 @@ export default async function MyFlexDay({
       )}
 
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-5">
-        {showDayHeader && (
-          <>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-              {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-                timeZone: "UTC",
-              })}
-            </h2>
-            {nextFlexDay.label && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                {nextFlexDay.label}
-              </p>
+        {(showDayHeader || hasSessions) && (
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              {showDayHeader && (
+                <>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                    {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                      timeZone: "UTC",
+                    })}
+                  </h2>
+                  {nextFlexDay.label && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {nextFlexDay.label}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Paper, for the teacher who would rather not carry the roster on a
+                phone around a room. A new tab: the print view has no app chrome
+                and nothing to come back from. */}
+            {hasSessions && (
+              <a
+                href={`/rosters/${nextFlexDay.id}`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                title="Open a printable roster for each of your rotations — one page each"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z"
+                  />
+                </svg>
+                Print Rosters
+              </a>
             )}
-          </>
+          </div>
         )}
 
-        <div className={`grid gap-4 sm:grid-cols-3 ${showDayHeader ? "mt-3" : ""}`}>
+        <div className="grid gap-4 sm:grid-cols-3">
           {ALL_ROTATIONS.map((slot: RotationSlot) => {
             const sessions = nextFlexDay.clubSessions.filter((cs) =>
               cs.rotations.includes(slot)
@@ -323,10 +342,17 @@ export default async function MyFlexDay({
                                   Roster ({cs.signups.length})
                                 </summary>
                                 <ul className="mt-2 space-y-0.5">
-                                  {cs.signups.map((s) => (
+                                  {/* Same roster order as the attendance list
+                                      it becomes on the day, so the teacher is
+                                      not handed two different orderings of the
+                                      same names. */}
+                                  {sortByLastName(
+                                    cs.signups,
+                                    (s) => s.student.name
+                                  ).map((s) => (
                                     <li
                                       key={s.id}
-                                      className="text-xs text-gray-600 dark:text-gray-300"
+                                      className="text-sm text-gray-600 dark:text-gray-300"
                                     >
                                       {s.student.name}
                                     </li>

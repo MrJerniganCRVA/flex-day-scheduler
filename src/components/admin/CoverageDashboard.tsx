@@ -919,7 +919,7 @@ export default function CoverageDashboard({
              each column, which is why nothing lined up across rotations; asking
              "show me only the problems" as a filter answers the same need and
              leaves every remaining row where it was. */
-          <div className="mb-1.5 flex shrink-0 items-center gap-3">
+          <div className="mb-2.5 flex shrink-0 items-center gap-3">
             {clearedRowCount > 0 && (
               <button
                 onClick={applyGapFilter}
