@@ -10,6 +10,18 @@ import {
   ROTATION_LABELS,
   SHORT_ROTATION_LABELS as SHORT_LABELS,
 } from "@/types";
+import {
+  CELL_SHELL,
+  NotScheduledCell,
+} from "@/components/dashboard/GridCell";
+import {
+  clubRows,
+  dutyRow,
+  type BoardDuty,
+  type BoardGridRow,
+  type BoardSession,
+  type ResolvedAssignment,
+} from "@/lib/board-rows";
 
 const HIGH_ENROLLMENT_THRESHOLD = 20;
 
@@ -22,79 +34,19 @@ const HIGH_ENROLLMENT_THRESHOLD = 20;
 const CLEARED = "__none__";
 
 /**
- * What one session's card needs. Deliberately *not* the raw ingredients of
- * coverage resolution: the owner, cosponsor and coverage rows used to be passed
- * here so this component could derive T1/T2 itself, and that second
- * implementation is exactly why absences never reached this screen. The server
- * resolves now; this renders and edits.
+ * The grid's row and cell shapes live in src/lib/board-rows.ts, where the
+ * read-only Building board can share them — and, more importantly, share the
+ * rules for folding sessions into rows. They were declared here until that
+ * second screen existed. Re-exported under the names this page has always used
+ * so the props below still read as "a club" and "a duty post".
  */
-export type CoverageClub = {
-  sessionId: string;
-  /**
-   * Null for a one-off session, which belongs to no club.
-   *
-   * A club whose rotations are *unlinked* gets one session per rotation, so
-   * students can sign up for one, two or three of them independently — see
-   * desiredSessionShapes in src/lib/reconcile.ts. Those sessions are separate
-   * rows in the database and separate cards on every other screen, but they are
-   * one club to an admin reading across the day, so the grid groups by this.
-   */
-  clubId: string | null;
-  name: string;
-  /** Labels the "fall back to the owner" option; not used to derive anything. */
-  ownerName: string | null;
-  /** Labels the "fall back to the cosponsor" option; not used to derive anything. */
-  cosponsorName: string | null;
-  /** Where it meets, resolved server-side from the override or the club default. */
-  roomName: string | null;
-  rotations: RotationSlot[];
-  studentCount: number;
-  /** Server-resolved starting state, per rotation. */
-  assignments: Partial<Record<RotationSlot, ResolvedAssignment>>;
-};
-
-/** Effective coverage for one rotation, as resolved by src/lib/coverage.ts. */
-export type ResolvedAssignment = {
-  t1: string | null;
-  t2: string | null;
-  /** True when an admin explicitly said this rotation needs no primary teacher. */
-  t1Cleared: boolean;
-  /** True when an admin explicitly said this rotation needs no second teacher. */
-  t2Cleared: boolean;
-  /**
-   * Teachers already marked absent from this session for this rotation, so the
-   * "Not here" control knows whether it is setting or undoing.
-   */
-  absentTeacherIds: string[];
-};
+export type CoverageClub = BoardSession;
+export type CoverageDuty = BoardDuty;
+export type { ResolvedAssignment };
 
 export type CoverageTeacher = {
   id: string;
   name: string;
-};
-
-/**
- * One teacher expected in two or more places during one rotation, as found by
- * `findTeacherClashes` on the server.
- *
- * Resolved server-side rather than derived here, for the reason the file header
- * gives: a second implementation of the coverage rules is a second chance to be
- * quietly wrong, and a clash warning that disagreed with the cards beneath it
- * would be worse than none.
- */
-/**
- * A supervision post that is not a club — see the DutyPost model.
- *
- * `rotations` holds only the rotations the post is required to be staffed for, so
- * a blank slot always means "needs someone" and never "not needed here".
- */
-export type CoverageDuty = {
-  dutyPostId: string;
-  name: string;
-  location: string | null;
-  rotations: RotationSlot[];
-  /** teacherId per required rotation; null means unstaffed. */
-  assignments: Partial<Record<RotationSlot, string | null>>;
 };
 
 /**
@@ -112,6 +64,15 @@ export type CoverageSummary = {
   hasDutyPosts: boolean;
 };
 
+/**
+ * One teacher expected in two or more places during one rotation, as found by
+ * `findTeacherClashes` on the server.
+ *
+ * Resolved server-side rather than derived here, for the reason the file header
+ * gives: a second implementation of the coverage rules is a second chance to be
+ * quietly wrong, and a clash warning that disagreed with the cards beneath it
+ * would be worse than none.
+ */
 export type CoverageClash = {
   rotation: RotationSlot;
   teacherId: string;
@@ -196,16 +157,7 @@ type ExpectedPlacement = {
  * cell edits whichever session covers its rotation, so the three keep their own
  * rosters, rooms and coverage while sharing a line.
  */
-type GridRow =
-  | {
-      kind: "club";
-      key: string;
-      name: string;
-      /** The room, when every session in the row agrees; null when they differ. */
-      roomName: string | null;
-      sessions: Partial<Record<RotationSlot, CoverageClub>>;
-    }
-  | { kind: "duty"; key: string; name: string; duty: CoverageDuty };
+type GridRow = BoardGridRow;
 
 /**
  * What one cell of the grid is.
@@ -702,70 +654,13 @@ export default function CoverageDashboard({
 
   // Every row of the current tab, in the alphabetical order the server sent.
   // Nothing here reorders: that is the whole point of the grid.
+  //
+  // The club folding lives in src/lib/board-rows.ts because the read-only
+  // Building board draws the same rows and must agree with this page about what
+  // a row is — in particular that an unlinked club is one row and not three.
   const allRows = useMemo<GridRow[]>(() => {
-    if (tab === "building")
-      return duties.map((duty) => ({
-        kind: "duty" as const,
-        key: `duty:${duty.dutyPostId}`,
-        name: duty.name,
-        duty,
-      }));
-
-    // Sessions of one club collapse into one row.
-    //
-    // An unlinked club has a session per rotation, and keying rows by session
-    // drew it three times — three lines each with one cell filled and two
-    // hatched, for a club that is simply running all day. Grouping by club is
-    // what makes the row mean "Art Club" rather than "one of Art Club's three
-    // sessions".
-    //
-    // Two sessions of the same club *in the same rotation* cannot share a cell,
-    // so they take a second row rather than one quietly winning. `clubs`
-    // arrives sorted by name, and rows keep first-encounter order, so the
-    // result is still alphabetical with any such pair adjacent.
-    type ClubRow = Extract<GridRow, { kind: "club" }>;
-    const rows: ClubRow[] = [];
-    const byClub = new Map<string, ClubRow[]>();
-
-    for (const session of clubs) {
-      // A one-off belongs to no club, so it never merges with anything.
-      const siblings = session.clubId ? (byClub.get(session.clubId) ?? []) : [];
-      let row = siblings.find((r) =>
-        session.rotations.every((rotation) => !r.sessions[rotation])
-      );
-
-      if (!row) {
-        row = {
-          kind: "club",
-          key: session.clubId
-            ? `club:${session.clubId}:${siblings.length}`
-            : `session:${session.sessionId}`,
-          name: session.name,
-          roomName: null,
-          sessions: {},
-        };
-        rows.push(row);
-        if (session.clubId) byClub.set(session.clubId, [...siblings, row]);
-      }
-
-      for (const rotation of session.rotations) row.sessions[rotation] = session;
-    }
-
-    // The room belongs on the row only when the row agrees about it. Sessions
-    // of one club normally inherit the same default room, but any of them can
-    // carry an override, and a row header claiming one room for three sessions
-    // held in two would be worse than saying nothing — so when they differ the
-    // cells state their own (see ClubCell).
-    for (const row of rows) {
-      const names = new Set(
-        ALL_ROTATIONS.map((r) => row.sessions[r]?.roomName).filter(
-          (n): n is string => !!n
-        )
-      );
-      row.roomName = names.size === 1 ? [...names][0] : null;
-    }
-
-    return rows;
+    if (tab === "building") return duties.map(dutyRow);
+    return clubRows(clubs);
   }, [tab, clubs, duties]);
 
   const hasGap = useCallback(
@@ -1282,41 +1177,6 @@ export default function CoverageDashboard({
  * position out at column three — giving the whole *page* an 86px sideways
  * scroll on a phone, from spans that are one pixel wide.
  */
-const CELL_SHELL =
-  "relative min-w-0 border-b border-l border-gray-100 dark:border-gray-700/50 px-3 py-3";
-
-/**
- * A rotation this row does not take part in.
- *
- * Deliberately recessive — it is there to hold the row's shape so the cells
- * either side of it stay aligned with every other row, and to say the quiet
- * part the old layout could not: nothing is missing here, nothing is wanted
- * here. An empty white cell would read as an unfilled slot, which is the one
- * thing it must not be confused with.
- */
-function NotScheduledCell({ label }: { label: string }) {
-  return (
-    <div
-      // Hatched rather than merely pale. A plain empty cell was indistinguishable
-      // from a slot nobody had filled in yet — the exact confusion this cell
-      // exists to prevent — whereas a hatch reads as "no entry expected here" at
-      // a glance and stays out of the way of the cells either side of it. The
-      // dash is kept for high-contrast modes, which drop background images.
-      className={`${CELL_SHELL} flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgb(0_0_0/0.05)_5px,rgb(0_0_0/0.05)_10px)] dark:bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgb(255_255_255/0.045)_5px,rgb(255_255_255/0.045)_10px)]`}
-    >
-      {/* The hatch carries no meaning to a screen reader, so the row's actual
-          state is spelled out rather than left to a title tooltip. */}
-      <span className="sr-only">{label}</span>
-      <span
-        aria-hidden
-        className="text-lg leading-none text-gray-400 dark:text-gray-600"
-      >
-        –
-      </span>
-    </div>
-  );
-}
-
 /** Tint for a cell that is in play, by how much attention it wants. */
 function cellTone(state: Urgency): string {
   return state === "needs"

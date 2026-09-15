@@ -1,26 +1,14 @@
 import { auth } from "@/auth";
-import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import CoverageDashboard from "@/components/admin/CoverageDashboard";
 import type {
   CoverageClash,
-  CoverageClub,
-  CoverageDuty,
   CoverageSummary,
   CoverageTab,
   CoverageTeacher,
-  ResolvedAssignment,
 } from "@/components/admin/CoverageDashboard";
-import type { RotationSlot } from "@prisma/client";
-import { resolveRoomName } from "@/lib/session-event";
-import {
-  SESSION_ABSENCE_SELECT,
-  SESSION_COVERAGE_SELECT,
-  findTeacherClashes,
-  resolveSessionCoverage,
-  sessionPlacement,
-  sessionRef,
-} from "@/lib/coverage";
+import { findTeacherClashes, sessionPlacement } from "@/lib/coverage";
+import { loadFlexDayBoard } from "@/lib/flex-day-board";
 import { ALL_ROTATIONS } from "@/types";
 import { usersWithLiveGrant } from "@/lib/google-oauth";
 import CalendarReadinessPanel from "@/components/calendar/CalendarReadinessPanel";
@@ -38,54 +26,12 @@ export default async function AdminCoveragePage({
   const { tab: rawTab } = await searchParams;
   const tab: CoverageTab = rawTab === "building" ? "building" : "clubs";
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // The day, its sessions and its duty posts, with coverage already resolved —
+  // see src/lib/flex-day-board.ts. Shared with the read-only Building board so
+  // the two screens can never disagree about who is in which room.
+  const board = await loadFlexDayBoard();
 
-  const nextFlexDay = await prisma.flexDay.findFirst({
-    where: { date: { gte: today }, isActive: true },
-    orderBy: { date: "asc" },
-    include: {
-      clubSessions: {
-        include: {
-          club: {
-            select: {
-              id: true,
-              name: true,
-              ownerId: true,
-              cosponsorId: true,
-              owner: { select: { name: true } },
-              cosponsor: { select: { name: true } },
-              defaultRoom: { select: { name: true } },
-            },
-          },
-          // The grid is read as "what is happening, where, and who is there",
-          // so the room belongs beside the name. Same precedence as every other
-          // surface that shows one — see the note on effectiveRoomId in
-          // src/lib/scheduling.ts.
-          roomOverride: { select: { name: true } },
-          oneOffOwner: { select: { name: true } },
-          _count: { select: { signups: true } },
-          rotationCoverage: { select: SESSION_COVERAGE_SELECT },
-          // Without these, a teacher who has stepped back still showed here as
-          // covering the session — on the one screen an admin uses to find gaps.
-          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
-        },
-      },
-    },
-  });
-
-  const teacherUsers = await prisma.user.findMany({
-    where: { role: { in: ["TEACHER", "ADMIN"] } },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
-
-  const teachers: CoverageTeacher[] = teacherUsers.map((u) => ({
-    id: u.id,
-    name: u.name ?? u.id,
-  }));
-
-  if (!nextFlexDay) {
+  if (!board) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="text-2xl font-semibold text-gray-700 dark:text-gray-300">
@@ -98,105 +44,12 @@ export default async function AdminCoveragePage({
     );
   }
 
-  // Duty posts are a separate model from ClubSession on purpose — see the note on
-  // DutyPost in the schema. That is why nothing student-facing had to change to
-  // add them; it also means they have to be loaded and merged in explicitly here.
-  const dutyPosts = await prisma.dutyPost.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    include: {
-      assignments: {
-        where: { flexDayId: nextFlexDay.id },
-        select: { rotation: true, teacherId: true },
-      },
-    },
-  });
+  const { sessions: clubs, duties, flexDayLabel, staff } = board;
 
-
-  // Coverage is resolved here, on the server, through the same function finalize
-  // and the teacher dashboard use. It used to be re-derived inside the client
-  // component from owner/cosponsor fallbacks, which is why absences never showed
-  // up on this page: the copy never learned about them. One implementation only.
-  const clubs: CoverageClub[] = nextFlexDay.clubSessions.map((cs) => {
-    const ref = sessionRef(cs);
-    const assignments = Object.fromEntries(
-      cs.rotations.map((rotation) => {
-        const resolved = resolveSessionCoverage(
-          ref,
-          cs.rotationCoverage,
-          rotation,
-          cs.teacherAbsences
-        );
-        const row = cs.rotationCoverage.find((r) => r.rotation === rotation);
-        return [
-          rotation,
-          {
-            t1: resolved.primaryTeacherId,
-            t2: resolved.secondaryTeacherId,
-            t1Cleared: row?.primaryCleared ?? false,
-            t2Cleared: row?.secondaryCleared ?? false,
-            absentTeacherIds: cs.teacherAbsences
-              .filter((a) => a.rotation === rotation)
-              .map((a) => a.teacherId),
-          } satisfies ResolvedAssignment,
-        ];
-      })
-    ) as Partial<Record<RotationSlot, ResolvedAssignment>>;
-
-    return {
-      sessionId: cs.id,
-      // Lets the grid merge the per-rotation sessions of an unlinked club back
-      // into one row. Null for one-offs, which never merge with anything.
-      clubId: cs.club?.id ?? null,
-      // One-off sessions have no club; they are still real sessions in real rooms
-      // whose teacher can be absent or double-booked, so they belong here.
-      name: cs.title ?? cs.club?.name ?? "Session",
-      // Only used to label the "fall back to the owner/cosponsor" options.
-      ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
-      cosponsorName: cs.club?.cosponsor?.name ?? null,
-      roomName: resolveRoomName(cs),
-      rotations: cs.rotations,
-      studentCount: cs._count.signups,
-      assignments,
-    };
-  });
-
-  // Alphabetical, and only alphabetical.
-  //
-  // The grid below lines clubs up in rows across all three rotations, which only
-  // helps if a club sits in the same place every time you look. Ordering used to
-  // be "gaps first", computed per column, so a club running all three rotations
-  // appeared at three different heights and could not be followed across the
-  // page — the thing admin actually wants from this screen. Finding gaps is a
-  // filter now (see the Only show gaps toggle), not an ordering.
-  //
-  // Sorted here rather than in the client so the component stays a renderer, and
-  // in JS rather than by the database so both tabs order by the same rule —
-  // Postgres collation and localeCompare disagree on punctuation and case.
-  const byName = <T extends { name: string; id: string }>(a: T, b: T) =>
-    a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-
-  // Two sessions of the same club on one day are legitimate, so the name is not
-  // a unique key — the id tiebreak is what keeps their order stable across
-  // renders instead of flipping on every refresh.
-  clubs.sort((a, b) => byName({ ...a, id: a.sessionId }, { ...b, id: b.sessionId }));
-
-  const duties: CoverageDuty[] = dutyPosts.map((post) => ({
-    dutyPostId: post.id,
-    name: post.name,
-    location: post.location,
-    // Only the rotations the post actually needs staffing for get a slot, so an
-    // empty slot always means "needs someone" and never "not needed here".
-    rotations: post.requiredRotations,
-    assignments: Object.fromEntries(
-      post.requiredRotations.map((rotation) => [
-        rotation,
-        post.assignments.find((a) => a.rotation === rotation)?.teacherId ?? null,
-      ])
-    ) as Partial<Record<RotationSlot, string | null>>,
+  const teachers: CoverageTeacher[] = staff.map((u) => ({
+    id: u.id,
+    name: u.name ?? u.id,
   }));
-
-  duties.sort((a, b) => byName({ ...a, id: a.dutyPostId }, { ...b, id: b.dutyPostId }));
 
   // Teachers expected in two places at once. Computed here, on the server, from
   // the same resolution the cards are built from — so a clash can never be a
@@ -206,7 +59,7 @@ export default async function AdminCoveragePage({
   // an explicit decision with no owner or cosponsor to derive from, so it carries
   // no coverage rows and no absences — the assigned teacher goes straight into the
   // `ownerId` slot that resolveSessionCoverage reads as T1.
-  const dutyPlacements = dutyPosts.flatMap((post) =>
+  const dutyPlacements = board.dutyPosts.flatMap((post) =>
     post.assignments
       .filter((a) => a.teacherId !== null && post.requiredRotations.includes(a.rotation))
       .map((a) => ({
@@ -220,11 +73,11 @@ export default async function AdminCoveragePage({
   );
 
   const clashes = findTeacherClashes(
-    [...nextFlexDay.clubSessions.map(sessionPlacement), ...dutyPlacements],
+    [...board.clubSessions.map(sessionPlacement), ...dutyPlacements],
     ALL_ROTATIONS
   );
 
-  const teacherNameById = new Map(teacherUsers.map((u) => [u.id, u.name]));
+  const teacherNameById = new Map(staff.map((u) => [u.id, u.name]));
   const clashWarnings: CoverageClash[] = clashes.map((clash) => ({
     rotation: clash.rotation,
     teacherId: clash.teacherId,
@@ -249,18 +102,8 @@ export default async function AdminCoveragePage({
     // Distinct people, not clash rows: one teacher double-booked in two
     // rotations is one person to talk to, not two problems.
     doubleBookedTeachers: new Set(clashWarnings.map((c) => c.teacherId)).size,
-    hasDutyPosts: dutyPosts.length > 0,
+    hasDutyPosts: board.dutyPosts.length > 0,
   };
-
-  const flexDayLabel = nextFlexDay.label
-    ? nextFlexDay.label
-    : new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        timeZone: "UTC",
-      });
 
   // Who on this day cannot send their own invites yet.
   //
@@ -301,7 +144,7 @@ export default async function AdminCoveragePage({
         clubs={clubs}
         teachers={teachers}
         duties={duties}
-        flexDayId={nextFlexDay.id}
+        flexDayId={board.flexDay.id}
         clashes={clashWarnings}
         summary={summary}
         flexDayLabel={flexDayLabel}

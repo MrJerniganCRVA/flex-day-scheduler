@@ -11,8 +11,12 @@ const studentNav: NavItem[] = [
   { label: "Signups", href: "/student/my-signups" },
 ];
 
+// "Building" is the whole school's Flex Day, read-only — the Dashboard answers
+// where *you* are meant to be, and staff who run no clubs need the other
+// question answered. See src/app/(dashboard)/teacher/building/page.tsx.
 const teacherNav: NavItem[] = [
   { label: "Dashboard", href: "/teacher", exact: true },
+  { label: "Building", href: "/teacher/building" },
   { label: "Clubs", href: "/teacher/clubs" },
   { label: "New Session", href: "/teacher/sessions/new" },
 ];
