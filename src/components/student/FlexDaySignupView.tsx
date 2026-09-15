@@ -3,6 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import SignupButton from "@/components/signups/SignupButton";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
+import {
+  CLOSED,
+  startDeadlineCountdown,
+  type Countdown,
+} from "@/lib/signup-countdown";
 import type { RotationSlot } from "@prisma/client";
 
 export interface SessionViewData {
@@ -32,39 +37,6 @@ interface Props {
   flexDayLabel: string | null;
 }
 
-function formatCountdown(msRemaining: number): { text: string; urgency: "normal" | "warning" | "urgent" } {
-  if (msRemaining <= 0) return { text: "Signups closed", urgency: "urgent" };
-
-  const totalSeconds = Math.floor(msRemaining / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (totalSeconds < 300) {
-    return {
-      text: `Closes in ${minutes}m ${seconds}s`,
-      urgency: "urgent",
-    };
-  }
-  if (totalSeconds < 3600) {
-    return {
-      text: `Closes in ${minutes}m ${seconds}s`,
-      urgency: "warning",
-    };
-  }
-  if (totalSeconds < 86400) {
-    return {
-      text: `Closes in ${hours}h ${minutes}m`,
-      urgency: "normal",
-    };
-  }
-  return {
-    text: `Closes in ${days}d ${hours}h`,
-    urgency: "normal",
-  };
-}
-
 export default function FlexDaySignupView({
   sessions,
   deadlineISO,
@@ -73,27 +45,21 @@ export default function FlexDaySignupView({
   flexDayLabel,
 }: Props) {
   const [isPastDeadline, setIsPastDeadline] = useState(isPastDeadlineOnLoad);
-  const [countdown, setCountdown] = useState<{ text: string; urgency: "normal" | "warning" | "urgent" } | null>(null);
+  const [countdown, setCountdown] = useState<Countdown | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    const deadline = new Date(deadlineISO);
-
-    function tick() {
-      const msRemaining = deadline.getTime() - Date.now();
-      if (msRemaining <= 0) {
-        setIsPastDeadline(true);
-        setCountdown({ text: "Signups closed", urgency: "urgent" });
-        clearInterval(id);
-        return;
-      }
-      setCountdown(formatCountdown(msRemaining));
-    }
-
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [deadlineISO]);
+  useEffect(
+    () =>
+      startDeadlineCountdown({
+        deadline: new Date(deadlineISO),
+        onTick: setCountdown,
+        onExpired: () => {
+          setIsPastDeadline(true);
+          setCountdown(CLOSED);
+        },
+      }),
+    [deadlineISO]
+  );
 
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessions;
