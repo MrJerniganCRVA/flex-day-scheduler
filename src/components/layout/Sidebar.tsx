@@ -17,15 +17,16 @@ const teacherNav: NavItem[] = [
   { label: "New Session", href: "/teacher/sessions/new" },
 ];
 
+// Rooms + Duty Posts live behind Setup, and Users + Student Signups behind
+// People. Nine entries was more than the strip on a phone could show, and both
+// pairs are one job each: what the building has, and who is in it.
 const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", exact: true },
   { label: "Flex Days", href: "/admin/flex-days" },
   { label: "Coverage", href: "/admin/coverage" },
-  { label: "Rooms", href: "/admin/rooms" },
-  { label: "Duty Posts", href: "/admin/duty-posts" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Student Signups", href: "/admin/student-signups" },
   { label: "Clubs", href: "/admin/clubs" },
+  { label: "People", href: "/admin/people" },
+  { label: "Setup", href: "/admin/setup" },
   { label: "Student View", href: "/student", exact: true },
 ];
 

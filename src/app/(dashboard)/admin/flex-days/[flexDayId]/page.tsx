@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import TabNav from "@/components/admin/TabNav";
 import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
@@ -28,7 +29,7 @@ export default async function AdminFlexDayDetailPage({
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
   const { flexDayId } = await params;
-  const { tab = "sessions" } = await searchParams;
+  const { tab: rawTab } = await searchParams;
 
   const flexDay = await prisma.flexDay.findUnique({
     where: { id: flexDayId },
@@ -125,6 +126,12 @@ export default async function AdminFlexDayDetailPage({
       : []),
   ];
 
+  // Validated rather than trusted: an unknown ?tab= used to render the header
+  // and the tab strip over an empty page. Checked against `tabs` so that a
+  // ?tab=changes link to a day with nothing logged also falls back.
+  const tab =
+    rawTab && tabs.some((t) => t.key === rawTab) ? rawTab : "sessions";
+
   return (
     <div>
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -146,7 +153,7 @@ export default async function AdminFlexDayDetailPage({
                 side. Rearranging a whole student is the other screen's job, and
                 it is not findable from here without saying so. */}
             <Link
-              href="/admin/student-signups"
+              href="/admin/people?tab=signups"
               className="text-indigo-600 dark:text-indigo-400 hover:underline"
             >
               Edit one student&apos;s signups
@@ -186,22 +193,7 @@ export default async function AdminFlexDayDetailPage({
         </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
-        {tabs.map((t) => (
-          <Link
-            key={t.key}
-            href={`?tab=${t.key}`}
-            className={
-              tab === t.key
-                ? "px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px"
-                : "px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
+      <TabNav tabs={tabs} active={tab} className="mb-6" />
 
       {/* Sessions tab */}
       {tab === "sessions" && (

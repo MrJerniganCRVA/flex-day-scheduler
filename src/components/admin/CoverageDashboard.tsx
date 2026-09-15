@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
-import Link from "next/link";
+import TabNav from "@/components/admin/TabNav";
 import { useRouter } from "next/navigation";
 import StatTile from "@/components/admin/StatTile";
 import type { RotationSlot } from "@prisma/client";
@@ -809,7 +809,7 @@ export default function CoverageDashboard({
         {/* Duty posts are defined elsewhere but staffed here, so the page they
             are defined on has to be reachable from the page they are used on. */}
         <a
-          href="/admin/duty-posts"
+          href="/admin/setup?tab=duty-posts"
           className="shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
         >
           Manage duty posts →
@@ -901,65 +901,48 @@ export default function CoverageDashboard({
       )}
 
       {/* Only the columns are tabbed. Everything above stays put, so a clash or
-          an open building slot is visible whichever tab you are on. */}
-      <div className="flex shrink-0 items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 mb-4">
-        <div className="flex gap-1">
-          {TABS.map((t) => {
-            const gaps =
-              t.key === "clubs"
-                ? summary.sessionsNeedingTeacher
-                : summary.dutySlotsUnstaffed;
-            return (
-              <Link
-                key={t.key}
-                href={`?tab=${t.key}`}
-                aria-current={tab === t.key ? "page" : undefined}
-                className={
-                  tab === t.key
-                    ? "px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 -mb-px flex items-center gap-1.5"
-                    : "px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1.5"
-                }
+          an open building slot is visible whichever tab you are on. The badge is
+          only drawn when there is something to go and do, so the inactive tab is
+          worth a glance without being switched to. */}
+      <TabNav
+        active={tab}
+        tabs={TABS.map((t) => ({
+          ...t,
+          badge:
+            t.key === "clubs"
+              ? summary.sessionsNeedingTeacher
+              : summary.dutySlotsUnstaffed,
+        }))}
+        className="shrink-0 mb-4"
+        right={
+          /* Triage without reordering. The old layout floated gaps to the top of
+             each column, which is why nothing lined up across rotations; asking
+             "show me only the problems" as a filter answers the same need and
+             leaves every remaining row where it was. */
+          <div className="mb-1.5 flex shrink-0 items-center gap-3">
+            {clearedRowCount > 0 && (
+              <button
+                onClick={applyGapFilter}
+                title="Drop the rows you have just finished covering"
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
               >
-                {t.label}
-                {/* Only when there is something to go and do, so the inactive
-                    tab is worth a glance without being switched to. */}
-                {gaps > 0 && (
-                  <span className="rounded-full bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
-                    {gaps}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Triage without reordering. The old layout floated gaps to the top of
-            each column, which is why nothing lined up across rotations; asking
-            "show me only the problems" as a filter answers the same need and
-            leaves every remaining row where it was. */}
-        <div className="mb-1.5 flex shrink-0 items-center gap-3">
-          {clearedRowCount > 0 && (
-            <button
-              onClick={applyGapFilter}
-              title="Drop the rows you have just finished covering"
-              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              Hide {clearedRowCount} covered
-            </button>
-          )}
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={gapRows !== null}
-              onChange={(e) =>
-                e.target.checked ? applyGapFilter() : setGapRows(null)
-              }
-              className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-1 focus:ring-indigo-500"
-            />
-            Only show gaps
-          </label>
-        </div>
-      </div>
+                Hide {clearedRowCount} covered
+              </button>
+            )}
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={gapRows !== null}
+                onChange={(e) =>
+                  e.target.checked ? applyGapFilter() : setGapRows(null)
+                }
+                className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-1 focus:ring-indigo-500"
+              />
+              Only show gaps
+            </label>
+          </div>
+        }
+      />
 
       {/* At xl this row takes whatever height main has left, and the grid inside
           it is the only thing that scrolls — so the panel's bottom edge is the
@@ -1193,7 +1176,7 @@ export default function CoverageDashboard({
                       Hallways, the cafeteria, the front doors.
                     </p>
                     <a
-                      href="/admin/duty-posts"
+                      href="/admin/setup?tab=duty-posts"
                       className="mt-2 inline-block text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
                       Set them up →
