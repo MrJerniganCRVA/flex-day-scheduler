@@ -18,6 +18,14 @@ import { env } from "@/lib/env";
  * calendar, and no ACL sharing — which is also what stopped teachers being mailed
  * a "a calendar has been shared with you" subscription request.
  *
+ * **Nothing here is specific to club sessions.** `createEvent` and `syncEvent`
+ * take a summary, a body, a location and a rotation, which is all a duty post
+ * needs too — the cafeteria and the front doors get their events from the same
+ * two functions, with an empty attendee list. What differs between the two kinds
+ * of block is decided by their callers: src/lib/session-event.ts and
+ * src/lib/duty-event.ts write the text, src/lib/duty-calendar.ts and the finalize
+ * route decide whose calendar it lands on.
+ *
  * **One event covers exactly one rotation.** These functions used to take a
  * `rotations` array and span the earliest start to the latest end, so a session
  * linked across Flex 1 to Flex 3 produced a single 09:00–11:50 block. That
@@ -57,13 +65,16 @@ export function eventWindow(flexDayDate: Date, rotation: RotationSlot) {
 }
 
 /**
- * Create the event for one rotation of one session, on the organizing teacher's
- * calendar. Returns the event id to store on the `SessionCalendarEvent` row.
+ * Create the event for one block — one rotation of one session, or one rotation
+ * of one duty post — on the organizing teacher's calendar. Returns the event id
+ * to store on the `SessionCalendarEvent` or `DutyCalendarEvent` row.
  *
  * The organizer is not in `attendeeEmails`: Google adds the calendar's owner as
- * organizer itself, and listing them again produces a self-invite.
+ * organizer itself, and listing them again produces a self-invite. A duty block
+ * sent by the teacher standing the post therefore passes no attendees at all,
+ * which is the whole guest list it should have.
  */
-export async function createEventForSession(params: {
+export async function createEvent(params: {
   calendar: calendar_v3.Calendar;
   summary: string;
   description?: string;
@@ -134,7 +145,7 @@ export async function updateEventForSession(params: {
  * sendUpdates: "all" — a re-finalize is an announcement, and a changed room is
  * exactly what attendees need to be told about.
  */
-export async function syncEventForSession(params: {
+export async function syncEvent(params: {
   calendar: calendar_v3.Calendar;
   eventId: string;
   summary: string;
