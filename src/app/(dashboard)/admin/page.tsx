@@ -6,6 +6,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import { dayCoverage, rotationStats } from "@/lib/participation";
 import StatTile from "@/components/admin/StatTile";
+import MyFlexDay from "@/components/dashboard/MyFlexDay";
 
 export default async function AdminDashboard() {
   const session = await auth();
@@ -181,6 +182,27 @@ export default async function AdminDashboard() {
             Add one
           </Link>
         </div>
+      )}
+
+      {/* An admin is not only an organiser: they own clubs and get put on duty
+          posts like anyone else, and until this was here the only place to see
+          that was the teacher dashboard, which admins have no link to. Below the
+          school-wide card on purpose — the rollup is still what the page is for.
+          Passing the flex day down rather than letting it resolve its own keeps
+          both halves talking about the same day. */}
+      {nextFlexDay && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            My Flex Day
+          </h2>
+          <MyFlexDay
+            userId={session.user.id}
+            flexDayId={nextFlexDay.id}
+            newSessionHref="/teacher/sessions/new"
+            hideWhenEmpty
+            showDayHeader={false}
+          />
+        </section>
       )}
     </div>
   );
