@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import type { Role } from "@prisma/client";
+import { getDashboardPath } from "@/lib/auth-helpers";
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -53,17 +54,6 @@ export default auth((req) => {
 
   return NextResponse.next();
 });
-
-function getDashboardPath(role?: Role): string {
-  switch (role) {
-    case "ADMIN":
-      return "/admin";
-    case "TEACHER":
-      return "/teacher";
-    default:
-      return "/student";
-  }
-}
 
 export const config = {
   matcher: [

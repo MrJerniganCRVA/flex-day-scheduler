@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   canRecordAttendance,
+  getDashboardPath,
   isClubManager,
   isTeacherOrAdmin,
 } from "./auth-helpers";
@@ -164,5 +165,17 @@ describe("isTeacherOrAdmin", () => {
     expect(isTeacherOrAdmin("TEACHER")).toBe(true);
     expect(isTeacherOrAdmin("ADMIN")).toBe(true);
     expect(isTeacherOrAdmin("STUDENT")).toBe(false);
+  });
+});
+
+describe("getDashboardPath", () => {
+  it("sends each role to its own dashboard", () => {
+    expect(getDashboardPath("ADMIN")).toBe("/admin");
+    expect(getDashboardPath("TEACHER")).toBe("/teacher");
+    expect(getDashboardPath("STUDENT")).toBe("/student");
+  });
+
+  it("falls back to the student dashboard when the role is unknown", () => {
+    expect(getDashboardPath(undefined)).toBe("/student");
   });
 });

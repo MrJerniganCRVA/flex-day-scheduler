@@ -1,4 +1,3 @@
-import { calendar_v3 } from "googleapis";
 import type { RotationSlot } from "@prisma/client";
 import {
   addAttendeeToEvent,
@@ -6,7 +5,7 @@ import {
   removeAttendeeFromEvent,
   updateEventForSession,
 } from "@/lib/google-calendar";
-import { getCalendarClientForUser } from "@/lib/google-oauth";
+import { makeClientCache } from "@/lib/calendar-sender";
 import { sessionEventTitle } from "@/lib/session-event";
 import prisma from "@/lib/prisma";
 
@@ -103,15 +102,7 @@ export async function applyAttendeeOps(
     ...ops.filter((o) => o.op === "add"),
   ];
 
-  const clients = new Map<string, Promise<calendar_v3.Calendar | null>>();
-  const clientFor = (userId: string) => {
-    let pending = clients.get(userId);
-    if (!pending) {
-      pending = getCalendarClientForUser(userId);
-      clients.set(userId, pending);
-    }
-    return pending;
-  };
+  const clientFor = makeClientCache();
 
   for (const op of ordered) {
     const calendar = op.ownerId ? await clientFor(op.ownerId) : null;
@@ -154,7 +145,7 @@ export async function withdrawEvents(
   events: SessionEventRef[],
   context: string
 ): Promise<void> {
-  const clients = new Map<string, Promise<calendar_v3.Calendar | null>>();
+  const clientFor = makeClientCache();
 
   for (const event of events) {
     if (!event.ownerId) {
@@ -164,12 +155,7 @@ export async function withdrawEvents(
       continue;
     }
 
-    let pending = clients.get(event.ownerId);
-    if (!pending) {
-      pending = getCalendarClientForUser(event.ownerId);
-      clients.set(event.ownerId, pending);
-    }
-    const calendar = await pending;
+    const calendar = await clientFor(event.ownerId);
 
     if (!calendar) {
       console.error(
@@ -209,15 +195,7 @@ export async function resyncSessionEvents(params: {
   context: string;
 }): Promise<void> {
   const live = new Set(params.rotations);
-  const clients = new Map<string, Promise<calendar_v3.Calendar | null>>();
-  const clientFor = (userId: string) => {
-    let pending = clients.get(userId);
-    if (!pending) {
-      pending = getCalendarClientForUser(userId);
-      clients.set(userId, pending);
-    }
-    return pending;
-  };
+  const clientFor = makeClientCache();
 
   const stale = params.events.filter((e) => !live.has(e.rotation));
   if (stale.length > 0) {

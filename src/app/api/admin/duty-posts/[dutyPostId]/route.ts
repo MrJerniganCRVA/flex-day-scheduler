@@ -3,9 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { updateDutyPostSchema } from "@/lib/validations";
-import { deleteEvent } from "@/lib/google-calendar";
-import { makeClientCache } from "@/lib/calendar-sender";
-import { rotationName } from "@/lib/session-event";
+import { withdrawEvents } from "@/lib/session-calendar";
 
 /** ADMIN only — see the note in ../route.ts on why this is not left to middleware. */
 async function requireAdmin() {
@@ -109,25 +107,7 @@ export async function DELETE(
   // After the delete, and never thrown from: the post is already gone, and the
   // calendar is a copy of a decision made in the database. A failure is logged
   // with the event id so it can be removed by hand.
-  if (liveEvents.length > 0) {
-    const clientFor = makeClientCache();
-    for (const event of liveEvents) {
-      const label = `${dutyPost.name} duty — ${rotationName(event.rotation)}`;
-      const calendar = event.ownerId ? await clientFor(event.ownerId) : null;
-      if (!calendar) {
-        console.error(
-          `Cannot cancel the ${label} event ${event.googleEventId} after deleting the post: nobody can send from its calendar any more, so it may linger there.`
-        );
-        continue;
-      }
-      await deleteEvent(calendar, event.googleEventId, "all").catch((err) =>
-        console.error(
-          `Failed to cancel the ${label} event ${event.googleEventId} after deleting the post:`,
-          err
-        )
-      );
-    }
-  }
+  await withdrawEvents(liveEvents, `Deleted the ${dutyPost.name} duty post`);
 
   return NextResponse.json({
     ok: true,

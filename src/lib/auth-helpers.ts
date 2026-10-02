@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import type { Role } from "@prisma/client";
 
 /**
  * Pure authorization predicates. Deliberately free of any dependency on the
@@ -65,4 +65,16 @@ export function canRecordAttendance(
   if (session.oneOffOwnerId === userId) return true;
   if (coverageTeacherIds.has(userId)) return true;
   return session.club ? isClubManager(session.club, userId, role) : false;
+}
+
+/** Where each role lands after signing in, or on visiting "/". */
+export function getDashboardPath(role?: Role): string {
+  switch (role) {
+    case "ADMIN":
+      return "/admin";
+    case "TEACHER":
+      return "/teacher";
+    default:
+      return "/student";
+  }
 }
