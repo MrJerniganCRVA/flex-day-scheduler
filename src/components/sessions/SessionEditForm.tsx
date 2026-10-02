@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+import { rotationLabel } from "@/lib/session-event";
 
 interface SiblingSession {
   id: string;
@@ -208,7 +209,7 @@ export default function SessionEditForm({
           >
             {splitting
               ? "Splitting…"
-              : `Split ${initialRotations.map((r) => ROTATION_LABELS[r]).join(" + ")} into separate sessions`}
+              : `Split ${rotationLabel(initialRotations)} into separate sessions`}
           </button>
           {splitError && (
             <p className="mt-2 text-xs text-red-600 dark:text-red-400">

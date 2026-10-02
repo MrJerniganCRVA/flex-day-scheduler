@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { updateClubSessionPerDaySchema } from "@/lib/validations";
+import { updateClubSessionSchema } from "@/lib/validations";
 import {
   SESSION_EVENTS_SELECT,
   withdrawEvents,
@@ -59,7 +59,7 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const parsed = updateClubSessionPerDaySchema.safeParse(body);
+  const parsed = updateClubSessionSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid input", details: parsed.error.flatten() },

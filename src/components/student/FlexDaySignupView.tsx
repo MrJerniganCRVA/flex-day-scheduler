@@ -10,6 +10,7 @@ import {
 } from "@/lib/signup-countdown";
 import type { RotationSlot } from "@prisma/client";
 import { formatFlexDayDate } from "@/lib/flex-day-date";
+import { rotationLabel } from "@/lib/session-event";
 
 export interface SessionViewData {
   id: string;
@@ -221,7 +222,7 @@ export default function FlexDaySignupView({
                           </span>
                           {cs.spansRotations && (
                             <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              Spans {cs.rotations.map((r) => ROTATION_LABELS[r]).join(" + ")}
+                              Spans {rotationLabel(cs.rotations)}
                             </span>
                           )}
                         </div>

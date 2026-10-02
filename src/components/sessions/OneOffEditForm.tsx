@@ -28,7 +28,7 @@ const inputClass = selectClass;
 /**
  * Rotations, room and capacity for a session with no club.
  *
- * The title is deliberately not editable here: `updateClubSessionPerDaySchema`
+ * The title is deliberately not editable here: `updateClubSessionSchema`
  * does not accept one, and a mislabeled one-off can now simply be removed from
  * the Flex Day page instead.
  */

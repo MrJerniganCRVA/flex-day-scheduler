@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { Role, RotationSlot } from "@prisma/client";
 
+/** One of the three Flex blocks. */
+export const rotationSlot = z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]);
+
 export const createFlexDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
   label: z.string().max(100).optional(),
@@ -17,7 +20,7 @@ export const createClubSchema = z.object({
   maxCapacity: z.number().int().positive().min(1).max(1000),
   defaultRoomId: z.string().cuid().optional(),
   defaultRotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required"),
   // Admin only — ignored for teachers, who always own the clubs they create.
   // Explicit null means "no teacher assigned": an admin-managed club, whose
@@ -34,7 +37,7 @@ export const updateClubSchema = z.object({
   maxCapacity: z.number().int().positive().min(1).max(1000).optional(),
   defaultRoomId: z.string().cuid().optional(),
   defaultRotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required")
     .optional(),
   // Admin can reassign ownership, or clear it with an explicit null to make the
@@ -47,7 +50,7 @@ export const updateClubSchema = z.object({
 
 export const updateClubSessionSchema = z.object({
   rotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required")
     .optional(),
   roomOverrideId: z.string().cuid().nullable().optional(),
@@ -186,7 +189,7 @@ export const createDutyPostSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   location: z.string().trim().max(100).optional(),
   requiredRotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required"),
 });
 
@@ -194,7 +197,7 @@ export const updateDutyPostSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100).optional(),
   location: z.string().trim().max(100).nullable().optional(),
   requiredRotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required")
     .optional(),
   isActive: z.boolean().optional(),
@@ -207,7 +210,7 @@ export const updateDutyPostSchema = z.object({
 export const dutyAssignmentSchema = z.object({
   dutyPostId: z.string().cuid(),
   flexDayId: z.string().cuid(),
-  rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]),
+  rotation: rotationSlot,
   teacherId: z.string().cuid().nullable(),
 });
 
@@ -226,19 +229,10 @@ export const createOneOffSchema = z.object({
   flexDayId: z.string().cuid(),
   title: z.string().min(1).max(100),
   rotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1, "At least one rotation is required"),
   roomOverrideId: z.string().cuid(),
   capacity: z.number().int().positive().min(1).max(1000),
-});
-
-export const updateClubSessionPerDaySchema = z.object({
-  rotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
-    .min(1, "At least one rotation is required")
-    .optional(),
-  roomOverrideId: z.string().cuid().nullable().optional(),
-  capacityOverride: z.number().int().positive().min(1).nullable().optional(),
 });
 
 /**
@@ -250,7 +244,7 @@ export const updateClubSessionPerDaySchema = z.object({
 export const sessionAbsenceSchema = z.object({
   teacherId: z.string().cuid().optional(),
   rotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .array(rotationSlot)
     .min(1)
     .optional(),
   absent: z.boolean(),

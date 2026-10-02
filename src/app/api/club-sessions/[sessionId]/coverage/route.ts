@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { rotationSlot } from "@/lib/validations";
 
 /**
  * Three distinct things can be said about each slot, so the wire format carries
@@ -22,7 +23,7 @@ import { z } from "zod";
  */
 const patchSchema = z
   .object({
-    rotation: z.enum(["FLEX_1", "FLEX_2", "FLEX_3"]),
+    rotation: rotationSlot,
     primary: z.string().nullable().optional(),
     primaryCleared: z.boolean().optional(),
     secondary: z.string().nullable().optional(),

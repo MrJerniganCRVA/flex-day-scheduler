@@ -1,5 +1,5 @@
 import type { RotationSlot } from "@prisma/client";
-import { ALL_ROTATIONS } from "@/types";
+import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 
 /**
  * What a session's calendar invite says, and where the room comes from.
@@ -60,7 +60,7 @@ export function sessionDisplayName(session: {
 
 /** "FLEX_1" -> "Flex 1". The spelling every invite and screen uses. */
 export function rotationName(rotation: RotationSlot): string {
-  return rotation.replace("FLEX_", "Flex ");
+  return ROTATION_LABELS[rotation];
 }
 
 /**
@@ -70,7 +70,7 @@ export function rotationName(rotation: RotationSlot): string {
  * a session whose rotations were saved out of order does not read "Flex 2 +
  * Flex 1".
  *
- * No longer used by the invite itself, which is per-rotation. Kept for the
+ * The invite itself is per-rotation and does not use this; it is for the
  * screens that describe a whole session at a glance.
  */
 export function rotationLabel(rotations: RotationSlot[]): string {

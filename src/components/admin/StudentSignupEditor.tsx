@@ -7,6 +7,7 @@ import type {
   StudentScheduleDay,
   StudentScheduleLookup,
 } from "@/lib/student-schedule";
+import { rotationLabel } from "@/lib/session-event";
 
 /**
  * Look a student up by email and rewrite their placement across every Flex Day
@@ -446,7 +447,7 @@ function DayCard({
                   <option key={s.id} value={s.id}>
                     {s.sessionName} ({s.enrolledCount}/{s.capacity})
                     {s.rotations.length > 1
-                      ? ` — ${s.rotations.map((r) => ROTATION_LABELS[r]).join(" + ")}`
+                      ? ` — ${rotationLabel(s.rotations)}`
                       : ""}
                   </option>
                 ))}
@@ -462,7 +463,7 @@ function DayCard({
               )}
               {spans && (
                 <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                  spans {selected!.rotations.map((r) => ROTATION_LABELS[r]).join(" + ")}
+                  spans {rotationLabel(selected!.rotations)}
                 </span>
               )}
             </div>
