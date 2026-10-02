@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import SessionEditForm from "@/components/sessions/SessionEditForm";
 import { isClubManager } from "@/lib/auth-helpers";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function EditSessionPage({
   params,
@@ -51,13 +52,7 @@ export default async function EditSessionPage({
       </h1>
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
         {clubSession.club?.name ?? "Session"} —{" "}
-        {new Date(clubSession.flexDay.date).toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        })}
+        {formatFlexDayDate(clubSession.flexDay.date)}
       </p>
 
       <SessionEditForm

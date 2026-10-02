@@ -7,6 +7,7 @@ import DeleteUserButton from "@/components/admin/DeleteUserButton";
 import ImportStudentsPanel from "@/components/admin/ImportStudentsPanel";
 import StudentSignupEditor from "@/components/admin/StudentSignupEditor";
 import TabNav from "@/components/admin/TabNav";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 /**
  * Everyone in the system, plus the one screen that edits a single student's
@@ -64,8 +65,7 @@ export default async function AdminPeoplePage({
   let nextFlexDay: { id: string; date: Date } | null = null;
 
   if (tab === "students") {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = startOfTodayUtc();
     nextFlexDay = await prisma.flexDay.findFirst({
       where: { date: { gte: today }, isActive: true },
       orderBy: { date: "asc" },

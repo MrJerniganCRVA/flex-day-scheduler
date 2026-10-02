@@ -8,6 +8,7 @@ import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function AdminClubDetailPage({
   params,
@@ -137,13 +138,7 @@ export default async function AdminClubDetailPage({
             >
               <div className="mb-1">
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {new Date(daySessions[0].flexDay.date).toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                    timeZone: "UTC",
-                  })}
+                  {formatFlexDayDate(daySessions[0].flexDay.date)}
                 </span>
                 {daySessions[0].flexDay.label && (
                   <div className="text-xs text-gray-400 dark:text-gray-500">

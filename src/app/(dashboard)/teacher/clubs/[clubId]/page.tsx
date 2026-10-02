@@ -7,6 +7,7 @@ import { isClubManager } from "@/lib/auth-helpers";
 import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export default async function ClubDetailPage({
   params,
@@ -18,8 +19,7 @@ export default async function ClubDetailPage({
 
   const { clubId } = await params;
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const club = await prisma.club.findUnique({
     where: { id: clubId },

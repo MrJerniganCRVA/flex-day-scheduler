@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import OneOffEditForm from "@/components/sessions/OneOffEditForm";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 /**
  * Edit a one-off session — one with no club, created through
@@ -70,13 +71,7 @@ export default async function EditOneOffSessionPage({
       </h1>
       <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
         {clubSession.title ?? "Session"} —{" "}
-        {new Date(clubSession.flexDay.date).toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        })}
+        {formatFlexDayDate(clubSession.flexDay.date)}
         {clubSession.oneOffOwner && ` · ${clubSession.oneOffOwner.name}`}
       </p>
 

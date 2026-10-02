@@ -7,13 +7,13 @@ import type { RotationSlot } from "@prisma/client";
 import { dayCoverage, rotationStats } from "@/lib/participation";
 import StatTile from "@/components/admin/StatTile";
 import MyFlexDay from "@/components/dashboard/MyFlexDay";
+import { startOfTodayUtc, formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function AdminDashboard() {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const [nextFlexDay, totalStudents] = await Promise.all([
     prisma.flexDay.findFirst({
@@ -64,13 +64,7 @@ export default async function AdminDashboard() {
                 Next Flex Day
               </p>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                  timeZone: "UTC",
-                })}
+                {formatFlexDayDate(nextFlexDay.date)}
               </h2>
               {nextFlexDay.label && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{nextFlexDay.label}</p>

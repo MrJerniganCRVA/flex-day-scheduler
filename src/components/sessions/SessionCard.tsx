@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@/types";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 interface ConflictDetail {
   studentName: string;
@@ -207,13 +208,7 @@ export default function SessionCard({
     router.refresh();
   }
 
-  const dateLabel = new Date(flexDayDate).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  const dateLabel = formatFlexDayDate(flexDayDate);
 
   const displayCapacity = initialCapacityOverride ?? maxCapacity;
   const showLinkSection = rotations.length === 1 && siblingSessionOptions.length > 0;

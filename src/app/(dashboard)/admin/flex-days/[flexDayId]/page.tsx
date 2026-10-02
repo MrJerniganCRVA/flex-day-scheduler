@@ -19,6 +19,7 @@ import {
   resolveSessionCoverage,
   sessionRef,
 } from "@/lib/coverage";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function AdminFlexDayDetailPage({
   params,
@@ -140,13 +141,7 @@ export default async function AdminFlexDayDetailPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             {flexDay.label ??
-              new Date(flexDay.date).toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                timeZone: "UTC",
-              })}
+              formatFlexDayDate(flexDay.date)}
           </h1>
           <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {flexDay.clubSessions.length} sessions · {totalSignups} total signups

@@ -7,6 +7,7 @@ import {
   toStudentRosterCsv,
   type StudentRosterStudent,
 } from "@/lib/student-roster-export";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 /**
  * GET /api/admin/students/export — every student the app knows about.
@@ -41,10 +42,8 @@ export async function GET(req: NextRequest) {
     }
   } else {
     // Same "next upcoming day" query as the admin students tab and the three
-    // dashboards. UTC midnight matters: FlexDay.date is a @db.Date, so a local
-    // midnight would drop today's day west of UTC.
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // dashboards.
+    const today = startOfTodayUtc();
     flexDay = await prisma.flexDay.findFirst({
       where: { date: { gte: today }, isActive: true },
       orderBy: { date: "asc" },

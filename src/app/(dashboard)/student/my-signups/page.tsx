@@ -11,6 +11,7 @@ import {
   isPastSignupDeadline,
   schoolTimeZone,
 } from "@/lib/flex-day-utils";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 /** Shape of one row rendered by SignupTable, as selected by the query below. */
 type SignupRow = Awaited<ReturnType<typeof fetchSignups>>[number];
@@ -172,8 +173,7 @@ export default async function MySignupsPage() {
 
   const signups = await fetchSignups(session.user.id);
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const upcoming = signups.filter(
     (s) => new Date(s.clubSession.flexDay.date) >= today

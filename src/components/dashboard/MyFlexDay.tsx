@@ -14,6 +14,7 @@ import {
 import { mySessionsFilter } from "@/lib/my-sessions";
 import { sortByLastName } from "@/lib/student-name";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc, formatFlexDayDate } from "@/lib/flex-day-date";
 
 /**
  * One person's own Flex Day: the rotations they are expected in, the duty posts
@@ -62,8 +63,7 @@ async function loadFlexDay(userId: string, flexDayId?: string) {
     });
   }
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   return prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
@@ -152,8 +152,7 @@ export default async function MyFlexDay({
     );
   }
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
   const isToday = nextFlexDay.date.getTime() === today.getTime();
 
   const hasSessions = nextFlexDay.clubSessions.length > 0;
@@ -178,13 +177,7 @@ export default async function MyFlexDay({
               {showDayHeader && (
                 <>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                    {new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    })}
+                    {formatFlexDayDate(nextFlexDay.date)}
                   </h2>
                   {nextFlexDay.label && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">

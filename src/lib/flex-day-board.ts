@@ -12,6 +12,7 @@ import type {
   BoardSession,
   ResolvedAssignment,
 } from "@/lib/board-rows";
+import { startOfTodayUtc, formatFlexDayDate } from "@/lib/flex-day-date";
 
 /**
  * "What is happening on the next Flex Day, where, and who is in the room."
@@ -87,8 +88,7 @@ type RawClubSession = RawFlexDay["clubSessions"][number];
 type RawDutyPost = Awaited<ReturnType<typeof findDutyPosts>>[number];
 
 function findNextFlexDay() {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   return prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
@@ -226,13 +226,7 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
 
   const flexDayLabel = nextFlexDay.label
     ? nextFlexDay.label
-    : new Date(nextFlexDay.date).toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        timeZone: "UTC",
-      });
+    : formatFlexDayDate(nextFlexDay.date);
 
   return {
     flexDay: {

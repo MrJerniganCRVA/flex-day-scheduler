@@ -1,5 +1,6 @@
 import SessionCard from "@/components/sessions/SessionCard";
 import type { RotationSlot } from "@/types";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 interface Signup {
   id: string;
@@ -41,13 +42,7 @@ export default function FlexDaySessionGroup({ clubId, sessions }: Props) {
   if (sessions.length === 0) return null;
   const first = sessions[0];
 
-  const dateLabel = new Date(first.flexDayDate).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  const dateLabel = formatFlexDayDate(first.flexDayDate);
 
   return (
     <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-5">

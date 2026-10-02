@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 interface FlexDay {
   id: string;
@@ -145,13 +146,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
         >
           {flexDays.map((fd) => (
             <option key={fd.id} value={fd.id}>
-              {new Date(fd.date).toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                timeZone: "UTC",
-              })}
+              {formatFlexDayDate(fd.date, "short")}
               {fd.label ? ` — ${fd.label}` : ""}
             </option>
           ))}

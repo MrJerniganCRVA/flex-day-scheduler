@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteFlexDayButton from "@/components/flex-days/DeleteFlexDayButton";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc, formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function AdminFlexDaysPage({
   searchParams,
@@ -14,8 +15,7 @@ export default async function AdminFlexDaysPage({
   if (!session?.user || session.user.role !== "ADMIN") redirect("/unauthorized");
 
   const { showPast } = await searchParams;
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const [flexDays, totalStudents] = await Promise.all([
     prisma.flexDay.findMany({
@@ -112,13 +112,7 @@ export default async function AdminFlexDaysPage({
               {flexDaysWithStats.map((fd) => (
                 <tr key={fd.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-200 font-medium">
-                    {new Date(fd.date).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    })}
+                    {formatFlexDayDate(fd.date, "short")}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{fd._count.clubSessions}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">

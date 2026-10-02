@@ -10,13 +10,13 @@ import type { SessionViewData } from "@/components/student/FlexDaySignupView";
 import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export default async function StudentDashboard() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   // Every upcoming day, not just the nearest one.
   //

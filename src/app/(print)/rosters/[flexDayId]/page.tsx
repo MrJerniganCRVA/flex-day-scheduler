@@ -8,6 +8,7 @@ import { mySessionsFilter } from "@/lib/my-sessions";
 import { sortByLastName } from "@/lib/student-name";
 import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
 import PrintButton from "@/components/print/PrintButton";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 /**
  * A printable roster for one person's own Flex Day — one page per rotation.
@@ -84,13 +85,7 @@ export default async function PrintRostersPage({
 
   if (!flexDay) notFound();
 
-  const dateLabel = new Date(flexDay.date).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const dateLabel = formatFlexDayDate(flexDay.date);
 
   /**
    * One printed page per session, in timetable order.

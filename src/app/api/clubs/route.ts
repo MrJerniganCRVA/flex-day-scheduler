@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { createClubSchema } from "@/lib/validations";
 import { createAutoScheduledSessions, getDefaultRoomConflictIds } from "@/lib/scheduling";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export async function GET() {
   const session = await auth();
@@ -114,8 +115,7 @@ export async function POST(request: NextRequest) {
 
   // Auto-schedule club on all future flex days with default rotations
   if (clubData.defaultRotations && clubData.defaultRotations.length > 0) {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = startOfTodayUtc();
 
     const futureFlexDays = await prisma.flexDay.findMany({
       where: {

@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import OneOffForm from "@/components/sessions/OneOffForm";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export default async function NewSessionPage({
   searchParams,
@@ -14,8 +15,7 @@ export default async function NewSessionPage({
 
   const { flexDayId: preselectedFlexDayId } = await searchParams;
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const flexDays = await prisma.flexDay.findMany({
     where: { isActive: true, date: { gte: today } },

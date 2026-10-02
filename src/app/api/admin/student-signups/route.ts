@@ -26,6 +26,7 @@ import {
 } from "@/lib/tx-retry";
 import { sessionDisplayName } from "@/lib/session-event";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 /**
  * The admin "edit a student's signups" screen.
@@ -47,13 +48,6 @@ import { sessionCapacity } from "@/lib/participation";
  */
 
 const PAST_DAYS_SHOWN = 5;
-
-/** Midnight UTC today, the convention every other date query in the app uses. */
-function startOfToday(): Date {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  return today;
-}
 
 const sessionSelect = {
   id: true,
@@ -125,7 +119,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const today = startOfToday();
+  const today = startOfTodayUtc();
 
   const [editableDays, pastDays, signups] = await Promise.all([
     prisma.flexDay.findMany({
@@ -286,7 +280,7 @@ export async function POST(request: NextRequest) {
             throw tagged("STUDENT_NOT_FOUND");
           }
 
-          const today = startOfToday();
+          const today = startOfTodayUtc();
 
           for (const day of input.days) {
             const flexDay = await tx.flexDay.findUnique({

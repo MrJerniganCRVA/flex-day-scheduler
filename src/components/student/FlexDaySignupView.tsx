@@ -9,6 +9,7 @@ import {
   type Countdown,
 } from "@/lib/signup-countdown";
 import type { RotationSlot } from "@prisma/client";
+import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 export interface SessionViewData {
   id: string;
@@ -74,13 +75,7 @@ export default function FlexDaySignupView({
   }, [sessions, searchQuery]);
 
   const flexDayDate = new Date(flexDayDateISO);
-  const formattedDate = flexDayDate.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const formattedDate = formatFlexDayDate(flexDayDate);
 
   const urgencyClass =
     isPastDeadline || countdown?.urgency === "urgent"

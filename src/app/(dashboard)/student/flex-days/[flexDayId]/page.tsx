@@ -10,6 +10,7 @@ import type { SessionViewData } from "@/components/student/FlexDaySignupView";
 import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc, formatFlexDayDate } from "@/lib/flex-day-date";
 
 export default async function StudentFlexDayPage({
   params,
@@ -54,8 +55,7 @@ export default async function StudentFlexDayPage({
   // that is no longer happening.
   if (!flexDay || !flexDay.isActive) notFound();
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
   const upcomingFlexDays = await prisma.flexDay.findMany({
     where: { isActive: true, date: { gte: today } },
     orderBy: { date: "asc" },
@@ -108,13 +108,7 @@ export default async function StudentFlexDayPage({
     <div>
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
         {flexDay.label ??
-          new Date(flexDay.date).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            timeZone: "UTC",
-          })}
+          formatFlexDayDate(flexDay.date)}
       </h1>
       <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
         Select a club for each rotation below.

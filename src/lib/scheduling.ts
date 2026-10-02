@@ -7,6 +7,7 @@ import {
   type ReconcileReport,
   type ReconcileSkip,
 } from "@/lib/reconcile";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export {
   desiredSessionShapes,
@@ -141,8 +142,7 @@ export async function reconcileFutureSessions(club: {
   defaultRotations: RotationSlot[];
   linkedRotations: boolean;
 }): Promise<ReconcileReport> {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfTodayUtc();
 
   const flexDays = await prisma.flexDay.findMany({
     where: { date: { gte: today }, isActive: true },

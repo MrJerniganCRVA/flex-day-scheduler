@@ -22,6 +22,7 @@ import {
 } from "@/lib/session-calendar";
 import { sessionDisplayName } from "@/lib/session-event";
 import { sessionCapacity } from "@/lib/participation";
+import { startOfTodayUtc } from "@/lib/flex-day-date";
 
 export { RequiredMemberConflictError } from "@/lib/required-members";
 export type { EnrollmentPlan } from "@/lib/required-members";
@@ -65,13 +66,6 @@ function toTarget(s: LoadedSession): EnrollTargetSession {
     capacity: sessionCapacity(s),
     enrolledCount: s._count.signups,
   };
-}
-
-/** Start of today in UTC — flex day dates are stored as @db.Date. */
-function startOfToday(): Date {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
 }
 
 /**
@@ -157,7 +151,7 @@ export async function enrollRequiredMembers(params: {
 
   if (studentIds.length === 0) return null;
 
-  const today = startOfToday();
+  const today = startOfTodayUtc();
 
   for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt++) {
     try {
@@ -300,7 +294,7 @@ export async function dropFutureForcedSignups(params: {
   studentId: string;
 }): Promise<{ removed: number; calendarOps: AttendeeOp[] }> {
   const { clubId, studentId } = params;
-  const today = startOfToday();
+  const today = startOfTodayUtc();
 
   const doomed = await prisma.signup.findMany({
     where: {
