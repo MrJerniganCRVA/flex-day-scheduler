@@ -4,17 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
+import type { RoomOption } from "@/types";
 
 interface Teacher {
   id: string;
   name: string;
   email: string;
-}
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
 }
 
 /** A future session that couldn't be reshaped when the club's rotations changed. */
@@ -108,7 +103,7 @@ export default function ClubForm({
     if (cosponsorId && cosponsorId === ownerId) setCosponsorId("");
   }, [ownerId, cosponsorId]);
 
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

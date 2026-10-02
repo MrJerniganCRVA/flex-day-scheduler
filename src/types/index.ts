@@ -30,3 +30,23 @@ export const SHORT_ROTATION_LABELS: Record<RotationSlot, string> = {
   FLEX_2: "F2",
   FLEX_3: "F3",
 };
+
+/** A room as the room pickers receive it from /api/rooms. */
+export interface RoomOption {
+  id: string;
+  name: string;
+  capacity: number;
+}
+
+/** Another single-rotation session of the same club that this one can link with. */
+export interface SiblingSession {
+  id: string;
+  rotations: RotationSlot[];
+}
+
+/** A student who would be double-booked by a link, as the link route reports it. */
+export interface ConflictDetail {
+  studentName: string;
+  rotation: RotationSlot;
+  conflictingClub: string;
+}

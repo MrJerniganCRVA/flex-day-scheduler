@@ -5,17 +5,12 @@ import { useRouter } from "next/navigation";
 import { ROTATION_LABELS, ALL_ROTATIONS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import { formatFlexDayDate } from "@/lib/flex-day-date";
+import type { RoomOption } from "@/types";
 
 interface FlexDay {
   id: string;
   date: Date | string;
   label: string | null;
-}
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
 }
 
 interface Props {
@@ -39,7 +34,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
   const [roomOverrideId, setRoomOverrideId] = useState("");
   const [capacity, setCapacity] = useState<number | "">(25);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +42,7 @@ export default function OneOffForm({ flexDays, preselectedFlexDayId }: Props) {
   useEffect(() => {
     fetch("/api/rooms")
       .then((r) => r.ok ? r.json() : [])
-      .then((data: Room[]) => {
+      .then((data: RoomOption[]) => {
         setRooms(data);
         if (data.length > 0) setRoomOverrideId(data[0].id);
       })

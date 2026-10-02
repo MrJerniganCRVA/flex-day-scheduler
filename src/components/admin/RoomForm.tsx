@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
-}
+import type { RoomOption } from "@/types";
 
 interface Props {
-  room?: Room; // If provided, we're editing; otherwise creating
+  room?: RoomOption; // If provided, we're editing; otherwise creating
   onSuccess: () => void;
   onCancel: () => void;
 }

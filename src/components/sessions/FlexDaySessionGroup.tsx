@@ -1,15 +1,10 @@
 import SessionCard from "@/components/sessions/SessionCard";
-import type { RotationSlot } from "@/types";
+import type { RotationSlot, SiblingSession } from "@/types";
 import { formatFlexDayDate } from "@/lib/flex-day-date";
 
 interface Signup {
   id: string;
   student: { id: string; name: string; email: string };
-}
-
-interface SiblingSession {
-  id: string;
-  rotations: RotationSlot[];
 }
 
 export interface FlexDaySessionData {

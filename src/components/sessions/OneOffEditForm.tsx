@@ -4,18 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
-}
+import type { RoomOption } from "@/types";
 
 interface Props {
   sessionId: string;
   flexDayId: string;
   initialRotations: RotationSlot[];
-  currentRoom: Room | null;
+  currentRoom: RoomOption | null;
   initialCapacity: number | null;
   returnPath?: string;
 }
@@ -46,7 +41,7 @@ export default function OneOffEditForm({
   const [rotations, setRotations] = useState<RotationSlot[]>(initialRotations);
   const [roomOverrideId, setRoomOverrideId] = useState(currentRoom?.id ?? "");
   const [capacity, setCapacity] = useState<number | "">(initialCapacity ?? "");
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +57,7 @@ export default function OneOffEditForm({
     let cancelled = false;
     fetch(`/api/rooms?${query.toString()}`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: Room[]) => {
+      .then((data: RoomOption[]) => {
         if (!cancelled) setRooms(data);
       })
       .catch(() => {})

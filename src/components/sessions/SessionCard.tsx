@@ -3,32 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
-import type { RotationSlot } from "@/types";
+import type { RotationSlot, RoomOption, SiblingSession, ConflictDetail } from "@/types";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { formatFlexDayDate } from "@/lib/flex-day-date";
-
-interface ConflictDetail {
-  studentName: string;
-  rotation: RotationSlot;
-  conflictingClub: string;
-}
 
 interface Signup {
   id: string;
   /** Optional so callers that don't select it keep type-checking. */
   forced?: boolean;
   student: { id: string; name: string; email: string };
-}
-
-interface SiblingSession {
-  id: string;
-  rotations: RotationSlot[];
-}
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
 }
 
 interface Props {
@@ -86,7 +69,7 @@ export default function SessionCard({
   const [absent, setAbsent] = useState(initialTeacherAbsent);
   const [markingAbsent, setMarkingAbsent] = useState(false);
 
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
 
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
@@ -113,7 +96,7 @@ export default function SessionCard({
     for (const rotation of rotations) params.append("rotations", rotation);
     fetch(`/api/rooms?${params.toString()}`)
       .then((r) => r.ok ? r.json() : [])
-      .then((data: Room[]) => setRooms(data))
+      .then((data: RoomOption[]) => setRooms(data))
       .catch(() => {})
       .finally(() => setLoadingRooms(false));
   }, [editing, flexDayId, sessionId, rotations]);

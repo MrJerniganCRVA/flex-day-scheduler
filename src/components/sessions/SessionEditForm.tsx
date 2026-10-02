@@ -5,17 +5,7 @@ import { useRouter } from "next/navigation";
 import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import { rotationLabel } from "@/lib/session-event";
-
-interface SiblingSession {
-  id: string;
-  rotations: RotationSlot[];
-}
-
-interface ConflictDetail {
-  studentName: string;
-  rotation: RotationSlot;
-  conflictingClub: string;
-}
+import type { SiblingSession, ConflictDetail } from "@/types";
 
 interface Props {
   clubId: string;
