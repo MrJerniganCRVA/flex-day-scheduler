@@ -337,12 +337,3 @@ export async function usersWithLiveGrant(
   });
   return new Set(rows.map((r) => r.userId));
 }
-
-/** Whether one user has a stored, unrevoked grant. */
-export async function hasLiveGrant(userId: string): Promise<boolean> {
-  const grant = await prisma.calendarGrant.findUnique({
-    where: { userId },
-    select: { revokedAt: true },
-  });
-  return grant !== null && grant.revokedAt === null;
-}

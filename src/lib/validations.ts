@@ -45,14 +45,6 @@ export const updateClubSchema = z.object({
   cosponsorId: z.string().cuid().nullable().optional(),
 });
 
-export const createClubSessionSchema = z.object({
-  flexDayId: z.string().cuid(),
-  rotations: z
-    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
-    .min(1, "At least one rotation is required"),
-  roomOverrideId: z.string().cuid().optional(), // overrides club's default room for this session
-});
-
 export const updateClubSessionSchema = z.object({
   rotations: z
     .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))

@@ -99,7 +99,7 @@ export default async function AdminClubDetailPage({
             Edit
           </Link>
           <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
+            href="/teacher/sessions/new"
             className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
           >
             + Schedule Session
@@ -122,7 +122,7 @@ export default async function AdminClubDetailPage({
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
           No sessions scheduled yet.{" "}
           <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
+            href="/teacher/sessions/new"
             className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Schedule one

@@ -5,7 +5,6 @@ import { updateClubSessionSchema } from "@/lib/validations";
 import {
   SESSION_EVENTS_SELECT,
   resyncSessionEvents,
-  withdrawEvents,
 } from "@/lib/session-calendar";
 import { resolveRoomName } from "@/lib/session-event";
 import { getOccupiedRoomIds } from "@/lib/scheduling";
@@ -223,42 +222,4 @@ export async function PUT(
   }
 
   return NextResponse.json(updatedSession);
-}
-
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ clubId: string; sessionId: string }> }
-) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { clubId, sessionId } = await params;
-
-  const club = await prisma.club.findUnique({ where: { id: clubId } });
-  if (!club) {
-    return NextResponse.json({ error: "Club not found" }, { status: 404 });
-  }
-  if (!isClubManager(club, session.user.id, session.user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const clubSession = await prisma.clubSession.findUnique({
-    where: { id: sessionId },
-    select: { sessionEvents: { select: SESSION_EVENTS_SELECT } },
-  });
-  if (!clubSession) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  }
-
-  // Read before deleting: the rows cascade away with the session.
-  const eventsToCancel = clubSession.sessionEvents;
-
-  await prisma.clubSession.delete({ where: { id: sessionId } });
-
-  // Non-blocking: the database is the source of truth and the row is gone.
-  void withdrawEvents(eventsToCancel, `Deleted session ${sessionId}`);
-
-  return new NextResponse(null, { status: 204 });
 }
