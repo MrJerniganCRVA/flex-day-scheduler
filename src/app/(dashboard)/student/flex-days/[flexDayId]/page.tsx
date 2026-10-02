@@ -7,8 +7,9 @@ import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
 import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
-import { resolveRoomName } from "@/lib/session-event";
+import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
+import { sessionCapacity } from "@/lib/participation";
 
 export default async function StudentFlexDayPage({
   params,
@@ -65,7 +66,7 @@ export default async function StudentFlexDayPage({
   const bookedSessionByRotation = new Map<RotationSlot, string>();
   for (const cs of flexDay.clubSessions) {
     if (cs.signups.length > 0) {
-      const name = cs.title ?? cs.club?.name ?? "Session";
+      const name = sessionDisplayName(cs);
       for (const r of cs.rotations) {
         bookedRotations.add(r);
         bookedSessionByRotation.set(r, name);
@@ -78,13 +79,13 @@ export default async function StudentFlexDayPage({
 
   // Map sessions to serializable shape for the client component
   const sessions: SessionViewData[] = flexDay.clubSessions.map((cs) => {
-    const capacity = cs.capacityOverride ?? cs.club?.maxCapacity ?? 0;
+    const capacity = sessionCapacity(cs);
     const isFull = cs._count.signups >= capacity;
     const isMySignup = cs.signups.length > 0;
     const conflictingRotation = cs.rotations.find((r) => bookedRotations.has(r));
     return {
       id: cs.id,
-      sessionName: cs.title ?? cs.club?.name ?? "Session",
+      sessionName: sessionDisplayName(cs),
       description: cs.club?.description ?? null,
       teacherName: cs.oneOffOwner?.name ?? cs.club?.owner?.name ?? null,
       roomName: resolveRoomName(cs),

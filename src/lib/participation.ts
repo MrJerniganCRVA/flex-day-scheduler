@@ -32,7 +32,9 @@ export type ParticipationSession = {
  * matching every other capacity calculation in the app — reversing these two is
  * a bug that has appeared here more than once.
  */
-export function sessionCapacity(s: ParticipationSession): number {
+export function sessionCapacity(
+  s: Pick<ParticipationSession, "capacityOverride" | "club">
+): number {
   return s.capacityOverride ?? s.club?.maxCapacity ?? 0;
 }
 

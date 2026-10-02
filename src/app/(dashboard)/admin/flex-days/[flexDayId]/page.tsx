@@ -11,7 +11,7 @@ import AutoAssignTab from "@/components/admin/AutoAssignTab";
 import RosterOverrideControls from "@/components/admin/RosterOverrideControls";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { schoolTimeZone } from "@/lib/flex-day-utils";
-import { resolveRoomName } from "@/lib/session-event";
+import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import { sortByLastName } from "@/lib/student-name";
 import {
   SESSION_ABSENCE_SELECT,
@@ -75,7 +75,7 @@ export default async function AdminFlexDayDetailPage({
   );
 
   const sessionLabel = (cs: (typeof flexDay.clubSessions)[number]) =>
-    cs.title ?? cs.club?.name ?? "Session";
+    sessionDisplayName(cs);
 
   /**
    * Rotations of a session with nobody in the room. Derived rather than read from
@@ -233,7 +233,7 @@ export default async function AdminFlexDayDetailPage({
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900 dark:text-white text-sm">
-                                {cs.title ?? cs.club?.name ?? "Session"}
+                                {sessionDisplayName(cs)}
                               </span>
                               {/* A one-off belongs to no club, so it appears on
                                   no Club page — but students still see it and can

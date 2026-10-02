@@ -8,6 +8,7 @@ import {
   rotationName,
   sessionEventDescription,
   sessionEventTitle,
+  sessionDisplayName,
 } from "@/lib/session-event";
 import {
   SESSION_ABSENCE_SELECT,
@@ -128,7 +129,7 @@ export async function POST(
   }
 
   const sessionName = (cs: (typeof flexDay.clubSessions)[number]) =>
-    cs.title ?? cs.club?.name ?? "Session";
+    sessionDisplayName(cs);
 
   // Emails for turning resolved coverage into attendees, and names for the invite
   // body — which says who is in the room, something the title has no space for

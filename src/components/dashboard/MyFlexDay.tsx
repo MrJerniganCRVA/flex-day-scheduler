@@ -13,6 +13,7 @@ import {
 } from "@/lib/coverage";
 import { mySessionsFilter } from "@/lib/my-sessions";
 import { sortByLastName } from "@/lib/student-name";
+import { sessionCapacity } from "@/lib/participation";
 
 /**
  * One person's own Flex Day: the rotations they are expected in, the duty posts
@@ -299,7 +300,7 @@ export default async function MyFlexDay({
                               )}
                             </div>
                             <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                              {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
+                              {cs._count.signups}/{sessionCapacity(cs)}
                             </span>
                           </div>
 

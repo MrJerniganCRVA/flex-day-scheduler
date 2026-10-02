@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DeleteFlexDayButton from "@/components/flex-days/DeleteFlexDayButton";
+import { sessionCapacity } from "@/lib/participation";
 
 export default async function AdminFlexDaysPage({
   searchParams,
@@ -38,7 +39,7 @@ export default async function AdminFlexDaysPage({
     // Capacity override takes priority over the club's default, matching
     // every other capacity calculation in the app.
     const totalCapacity = fd.clubSessions.reduce(
-      (sum, cs) => sum + (cs.capacityOverride ?? cs.club?.maxCapacity ?? 0),
+      (sum, cs) => sum + sessionCapacity(cs),
       0
     );
     const totalSignups = fd.clubSessions.reduce(

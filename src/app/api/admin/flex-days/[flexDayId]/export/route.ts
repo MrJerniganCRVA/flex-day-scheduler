@@ -7,6 +7,7 @@ import {
   toCsv,
   type ExportStudent,
 } from "@/lib/csv-export";
+import { sessionDisplayName } from "@/lib/session-event";
 
 /**
  * GET /api/admin/flex-days/[flexDayId]/export — roster CSV for one Flex Day.
@@ -65,7 +66,7 @@ export async function GET(
       // Same precedence as every other display of a session name: a title only
       // exists on one-off sessions, which have no club to name them.
       sessionName:
-        signup.clubSession.title ?? signup.clubSession.club?.name ?? "Session",
+        sessionDisplayName(signup.clubSession),
     });
     byEmail.set(email, student);
   }

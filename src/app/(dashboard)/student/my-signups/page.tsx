@@ -5,7 +5,7 @@ import { ROTATION_LABELS } from "@/types";
 import type { RotationSlot } from "@prisma/client";
 import Link from "next/link";
 import CancelButton from "@/components/signups/CancelButton";
-import { resolveRoomName } from "@/lib/session-event";
+import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import {
   getSignupDeadline,
   isPastSignupDeadline,
@@ -89,7 +89,7 @@ function SignupTable({
                       session, which has no club, so the two orderings agree
                       today, but they would diverge the moment a club session
                       gains a title override. */}
-                  {signup.clubSession.title ?? signup.clubSession.club?.name ?? "Session"}
+                  {sessionDisplayName(signup.clubSession)}
                 </td>
                 <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                   {signup.clubSession.rotations

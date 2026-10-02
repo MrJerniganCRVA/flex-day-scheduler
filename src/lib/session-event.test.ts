@@ -4,6 +4,7 @@ import {
   rotationLabel,
   rotationName,
   sessionEventDescription,
+  sessionDisplayName,
   sessionEventTitle,
 } from "./session-event";
 
@@ -178,5 +179,21 @@ describe("sessionEventDescription", () => {
         teacherNames: ["Ms Rivera"],
       })
     ).toBe("Room: not yet assigned\nWhen: Flex 1\nTeacher: Ms Rivera");
+  });
+});
+
+describe("sessionDisplayName", () => {
+  it("prefers a one-off's own title", () => {
+    expect(sessionDisplayName({ title: "Study Hall", club: { name: "Art" } })).toBe(
+      "Study Hall"
+    );
+  });
+
+  it("falls back to the club's name", () => {
+    expect(sessionDisplayName({ title: null, club: { name: "Art" } })).toBe("Art");
+  });
+
+  it("is \"Session\" when there is neither", () => {
+    expect(sessionDisplayName({ title: null, club: null })).toBe("Session");
   });
 });

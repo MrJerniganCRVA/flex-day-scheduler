@@ -47,6 +47,17 @@ export function resolveRoomName(session: SessionRoomRef): string | null {
   return session.roomOverride?.name ?? session.club?.defaultRoom?.name ?? null;
 }
 
+/**
+ * What a session is called on screen: a one-off's own title, else its club's
+ * name. "Session" only when a row somehow has neither.
+ */
+export function sessionDisplayName(session: {
+  title?: string | null;
+  club?: { name?: string } | null;
+}): string {
+  return session.title ?? session.club?.name ?? "Session";
+}
+
 /** "FLEX_1" -> "Flex 1". The spelling every invite and screen uses. */
 export function rotationName(rotation: RotationSlot): string {
   return rotation.replace("FLEX_", "Flex ");

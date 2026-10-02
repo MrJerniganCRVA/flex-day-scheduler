@@ -10,6 +10,7 @@ import {
   isSerializationConflict,
   sleep,
 } from "@/lib/tx-retry";
+import { sessionCapacity } from "@/lib/participation";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -64,8 +65,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Check capacity — per-day override takes precedence over club default
-          const maxCapacity =
-            targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
+          const maxCapacity = sessionCapacity(targetSession);
           const currentCount = await tx.signup.count({
             where: { clubSessionId },
           });

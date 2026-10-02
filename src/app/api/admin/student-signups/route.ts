@@ -24,6 +24,8 @@ import {
   isSerializationConflict,
   sleep,
 } from "@/lib/tx-retry";
+import { sessionDisplayName } from "@/lib/session-event";
+import { sessionCapacity } from "@/lib/participation";
 
 /**
  * The admin "edit a student's signups" screen.
@@ -66,21 +68,13 @@ const sessionSelect = {
 
 type SessionRow = Prisma.ClubSessionGetPayload<{ select: typeof sessionSelect }>;
 
-const displayName = (s: { title: string | null; club: { name: string } | null }) =>
-  s.title ?? s.club?.name ?? "Session";
-
-const resolveCapacity = (s: {
-  capacityOverride: number | null;
-  club: { maxCapacity: number } | null;
-}) => s.capacityOverride ?? s.club?.maxCapacity ?? 0;
-
 /** The planner's view of a session, from a loaded row. */
 function toScheduleSession(s: SessionRow): ScheduleSession {
   return {
     id: s.id,
-    sessionName: displayName(s),
+    sessionName: sessionDisplayName(s),
     rotations: s.rotations,
-    capacity: resolveCapacity(s),
+    capacity: sessionCapacity(s),
     enrolledCount: s._count.signups,
   };
 }
@@ -183,7 +177,7 @@ export async function GET(request: NextRequest) {
     (signupsByDay.get(day) ?? []).map((s) => ({
       signupId: s.id,
       clubSessionId: s.clubSession.id,
-      sessionName: displayName(s.clubSession),
+      sessionName: sessionDisplayName(s.clubSession),
       rotations: s.clubSession.rotations,
       forced: s.forced,
     }));
@@ -200,9 +194,9 @@ export async function GET(request: NextRequest) {
         sessions: day.clubSessions
           .map((s) => ({
             id: s.id,
-            sessionName: displayName(s),
+            sessionName: sessionDisplayName(s),
             rotations: s.rotations,
-            capacity: resolveCapacity(s),
+            capacity: sessionCapacity(s),
             enrolledCount: s._count.signups,
             hasCalendarEvent: s.sessionEvents.length > 0,
           }))

@@ -6,7 +6,7 @@ import {
   resolveSessionCoverage,
   sessionRef,
 } from "@/lib/coverage";
-import { resolveRoomName } from "@/lib/session-event";
+import { resolveRoomName, sessionDisplayName } from "@/lib/session-event";
 import type {
   BoardDuty,
   BoardSession,
@@ -172,7 +172,7 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
       clubId: cs.club?.id ?? null,
       // One-off sessions have no club; they are still real sessions in real rooms
       // whose teacher can be absent or double-booked, so they belong here.
-      name: cs.title ?? cs.club?.name ?? "Session",
+      name: sessionDisplayName(cs),
       // Only used to label the "fall back to the owner/cosponsor" options.
       ownerName: cs.club?.owner?.name ?? cs.oneOffOwner?.name ?? null,
       cosponsorName: cs.club?.cosponsor?.name ?? null,

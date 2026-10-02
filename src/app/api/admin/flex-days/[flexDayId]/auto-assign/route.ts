@@ -9,6 +9,8 @@ import {
   isSerializationConflict,
   sleep,
 } from "@/lib/tx-retry";
+import { sessionDisplayName } from "@/lib/session-event";
+import { sessionCapacity } from "@/lib/participation";
 
 const ALL_ROTATIONS: RotationSlot[] = ["FLEX_1", "FLEX_2", "FLEX_3"];
 
@@ -162,15 +164,15 @@ export async function GET(
   const sessionPool: SessionEntry[] = allSessions
     .filter((cs) => {
       if (cs.clubId !== null && !cs.club?.allowRandomAssignment) return false;
-      const cap = cs.capacityOverride ?? cs.club?.maxCapacity ?? 0;
+      const cap = sessionCapacity(cs);
       return cap > 0;
     })
     .map((cs) => ({
       id: cs.id,
       diversityKey: cs.clubId ?? cs.id,
-      displayName: cs.title ?? cs.club?.name ?? "Session",
+      displayName: sessionDisplayName(cs),
       rotations: cs.rotations as RotationSlot[],
-      capacity: cs.capacityOverride ?? cs.club?.maxCapacity ?? 0,
+      capacity: sessionCapacity(cs),
       enrolledCount: cs._count.signups,
       enrolledStudents: new Set(cs.signups.map((s) => s.studentId)),
     }));
@@ -349,8 +351,7 @@ export async function POST(
               continue;
             }
 
-            const capacity =
-              targetSession.capacityOverride ?? targetSession.club?.maxCapacity ?? 0;
+            const capacity = sessionCapacity(targetSession);
             const currentCount = enrolledCount.get(row.clubSessionId) ?? 0;
             if (currentCount >= capacity) {
               skipped.push({ ...row, reason: "capacity_full" });

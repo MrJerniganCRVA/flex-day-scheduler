@@ -1,4 +1,5 @@
 import type { RotationSlot } from "@prisma/client";
+import { sessionDisplayName } from "@/lib/session-event";
 
 /**
  * Resolving who is teaching a session, in one place.
@@ -300,7 +301,7 @@ export function sessionPlacement(session: {
 }): ExpectedPlacement {
   return {
     id: session.id,
-    name: session.title ?? session.club?.name ?? "Session",
+    name: sessionDisplayName(session),
     rotations: session.rotations,
     session: sessionRef(session),
     rows: session.rotationCoverage,

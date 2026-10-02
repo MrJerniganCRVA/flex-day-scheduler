@@ -17,6 +17,8 @@ import {
   isSerializationConflict,
   sleep,
 } from "@/lib/tx-retry";
+import { sessionDisplayName } from "@/lib/session-event";
+import { sessionCapacity } from "@/lib/participation";
 
 /**
  * POST /api/admin/roster — admin roster override.
@@ -72,9 +74,6 @@ const sessionSelect = {
   flexDay: { select: { id: true, date: true } },
   club: { select: { name: true, maxCapacity: true } },
 } as const;
-
-const displayName = (s: SessionForOverride) =>
-  s.title ?? s.club?.name ?? "Session";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -168,8 +167,7 @@ export async function POST(request: NextRequest) {
 
           // ── Add the new signup, enforcing the physical constraints ──────────
           if (toSession) {
-            const maxCapacity =
-              toSession.capacityOverride ?? toSession.club?.maxCapacity ?? 0;
+            const maxCapacity = sessionCapacity(toSession);
             const currentCount = await tx.signup.count({
               where: { clubSessionId: toSession.id },
             });
@@ -226,9 +224,9 @@ export async function POST(request: NextRequest) {
               studentId: student.id,
               studentName: student.name,
               fromSessionId: fromSession?.id ?? null,
-              fromSessionName: fromSession ? displayName(fromSession) : null,
+              fromSessionName: fromSession ? sessionDisplayName(fromSession) : null,
               toSessionId: toSession?.id ?? null,
-              toSessionName: toSession ? displayName(toSession) : null,
+              toSessionName: toSession ? sessionDisplayName(toSession) : null,
               flexDayId: anchor.flexDay.id,
               flexDayDate: anchor.flexDay.date,
             },
@@ -237,8 +235,8 @@ export async function POST(request: NextRequest) {
           return {
             calendarOps,
             studentName: student.name,
-            fromName: fromSession ? displayName(fromSession) : null,
-            toName: toSession ? displayName(toSession) : null,
+            fromName: fromSession ? sessionDisplayName(fromSession) : null,
+            toName: toSession ? sessionDisplayName(toSession) : null,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }

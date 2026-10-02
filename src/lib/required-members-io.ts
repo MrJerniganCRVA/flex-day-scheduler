@@ -20,6 +20,8 @@ import {
   attendeeOpsForSession,
   type AttendeeOp,
 } from "@/lib/session-calendar";
+import { sessionDisplayName } from "@/lib/session-event";
+import { sessionCapacity } from "@/lib/participation";
 
 export { RequiredMemberConflictError } from "@/lib/required-members";
 export type { EnrollmentPlan } from "@/lib/required-members";
@@ -55,12 +57,12 @@ type LoadedSession = Prisma.ClubSessionGetPayload<{
 function toTarget(s: LoadedSession): EnrollTargetSession {
   return {
     id: s.id,
-    sessionName: s.title ?? s.club?.name ?? "Session",
+    sessionName: sessionDisplayName(s),
     rotations: s.rotations,
     flexDayId: s.flexDayId,
     flexDayDate: s.flexDay.date,
     flexDayFinalized: s.flexDay.isFinalized,
-    capacity: s.capacityOverride ?? s.club?.maxCapacity ?? 0,
+    capacity: sessionCapacity(s),
     enrolledCount: s._count.signups,
   };
 }
@@ -111,7 +113,7 @@ async function loadExistingSignups(
     clubSessionId: r.clubSessionId,
     flexDayId: r.clubSession.flexDayId,
     rotations: r.clubSession.rotations as RotationSlot[],
-    sessionName: r.clubSession.title ?? r.clubSession.club?.name ?? "Session",
+    sessionName: sessionDisplayName(r.clubSession),
     forced: r.forced,
   }));
 }
