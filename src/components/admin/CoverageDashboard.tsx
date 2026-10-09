@@ -21,9 +21,8 @@ import {
   type BoardGridRow,
   type BoardSession,
   type ResolvedAssignment,
+  wantsSecondTeacher,
 } from "@/lib/board-rows";
-
-const HIGH_ENROLLMENT_THRESHOLD = 20;
 
 /**
  * Select value meaning "no teacher at all in this slot", as distinct from "" which
@@ -179,7 +178,7 @@ function urgencyOf(
   // has already decided it doesn't need one. Continuing to flag a deliberately
   // cleared slot would make the signal noise.
   if (
-    club.studentCount >= HIGH_ENROLLMENT_THRESHOLD &&
+    wantsSecondTeacher(club.studentCount, club.capacity) &&
     !assignment.t2 &&
     !assignment.t2Cleared
   )
@@ -226,11 +225,12 @@ export default function CoverageDashboard({
   );
   const [dutySaveStatus, setDutySaveStatus] = useState<SaveStatuses>({});
 
-  // Show only the rows with a gap in them. Off by default: the aligned, complete
+  // Show only the rows that need attention: a slot with no teacher, or a big
+  // session that could use a second one. Off by default: the aligned, complete
   // list is what the page is for, and this narrows it to a worklist on demand.
   //
   // Null means "showing everything". Switched on, it holds the keys of the rows
-  // that had a gap *at that moment* and filters against that frozen set rather
+  // that needed attention *at that moment* and filters against that frozen set rather
   // than against live state. Filtering live would delete a row from under the
   // admin the instant they filled its last slot — the same "the card I just
   // edited jumped away" problem the old frozen band order existed to prevent,
@@ -663,9 +663,15 @@ export default function CoverageDashboard({
     return clubRows(clubs);
   }, [tab, clubs, duties]);
 
-  const hasGap = useCallback(
+  // One filter for both kinds of attention, rather than a checkbox each: the
+  // admin's question is "what should I look at?", and the colours already say
+  // which kind each row is.
+  const needsAttention = useCallback(
     (row: GridRow) =>
-      ALL_ROTATIONS.some((r) => cellState(row, r) === "needs"),
+      ALL_ROTATIONS.some((r) => {
+        const state = cellState(row, r);
+        return state === "needs" || state === "consider";
+      }),
     [cellState]
   );
 
@@ -678,13 +684,13 @@ export default function CoverageDashboard({
   // behind "Hide N covered". Zero while the filter is off, so the control is
   // absent until there is something for it to do.
   const clearedRowCount = useMemo(
-    () => (gapRows === null ? 0 : rows.filter((r) => !hasGap(r)).length),
-    [gapRows, rows, hasGap]
+    () => (gapRows === null ? 0 : rows.filter((r) => !needsAttention(r)).length),
+    [gapRows, rows, needsAttention]
   );
 
   const applyGapFilter = useCallback(() => {
-    setGapRows(new Set(allRows.filter(hasGap).map((r) => r.key)));
-  }, [allRows, hasGap]);
+    setGapRows(new Set(allRows.filter(needsAttention).map((r) => r.key)));
+  }, [allRows, needsAttention]);
 
   return (
     // Fills main at xl and up, where the grid sits beside the teacher panel and
@@ -833,7 +839,7 @@ export default function CoverageDashboard({
                 }
                 className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-1 focus:ring-indigo-500"
               />
-              Only show gaps
+              Only show what needs attention
             </label>
           </div>
         }
@@ -880,6 +886,9 @@ export default function CoverageDashboard({
               const uncovered = allRows.filter(
                 (r) => cellState(r, rotation) === "needs"
               ).length;
+              const wantSecond = allRows.filter(
+                (r) => cellState(r, rotation) === "consider"
+              ).length;
               return (
                 <div
                   key={rotation}
@@ -888,14 +897,29 @@ export default function CoverageDashboard({
                   <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
                     {ROTATION_LABELS[rotation]}
                   </span>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      uncovered === 0
-                        ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                        : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
-                    }`}
-                  >
-                    {uncovered === 0 ? "All covered" : `${uncovered} uncovered`}
+                  <span className="flex shrink-0 items-center gap-1">
+                    {/* A count, not a sentence: the amber cells below are the
+                        message, this just says how many there are. */}
+                    {wantSecond > 0 && (
+                      <span
+                        title={`${wantSecond} ${
+                          wantSecond === 1 ? "club" : "clubs"
+                        } could use a second teacher`}
+                        className="flex items-center gap-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+                      >
+                        <SecondTeacherIcon />
+                        {wantSecond}
+                      </span>
+                    )}
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        uncovered === 0
+                          ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                          : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
+                      }`}
+                    >
+                      {uncovered === 0 ? "All covered" : `${uncovered} uncovered`}
+                    </span>
                   </span>
                 </div>
               );
@@ -1051,7 +1075,7 @@ export default function CoverageDashboard({
                 {gapRows !== null ? (
                   <>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Nothing is missing a teacher.
+                      Nothing needs attention.
                     </p>
                     <button
                       onClick={() => setGapRows(null)}
@@ -1182,7 +1206,9 @@ function cellTone(state: Urgency): string {
   return state === "needs"
     ? "bg-red-50/60 dark:bg-red-950/20"
     : state === "consider"
-      ? "bg-amber-50/50 dark:bg-amber-950/20"
+      ? // Strong enough to pick out at a glance between red and white cells —
+        // the old /50 tint was close enough to white to be missed.
+        "bg-amber-100/70 dark:bg-amber-900/25 ring-2 ring-inset ring-amber-300 dark:ring-amber-700/70"
       : "";
 }
 
@@ -1254,12 +1280,29 @@ function ClubCell({
           {club.studentCount > 0 && (
             <span
               className={`shrink-0 text-xs ${
-                club.studentCount >= HIGH_ENROLLMENT_THRESHOLD
-                  ? "font-semibold text-red-600 dark:text-red-400"
+                wantsSecondTeacher(club.studentCount, club.capacity)
+                  ? "font-semibold text-amber-700 dark:text-amber-300"
                   : "text-gray-500 dark:text-gray-400"
               }`}
+              title={
+                club.capacity > 0
+                  ? `${club.studentCount} of ${club.capacity} signed up`
+                  : `${club.studentCount} signed up`
+              }
             >
               👤 {club.studentCount}
+              {club.capacity > 0 && (
+                <span className="font-normal opacity-70">/{club.capacity}</span>
+              )}
+            </span>
+          )}
+          {state === "consider" && (
+            <span
+              title="Could use a second teacher"
+              aria-label="Could use a second teacher"
+              className="shrink-0 rounded-full bg-amber-200 dark:bg-amber-800/60 p-0.5 text-amber-800 dark:text-amber-200"
+            >
+              <SecondTeacherIcon />
             </span>
           )}
           {showRoom && club.roomName && (
@@ -1317,6 +1360,8 @@ function ClubCell({
               : null
           }
           required={false}
+          // Points at the exact control that would clear the amber.
+          highlight={state === "consider"}
           // A club with a cosponsor needs both empty states offered: "" falls back
           // to them, CLEARED means genuinely nobody. With no cosponsor the two are
           // the same thing, so only one option is shown.
@@ -1459,6 +1504,7 @@ function TeacherDropdown({
   options,
   currentTeacher,
   required,
+  highlight = false,
   defaultLabel,
   clearedLabel,
   onChange,
@@ -1474,6 +1520,8 @@ function TeacherDropdown({
   options: CoverageTeacher[];
   currentTeacher: CoverageTeacher | null;
   required: boolean;
+  /** Draw an empty optional slot in amber: this is the one worth filling. */
+  highlight?: boolean;
   /**
    * Label for "" — falling back to a club default. Null when there is no default
    * to fall back to, in which case the option is omitted entirely rather than
@@ -1494,7 +1542,9 @@ function TeacherDropdown({
     ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100"
     : required
       ? "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700 text-gray-600 dark:text-gray-200"
-      : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-200";
+      : highlight
+        ? "bg-amber-50 dark:bg-amber-950 border-amber-400 dark:border-amber-600 text-gray-700 dark:text-gray-200"
+        : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-200";
 
   // Always include the currently selected teacher even if they'd be filtered out
   const inOptions = isAssigned && options.some((t) => t.id === value);
@@ -1538,5 +1588,24 @@ function TeacherDropdown({
         ))}
       </select>
     </div>
+  );
+}
+
+/**
+ * Two people, one with a plus: "add another teacher". Inline SVG rather than an
+ * emoji, which renders differently on every platform.
+ */
+function SecondTeacherIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-3 w-3"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="5.5" cy="4.5" r="2.5" />
+      <path d="M1 13c0-2.5 2-4.5 4.5-4.5S10 10.5 10 13v1H1z" />
+      <path d="M12 5h1.25v2.25H15.5V8.5h-2.25v2.25H12V8.5H9.75V7.25H12z" />
+    </svg>
   );
 }
