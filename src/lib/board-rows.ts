@@ -64,9 +64,32 @@ export type BoardSession = {
   roomName: string | null;
   rotations: RotationSlot[];
   studentCount: number;
+  /** capacityOverride ?? club.maxCapacity ?? 0, resolved server-side. */
+  capacity: number;
   /** Server-resolved starting state, per rotation. */
   assignments: Partial<Record<RotationSlot, ResolvedAssignment>>;
 };
+
+/** More students than this and a session could use a second teacher. */
+export const SECOND_TEACHER_MIN_STUDENTS = 25;
+
+/**
+ * Whether a session is big enough that a second teacher would help: more than
+ * SECOND_TEACHER_MIN_STUDENTS signed up, or more than half full.
+ *
+ * A guideline rather than a rule, so it only ever nudges — it never makes a
+ * covered session read as uncovered. A capacity of 0 means "unknown" and leaves
+ * only the head-count test.
+ */
+export function wantsSecondTeacher(
+  studentCount: number,
+  capacity: number
+): boolean {
+  return (
+    studentCount > SECOND_TEACHER_MIN_STUDENTS ||
+    (capacity > 0 && studentCount * 2 > capacity)
+  );
+}
 
 /**
  * A supervision post that is not a club — see the DutyPost model.

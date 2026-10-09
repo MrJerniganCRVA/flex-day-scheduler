@@ -63,6 +63,7 @@ const SESSION_INCLUDE = {
       name: true,
       ownerId: true,
       cosponsorId: true,
+      maxCapacity: true,
       owner: { select: { name: true } },
       cosponsor: { select: { name: true } },
       defaultRoom: { select: { name: true } },
@@ -179,6 +180,8 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
       roomName: resolveRoomName(cs),
       rotations: cs.rotations,
       studentCount: cs._count.signups,
+      // Same precedence as sessionCapacity in src/lib/participation.ts.
+      capacity: cs.capacityOverride ?? cs.club?.maxCapacity ?? 0,
       assignments,
     };
   });
@@ -190,7 +193,7 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
   // "gaps first", computed per column, so a club running all three rotations
   // appeared at three different heights and could not be followed across the
   // page — the thing these screens actually exist for. Finding gaps is a filter
-  // on the admin page (see its Only show gaps toggle), not an ordering.
+  // on the admin page (see its "Only show what needs attention" toggle), not an ordering.
   //
   // Sorted here rather than in the client so the components stay renderers, and
   // in JS rather than by the database so both tabs order by the same rule —

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { RotationSlot } from "@prisma/client";
-import { buildBoardRows, type BoardSession } from "./board-rows";
+import {
+  buildBoardRows,
+  wantsSecondTeacher,
+  type BoardSession,
+} from "./board-rows";
 
 /**
  * The rules these cover were invisible until a second screen needed them.
@@ -26,6 +30,7 @@ function session(
     roomName: opts.roomName === undefined ? "Room 205" : opts.roomName,
     rotations,
     studentCount: 0,
+    capacity: 0,
     assignments: {},
   };
 }
@@ -124,5 +129,22 @@ describe("buildBoardRows", () => {
     ]);
 
     expect(rows.map((r) => r.name)).toEqual(["Art Club", "Chess Club"]);
+  });
+});
+
+describe("wantsSecondTeacher", () => {
+  it("flags more than 25 students, whatever the capacity", () => {
+    expect(wantsSecondTeacher(25, 100)).toBe(false);
+    expect(wantsSecondTeacher(26, 100)).toBe(true);
+  });
+
+  it("flags a session that is more than half full", () => {
+    expect(wantsSecondTeacher(10, 20)).toBe(false);
+    expect(wantsSecondTeacher(11, 20)).toBe(true);
+  });
+
+  it("falls back to the head count when capacity is unknown", () => {
+    expect(wantsSecondTeacher(5, 0)).toBe(false);
+    expect(wantsSecondTeacher(26, 0)).toBe(true);
   });
 });
