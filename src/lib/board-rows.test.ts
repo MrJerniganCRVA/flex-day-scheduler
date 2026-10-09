@@ -133,18 +133,21 @@ describe("buildBoardRows", () => {
 });
 
 describe("wantsSecondTeacher", () => {
-  it("flags more than 25 students, whatever the capacity", () => {
-    expect(wantsSecondTeacher(25, 100)).toBe(false);
-    expect(wantsSecondTeacher(26, 100)).toBe(true);
+  it("ignores a small club near its cap", () => {
+    expect(wantsSecondTeacher(11, 12)).toBe(false);
+    expect(wantsSecondTeacher(25, 25)).toBe(false);
   });
 
-  it("flags a session that is more than half full", () => {
-    expect(wantsSecondTeacher(10, 20)).toBe(false);
-    expect(wantsSecondTeacher(11, 20)).toBe(true);
+  it("flags more than 25 students when at least 80% full", () => {
+    expect(wantsSecondTeacher(26, 30)).toBe(true);
+    expect(wantsSecondTeacher(28, 35)).toBe(true);
   });
 
-  it("falls back to the head count when capacity is unknown", () => {
-    expect(wantsSecondTeacher(5, 0)).toBe(false);
-    expect(wantsSecondTeacher(26, 0)).toBe(true);
+  it("ignores a big club with plenty of room left", () => {
+    expect(wantsSecondTeacher(26, 35)).toBe(false);
+  });
+
+  it("never flags a session with no capacity set", () => {
+    expect(wantsSecondTeacher(40, 0)).toBe(false);
   });
 });
