@@ -70,24 +70,29 @@ export type BoardSession = {
   assignments: Partial<Record<RotationSlot, ResolvedAssignment>>;
 };
 
-/** More students than this and a session could use a second teacher. */
+/** More students than this before a session can be flagged for a second teacher. */
 export const SECOND_TEACHER_MIN_STUDENTS = 25;
+
+/** How full (signups / capacity) a session must be to be flagged: 80%. */
+export const SECOND_TEACHER_FULL_FRACTION = 0.8;
 
 /**
  * Whether a session is big enough that a second teacher would help: more than
- * SECOND_TEACHER_MIN_STUDENTS signed up, or more than half full.
+ * SECOND_TEACHER_MIN_STUDENTS signed up *and* close to its limit.
  *
- * A guideline rather than a rule, so it only ever nudges — it never makes a
- * covered session read as uncovered. A capacity of 0 means "unknown" and leaves
- * only the head-count test.
+ * Both, not either: a small club near its cap (11 of 12) is fine with one
+ * teacher, and a big room that is mostly empty is too. A guideline rather than
+ * a rule, so it only ever nudges. A capacity of 0 means "unknown", which is
+ * never flagged — there is no limit to be near.
  */
 export function wantsSecondTeacher(
   studentCount: number,
   capacity: number
 ): boolean {
   return (
-    studentCount > SECOND_TEACHER_MIN_STUDENTS ||
-    (capacity > 0 && studentCount * 2 > capacity)
+    capacity > 0 &&
+    studentCount > SECOND_TEACHER_MIN_STUDENTS &&
+    studentCount >= capacity * SECOND_TEACHER_FULL_FRACTION
   );
 }
 
