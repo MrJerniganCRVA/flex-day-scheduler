@@ -154,3 +154,56 @@ export function isPastSignupDeadline(
   const deadline = getSignupDeadline(flexDayDate, timeZone);
   return new Date() > deadline;
 }
+
+/** How many days before a Flex Day a limited-window club opens for signups. */
+export const LIMITED_SIGNUP_WINDOW_DAYS = 14;
+
+/**
+ * When signups open for a club with `limitedSignupWindow` set: 8:00 AM
+ * school-local time, LIMITED_SIGNUP_WINDOW_DAYS calendar days before the
+ * Flex Day. A fixed, announced moment keeps it first come, first served
+ * without favouring whoever happens to be awake at midnight.
+ */
+export function getSignupOpensAt(flexDayDate: Date, timeZone?: string): Date {
+  const tz = timeZone ?? schoolTimeZone();
+  const opens = new Date(
+    Date.UTC(
+      flexDayDate.getUTCFullYear(),
+      flexDayDate.getUTCMonth(),
+      flexDayDate.getUTCDate() - LIMITED_SIGNUP_WINDOW_DAYS
+    )
+  );
+  return zonedTimeToUtc(
+    opens.getUTCFullYear(),
+    opens.getUTCMonth() + 1,
+    opens.getUTCDate(),
+    8,
+    0,
+    tz
+  );
+}
+
+/** True while a limited-window club's signups for this Flex Day are not open yet. */
+export function isBeforeSignupOpens(
+  flexDayDate: Date,
+  timeZone?: string
+): boolean {
+  return new Date() < getSignupOpensAt(flexDayDate, timeZone);
+}
+
+/** e.g. "Mon, Oct 26 · 8:00 AM" — the opening moment as students should read it. */
+export function formatSignupOpensAt(opensAt: Date, timeZone?: string): string {
+  const tz = timeZone ?? schoolTimeZone();
+  const date = opensAt.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: tz,
+  });
+  const time = opensAt.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: tz,
+  });
+  return `${date} · ${time}`;
+}

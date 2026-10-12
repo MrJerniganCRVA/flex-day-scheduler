@@ -27,6 +27,10 @@ export interface SessionViewData {
   isConflicted: boolean;
   conflictLabel: string | undefined;
   spansRotations: boolean;
+  /** A limited-window club whose signups haven't opened for this Flex Day yet. */
+  notYetOpen: boolean;
+  /** When a limited-window club opens, e.g. "Mon, Oct 26 · 8:00 AM". */
+  opensAtLabel: string | undefined;
 }
 
 interface Props {
@@ -240,6 +244,8 @@ export default function FlexDaySignupView({
                             isConflicted={cs.isConflicted}
                             conflictLabel={cs.conflictLabel}
                             isPastDeadline={isPastDeadline}
+                            notYetOpen={cs.notYetOpen}
+                            opensAtLabel={cs.opensAtLabel}
                             enrolledCount={cs.enrolledCount}
                             capacity={cs.capacity}
                           />

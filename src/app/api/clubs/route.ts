@@ -90,7 +90,12 @@ export async function POST(request: NextRequest) {
   // create a club with no permanent teacher — admin-managed, with whoever is
   // teaching each session set on the Coverage page. Everyone else owns the
   // clubs they create.
-  const { ownerId: requestedOwnerId, cosponsorId, ...clubData } = parsed.data;
+  const {
+    ownerId: requestedOwnerId,
+    cosponsorId,
+    limitedSignupWindow,
+    ...clubData
+  } = parsed.data;
   const ownerId =
     session.user.role === "ADMIN"
       ? (requestedOwnerId ?? null)
@@ -103,7 +108,14 @@ export async function POST(request: NextRequest) {
 
   // Create the club record first
   const club = await prisma.club.create({
-    data: { ...clubData, ownerId, cosponsorId: finalCosponsorId },
+    data: {
+      ...clubData,
+      ownerId,
+      cosponsorId: finalCosponsorId,
+      // Admin only, like ownership.
+      limitedSignupWindow:
+        session.user.role === "ADMIN" ? (limitedSignupWindow ?? false) : false,
+    },
   });
 
   // No calendar is provisioned for a club any more. Its sessions' invites are

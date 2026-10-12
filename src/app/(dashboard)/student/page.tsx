@@ -3,7 +3,13 @@ import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ROTATION_LABELS } from "@/types";
-import { getSignupDeadline, isPastSignupDeadline } from "@/lib/flex-day-utils";
+import {
+  formatSignupOpensAt,
+  getSignupDeadline,
+  getSignupOpensAt,
+  isBeforeSignupOpens,
+  isPastSignupDeadline,
+} from "@/lib/flex-day-utils";
 import FlexDayPicker from "@/components/student/FlexDayPicker";
 import FlexDaySignupView from "@/components/student/FlexDaySignupView";
 import type { SessionViewData } from "@/components/student/FlexDaySignupView";
@@ -44,6 +50,7 @@ export default async function StudentDashboard() {
               name: true,
               description: true,
               maxCapacity: true,
+              limitedSignupWindow: true,
               owner: { select: { name: true } },
             },
           },
@@ -91,6 +98,9 @@ export default async function StudentDashboard() {
 
   const deadline = getSignupDeadline(nextFlexDay.date);
   const pastDeadline = isPastSignupDeadline(nextFlexDay.date);
+  // Limited-window clubs open at the same moment for every session on a day.
+  const windowNotOpen = isBeforeSignupOpens(nextFlexDay.date);
+  const opensAtLabel = formatSignupOpensAt(getSignupOpensAt(nextFlexDay.date));
 
   // Map sessions to serializable shape for the client component
   const sessions: SessionViewData[] = nextFlexDay.clubSessions.map((cs) => {
@@ -116,6 +126,8 @@ export default async function StudentDashboard() {
         ? `You have ${bookedSessionByRotation.get(conflictingRotation) ?? "another session"} in ${ROTATION_LABELS[conflictingRotation]}`
         : undefined,
       spansRotations: cs.rotations.length > 1,
+      notYetOpen: !!cs.club?.limitedSignupWindow && windowNotOpen,
+      opensAtLabel: cs.club?.limitedSignupWindow ? opensAtLabel : undefined,
     };
   });
 

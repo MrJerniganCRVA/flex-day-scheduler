@@ -26,6 +26,7 @@ export default async function AdminEditClubPage({
         defaultRotations: true,
         ownerId: true,
         allowRandomAssignment: true,
+        limitedSignupWindow: true,
         linkedRotations: true,
         cosponsorId: true,
         },
@@ -59,6 +60,7 @@ export default async function AdminEditClubPage({
           defaultRoomId: club.defaultRoomId,
           defaultRotations: club.defaultRotations,
           allowRandomAssignment: club.allowRandomAssignment,
+          limitedSignupWindow: club.limitedSignupWindow,
           linkedRotations: club.linkedRotations,
           cosponsorId: club.cosponsorId,
         }}

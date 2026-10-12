@@ -47,6 +47,7 @@ interface Props {
     defaultRotations?: RotationSlot[];
     defaultRoomId?: string | null;
     allowRandomAssignment?: boolean;
+    limitedSignupWindow?: boolean;
     linkedRotations?: boolean;
     cosponsorId?: string | null;
   };
@@ -82,6 +83,9 @@ export default function ClubForm({
   });
   const [allowRandomAssignment, setAllowRandomAssignment] = useState(
     defaultValues?.allowRandomAssignment ?? true
+  );
+  const [limitedSignupWindow, setLimitedSignupWindow] = useState(
+    defaultValues?.limitedSignupWindow ?? false
   );
   const [defaultRotations, setDefaultRotations] = useState<RotationSlot[]>(
     defaultValues?.defaultRotations ?? []
@@ -165,6 +169,21 @@ export default function ClubForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Turning the window on releases seats students already hold on Flex Days
+    // that haven't opened yet. Make sure that's intended before it happens.
+    if (
+      isAdmin &&
+      isEdit &&
+      limitedSignupWindow &&
+      !defaultValues?.limitedSignupWindow &&
+      !window.confirm(
+        "Turning this on removes students' current signups for this club on Flex Days more than 2 weeks away, so those seats reopen when the window opens. Required members are kept. Continue?"
+      )
+    ) {
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -187,6 +206,7 @@ export default function ClubForm({
         // how a club is set to have no teacher. Omitting the key would mean
         // "leave ownership alone", which is a different thing.
         ...(isAdmin ? { ownerId: ownerId || null } : {}),
+        ...(isAdmin ? { limitedSignupWindow } : {}),
       }),
     });
 
@@ -199,6 +219,12 @@ export default function ClubForm({
     }
 
     const club = await res.json();
+
+    if (club.clearedSignups > 0) {
+      window.alert(
+        `Removed ${club.clearedSignups} early signup${club.clearedSignups === 1 ? "" : "s"}. Those seats reopen 2 weeks before each Flex Day.`
+      );
+    }
 
     // Changing rotations now reshapes sessions on every future Flex Day. When any
     // of them couldn't be changed — students already signed up, or invites already
@@ -424,6 +450,30 @@ export default function ClubForm({
           </div>
         </label>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={limitedSignupWindow}
+              onChange={(e) => setLimitedSignupWindow(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                Open signups 2 weeks before each Flex Day
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Students can only sign up for this club starting at 8:00 AM,
+                14 days before each Flex Day. Still first come, first served,
+                but stops the same students from booking every future Flex Day
+                at once. Use it for small or popular clubs.
+              </div>
+            </div>
+          </label>
+        </div>
+      )}
 
       {teachers && teachers.length > 0 && (
         <div>

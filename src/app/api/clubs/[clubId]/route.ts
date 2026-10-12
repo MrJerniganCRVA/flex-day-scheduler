@@ -7,6 +7,7 @@ import {
   reconcileFutureSessions,
 } from "@/lib/scheduling";
 import { isClubManager } from "@/lib/auth-helpers";
+import { isBeforeSignupOpens } from "@/lib/flex-day-utils";
 import type { Role, RotationSlot } from "@prisma/client";
 
 async function checkClubAccess(clubId: string, userId: string, role: Role) {
@@ -134,7 +135,15 @@ export async function PUT(
   // `ownerId: null` from an admin is meaningful — it clears the owner, making the
   // club admin-managed with no permanent teacher — so this distinguishes an
   // explicit null from an absent key.
-  const { ownerId: newOwnerId, cosponsorId, ...updateData } = parsed.data;
+  // The limited signup window is an admin decision too.
+  const {
+    ownerId: newOwnerId,
+    cosponsorId,
+    limitedSignupWindow,
+    ...updateData
+  } = parsed.data;
+  const limitedWindowProvided =
+    session.user.role === "ADMIN" && limitedSignupWindow !== undefined;
   const ownerIdProvided =
     session.user.role === "ADMIN" && newOwnerId !== undefined;
   const finalOwnerId = ownerIdProvided ? newOwnerId : club.ownerId;
@@ -142,6 +151,7 @@ export async function PUT(
   const finalData: Parameters<typeof prisma.club.update>[0]["data"] = {
     ...updateData,
     ...(ownerIdProvided ? { ownerId: newOwnerId } : {}),
+    ...(limitedWindowProvided ? { limitedSignupWindow } : {}),
   };
 
   // Any club manager can edit the cosponsor. Null it out if it matches the
@@ -162,6 +172,29 @@ export async function PUT(
     data: finalData,
   });
 
+  // Switching the limited window on would mean little if students kept the
+  // seats they had already booked months ahead, so release every ordinary
+  // signup on a Flex Day whose window has not opened yet. Required-member
+  // signups stay: those are placements, not choices.
+  let clearedSignups = 0;
+  if (limitedWindowProvided && limitedSignupWindow && !club.limitedSignupWindow) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const futureSessions = await prisma.clubSession.findMany({
+      where: { clubId, flexDay: { date: { gte: today } } },
+      select: { id: true, flexDay: { select: { date: true } } },
+    });
+    const notYetOpenIds = futureSessions
+      .filter((cs) => isBeforeSignupOpens(cs.flexDay.date))
+      .map((cs) => cs.id);
+    if (notYetOpenIds.length > 0) {
+      const { count } = await prisma.signup.deleteMany({
+        where: { clubSessionId: { in: notYetOpenIds }, forced: false },
+      });
+      clearedSignups = count;
+    }
+  }
+
   // Sessions used to be generated only when a club or a flex day was created, so
   // editing a club's rotations left every already-scheduled session untouched.
   // Propagate the change forward now.
@@ -174,7 +207,7 @@ export async function PUT(
         })
       : null;
 
-  return NextResponse.json({ ...updated, reconcile });
+  return NextResponse.json({ ...updated, reconcile, clearedSignups });
 }
 
 /** Order-insensitive rotation-set comparison. */

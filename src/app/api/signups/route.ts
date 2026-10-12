@@ -3,7 +3,12 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { createSignupSchema } from "@/lib/validations";
-import { isPastSignupDeadline } from "@/lib/flex-day-utils";
+import {
+  formatSignupOpensAt,
+  getSignupOpensAt,
+  isBeforeSignupOpens,
+  isPastSignupDeadline,
+} from "@/lib/flex-day-utils";
 import {
   MAX_TX_ATTEMPTS,
   conflictBackoffMs,
@@ -49,7 +54,13 @@ export async function POST(request: NextRequest) {
           const targetSession = await tx.clubSession.findUnique({
             where: { id: clubSessionId },
             include: {
-              club: { select: { maxCapacity: true, googleCalendarId: true } },
+              club: {
+                select: {
+                  maxCapacity: true,
+                  googleCalendarId: true,
+                  limitedSignupWindow: true,
+                },
+              },
               flexDay: { select: { id: true, date: true } },
             },
           });
@@ -61,6 +72,18 @@ export async function POST(request: NextRequest) {
           // Check signup deadline
           if (isPastSignupDeadline(targetSession.flexDay.date)) {
             throw Object.assign(new Error("SIGNUPS_CLOSED"), { status: 403 });
+          }
+
+          // Limited-window clubs only open two weeks out, so the same students
+          // can't book a small club for every future Flex Day at once.
+          if (
+            targetSession.club?.limitedSignupWindow &&
+            isBeforeSignupOpens(targetSession.flexDay.date)
+          ) {
+            throw Object.assign(new Error("SIGNUPS_NOT_OPEN"), {
+              status: 403,
+              opensAt: getSignupOpensAt(targetSession.flexDay.date),
+            });
           }
 
           // Check capacity — per-day override takes precedence over club default
@@ -126,13 +149,25 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const err = error as Error & { status?: number; rotations?: string[] };
+      const err = error as Error & {
+        status?: number;
+        rotations?: string[];
+        opensAt?: Date;
+      };
       if (err.message === "SESSION_NOT_FOUND") {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
       }
       if (err.message === "SIGNUPS_CLOSED") {
         return NextResponse.json(
           { error: "Signups for this flex day are closed" },
+          { status: 403 }
+        );
+      }
+      if (err.message === "SIGNUPS_NOT_OPEN" && err.opensAt) {
+        return NextResponse.json(
+          {
+            error: `Signups for this club open ${formatSignupOpensAt(err.opensAt)}`,
+          },
           { status: 403 }
         );
       }

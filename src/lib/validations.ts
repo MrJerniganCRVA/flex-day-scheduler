@@ -24,6 +24,8 @@ export const createClubSchema = z.object({
   // teacher is set per session on the Coverage page.
   ownerId: z.string().cuid().nullable().optional(),
   allowRandomAssignment: z.boolean().optional(),
+  // Admin only — stripped from non-admin requests by the club routes.
+  limitedSignupWindow: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
 });
@@ -41,6 +43,8 @@ export const updateClubSchema = z.object({
   // club admin-managed with no permanent teacher.
   ownerId: z.string().cuid().nullable().optional(),
   allowRandomAssignment: z.boolean().optional(),
+  // Admin only — stripped from non-admin requests by the club routes.
+  limitedSignupWindow: z.boolean().optional(),
   linkedRotations: z.boolean().optional(),
   cosponsorId: z.string().cuid().nullable().optional(),
 });
