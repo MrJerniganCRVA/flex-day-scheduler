@@ -12,6 +12,8 @@ interface Props {
   isConflicted: boolean;
   conflictLabel?: string;
   isPastDeadline?: boolean;
+  notYetOpen?: boolean;
+  opensAtLabel?: string;
   enrolledCount?: number;
   capacity?: number;
 }
@@ -25,6 +27,8 @@ export default function SignupButton({
   isConflicted,
   conflictLabel,
   isPastDeadline = false,
+  notYetOpen = false,
+  opensAtLabel,
   enrolledCount,
   capacity,
 }: Props) {
@@ -138,6 +142,22 @@ export default function SignupButton({
       >
         Signups Closed
       </button>
+    );
+  }
+
+  if (notYetOpen) {
+    return (
+      <div className="space-y-1">
+        <button
+          disabled
+          className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-not-allowed"
+        >
+          {opensAtLabel ? `Opens ${opensAtLabel}` : "Not open yet"}
+        </button>
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
+          This club opens for signups 2 weeks before Flex Day
+        </p>
+      </div>
     );
   }
 

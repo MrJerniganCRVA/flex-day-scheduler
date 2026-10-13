@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  formatSignupOpensAt,
   getSignupDeadline,
+  getSignupOpensAt,
   getSchoolWeekWindow,
+  isBeforeSignupOpens,
   isPastSignupDeadline,
 } from "./flex-day-utils";
 
@@ -102,6 +105,54 @@ describe("isPastSignupDeadline", () => {
 
   it("is false for a flex day well in the future", () => {
     expect(isPastSignupDeadline(day("2099-01-07"), NY)).toBe(false);
+  });
+});
+
+describe("getSignupOpensAt", () => {
+  it("opens at 8:00 AM EDT, 14 days before, in summer", () => {
+    // Wed 19 Aug 2026 -> Wed 5 Aug 2026, 08:00 EDT (UTC-4) = 12:00Z
+    expect(getSignupOpensAt(day("2026-08-19"), NY).toISOString()).toBe(
+      "2026-08-05T12:00:00.000Z"
+    );
+  });
+
+  it("opens at 8:00 AM EST, 14 days before, in winter", () => {
+    // Wed 21 Jan 2026 -> Wed 7 Jan 2026, 08:00 EST (UTC-5) = 13:00Z
+    expect(getSignupOpensAt(day("2026-01-21"), NY).toISOString()).toBe(
+      "2026-01-07T13:00:00.000Z"
+    );
+  });
+
+  it("uses the opening day's offset across a DST change", () => {
+    // Wed 11 Nov 2026 (EST) -> Wed 28 Oct 2026, still EDT: 08:00 EDT = 12:00Z
+    expect(getSignupOpensAt(day("2026-11-11"), NY).toISOString()).toBe(
+      "2026-10-28T12:00:00.000Z"
+    );
+  });
+
+  it("crosses a month boundary", () => {
+    // Tue 3 Mar 2026 -> Tue 17 Feb 2026, 08:00 PST (UTC-8) = 16:00Z
+    expect(getSignupOpensAt(day("2026-03-03"), LA).toISOString()).toBe(
+      "2026-02-17T16:00:00.000Z"
+    );
+  });
+});
+
+describe("isBeforeSignupOpens", () => {
+  it("is true for a flex day well in the future", () => {
+    expect(isBeforeSignupOpens(day("2099-01-07"), NY)).toBe(true);
+  });
+
+  it("is false for a flex day well in the past", () => {
+    expect(isBeforeSignupOpens(day("2020-01-08"), NY)).toBe(false);
+  });
+});
+
+describe("formatSignupOpensAt", () => {
+  it("formats in the school timezone", () => {
+    expect(
+      formatSignupOpensAt(getSignupOpensAt(day("2026-08-19"), NY), NY)
+    ).toBe("Wed, Aug 5 · 8:00 AM");
   });
 });
 

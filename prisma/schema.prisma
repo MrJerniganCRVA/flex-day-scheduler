@@ -164,6 +164,12 @@ model Club {
 
   cosponsorId           String?
   allowRandomAssignment Boolean   @default(true)
+
+  /// Admin-set. When true, students can only sign up for this club's sessions
+  /// from 8:00 AM school time, 14 days before each Flex Day (see
+  /// getSignupOpensAt in src/lib/flex-day-utils.ts). Stops a small, popular
+  /// club from being booked out for the whole year by whoever signed up first.
+  limitedSignupWindow   Boolean   @default(false)
   calendarSharedAt      DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
