@@ -76,10 +76,21 @@ export async function POST(
 
   const flexDay = await prisma.flexDay.findUnique({
     where: { id: flexDayId },
-    select: { id: true },
+    select: { id: true, isFinalized: true },
   });
   if (!flexDay) {
     return NextResponse.json({ error: "Flex Day not found" }, { status: 404 });
+  }
+  // A finalized day's calendar invites have gone out; a session added now would
+  // get none and surprise whoever reads the roster. Unfinalize first.
+  if (flexDay.isFinalized) {
+    return NextResponse.json(
+      {
+        error:
+          "This Flex Day is already finalized — ask an admin to unfinalize it first.",
+      },
+      { status: 409 }
+    );
   }
 
   // Prevent teacher from being scheduled in the same rotation twice on the same flex day

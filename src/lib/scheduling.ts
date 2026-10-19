@@ -7,6 +7,7 @@ import {
   type ReconcileReport,
   type ReconcileSkip,
 } from "@/lib/reconcile";
+import { findMissingFlexDays, type MissingFlexDay } from "@/lib/missing-sessions";
 
 export {
   desiredSessionShapes,
@@ -211,4 +212,37 @@ export async function reconcileFutureSessions(club: {
   }
 
   return report;
+}
+
+/**
+ * Upcoming, unfinalized Flex Days on which this club is missing one of its
+ * default rotations, for the club page's "add a session back" panel. See
+ * findMissingFlexDays.
+ */
+export async function loadMissingFlexDays(club: {
+  id: string;
+  defaultRotations: RotationSlot[];
+}): Promise<MissingFlexDay[]> {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const flexDays = await prisma.flexDay.findMany({
+    where: { date: { gte: today }, isActive: true },
+    select: {
+      id: true,
+      date: true,
+      label: true,
+      isFinalized: true,
+      clubSessions: {
+        where: { clubId: club.id },
+        select: { rotations: true },
+      },
+    },
+    orderBy: { date: "asc" },
+  });
+
+  return findMissingFlexDays({
+    defaultRotations: club.defaultRotations,
+    flexDays: flexDays.map((fd) => ({ ...fd, sessions: fd.clubSessions })),
+  });
 }
