@@ -8,6 +8,8 @@ import DeleteClubButton from "@/components/clubs/DeleteClubButton";
 import DeleteSessionButton from "@/components/sessions/DeleteSessionButton";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
+import RestoreSessionsPanel from "@/components/sessions/RestoreSessionsPanel";
+import { loadMissingFlexDays } from "@/lib/scheduling";
 
 export default async function AdminClubDetailPage({
   params,
@@ -57,6 +59,8 @@ export default async function AdminClubDetailPage({
     orderBy: { name: "asc" },
   });
 
+  const missingFlexDays = await loadMissingFlexDays(club);
+
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
@@ -98,12 +102,6 @@ export default async function AdminClubDetailPage({
           >
             Edit
           </Link>
-          <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-          >
-            + Schedule Session
-          </Link>
           <DeleteClubButton clubId={clubId} redirectTo="/admin/clubs" />
         </div>
       </div>
@@ -120,13 +118,8 @@ export default async function AdminClubDetailPage({
 
       {club.clubSessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
-          No sessions scheduled yet.{" "}
-          <Link
-            href={`/teacher/sessions/new?clubId=${clubId}`}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            Schedule one
-          </Link>
+          No sessions scheduled yet.
+          {missingFlexDays.length > 0 && " Add one back below."}
         </div>
       ) : (
         <div className="space-y-4">
@@ -206,6 +199,12 @@ export default async function AdminClubDetailPage({
           ))}
         </div>
       )}
+
+      <RestoreSessionsPanel
+        clubId={clubId}
+        linkedRotations={club.linkedRotations}
+        missingFlexDays={missingFlexDays}
+      />
     </div>
   );
 }

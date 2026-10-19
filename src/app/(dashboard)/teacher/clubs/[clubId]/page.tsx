@@ -7,6 +7,8 @@ import { isClubManager } from "@/lib/auth-helpers";
 import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
 import { groupSessionsByFlexDay } from "@/lib/session-grouping";
 import RequiredMembersPanel from "@/components/clubs/RequiredMembersPanel";
+import RestoreSessionsPanel from "@/components/sessions/RestoreSessionsPanel";
+import { loadMissingFlexDays } from "@/lib/scheduling";
 
 export default async function ClubDetailPage({
   params,
@@ -68,6 +70,8 @@ export default async function ClubDetailPage({
     orderBy: { name: "asc" },
   });
 
+  const missingFlexDays = await loadMissingFlexDays(club);
+
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
@@ -103,6 +107,7 @@ export default async function ClubDetailPage({
       {sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-400 dark:text-gray-500">
           No upcoming flex days scheduled. Sessions are automatically created when new flex days are added.
+          {missingFlexDays.length > 0 && " If you removed one, you can add it back below."}
         </div>
       ) : (
         <div className="space-y-4">
@@ -139,6 +144,12 @@ export default async function ClubDetailPage({
           ))}
         </div>
       )}
+
+      <RestoreSessionsPanel
+        clubId={clubId}
+        linkedRotations={club.linkedRotations}
+        missingFlexDays={missingFlexDays}
+      />
     </div>
   );
 }

@@ -9,6 +9,8 @@ interface FlexDay {
   id: string;
   date: string;
   label: string | null;
+  /** The club's default rotations that have no session on this day. */
+  missingRotations: RotationSlot[];
 }
 
 interface Room {
@@ -20,10 +22,17 @@ interface Room {
 interface Props {
   clubId: string;
   flexDays: FlexDay[];
-  defaultRoomId?: string | null;
+  /** Linked clubs share one roster across rotations; unlinked get one session each. */
+  linkedRotations: boolean;
 }
 
-export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Props) {
+/**
+ * Puts a removed session back on a Flex Day. Only the rotations the day is
+ * missing are offered, and the result takes the same shape auto-scheduling
+ * gives it (see createAutoScheduledSessions), so a restored day looks like
+ * it was never removed.
+ */
+export default function AddSessionInline({ clubId, flexDays, linkedRotations }: Props) {
   const router = useRouter();
   const [openFlexDayId, setOpenFlexDayId] = useState<string | null>(null);
   const [rotations, setRotations] = useState<RotationSlot[]>([]);
@@ -39,9 +48,9 @@ export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Pr
       .catch(() => {});
   }, []);
 
-  function openDay(flexDayId: string) {
-    setOpenFlexDayId(flexDayId);
-    setRotations([]);
+  function openDay(fd: FlexDay) {
+    setOpenFlexDayId(fd.id);
+    setRotations(fd.missingRotations);
     setRoomOverrideId("");
     setError(null);
   }
@@ -62,23 +71,33 @@ export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Pr
   async function handleSubmit(flexDayId: string) {
     setSaving(true);
     setError(null);
-    const res = await fetch(`/api/clubs/${clubId}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        flexDayId,
-        rotations,
-        roomOverrideId: roomOverrideId || undefined,
-      }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Failed to schedule session.");
-      return;
+    const shapes = linkedRotations ? [rotations] : rotations.map((r) => [r]);
+    try {
+      for (const shape of shapes) {
+        const res = await fetch(`/api/clubs/${clubId}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flexDayId,
+            rotations: shape,
+            roomOverrideId: roomOverrideId || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error ?? "Failed to schedule session.");
+          // Some rotations may already have been added; show them.
+          router.refresh();
+          return;
+        }
+      }
+      setOpenFlexDayId(null);
+      router.refresh();
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setOpenFlexDayId(null);
-    router.refresh();
   }
 
   return (
@@ -104,13 +123,16 @@ export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Pr
                 {fd.label && (
                   <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{fd.label}</span>
                 )}
+                <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                  Missing: {fd.missingRotations.map((r) => ROTATION_LABELS[r]).join(", ")}
+                </span>
               </div>
               <button
                 type="button"
-                onClick={() => openDay(fd.id)}
+                onClick={() => openDay(fd)}
                 className="rounded-lg border border-indigo-300 dark:border-indigo-700 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
               >
-                + Add
+                Add back
               </button>
             </div>
           );
@@ -136,7 +158,7 @@ export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Pr
                 Rotations <span className="text-red-500">*</span>
               </p>
               <div className="flex gap-2 flex-wrap">
-                {ALL_ROTATIONS.map((r) => (
+                {ALL_ROTATIONS.filter((r) => fd.missingRotations.includes(r)).map((r) => (
                   <label
                     key={r}
                     className={`flex items-center gap-2 cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
@@ -197,7 +219,7 @@ export default function AddSessionInline({ clubId, flexDays, defaultRoomId }: Pr
                 disabled={saving || rotations.length === 0}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                {saving ? "Scheduling…" : "Schedule"}
+                {saving ? "Adding…" : "Add back"}
               </button>
             </div>
           </div>
