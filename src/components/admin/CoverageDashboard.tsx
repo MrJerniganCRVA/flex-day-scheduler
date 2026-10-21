@@ -104,6 +104,7 @@ const EMPTY_ASSIGNMENT: Assignment = {
   t1Cleared: false,
   t2Cleared: false,
   absentTeacherIds: [],
+  outTeacherIds: [],
 };
 type Assignments = Record<string, Partial<Record<RotationSlot, Assignment>>>;
 /** dutyPostId -> rotation -> teacherId, or null for unstaffed. */
@@ -197,11 +198,14 @@ export default function CoverageDashboard({
   summary,
   flexDayLabel,
   tab,
+  outAbsences,
 }: {
   clubs: CoverageClub[];
   teachers: CoverageTeacher[];
   duties: CoverageDuty[];
   flexDayId: string;
+  /** Who is out for which blocks of the day — person-level absences only. */
+  outAbsences: { teacherId: string; rotation: RotationSlot }[];
   clashes: CoverageClash[];
   summary: CoverageSummary;
   flexDayLabel: string;
@@ -462,10 +466,23 @@ export default function CoverageDashboard({
     return out;
   }, [clubs, duties, assignments, dutyAssignments]);
 
+  // teacherId -> the blocks they are out for.
+  const outByTeacher = useMemo(() => {
+    const map = new Map<string, Set<RotationSlot>>();
+    for (const a of outAbsences) {
+      const set = map.get(a.teacherId) ?? new Set<RotationSlot>();
+      set.add(a.rotation);
+      map.set(a.teacherId, set);
+    }
+    return map;
+  }, [outAbsences]);
+
   // The teacher panel, from the same list the dropdowns use. It used to walk
   // `clubs` alone, so assigning someone to a duty post removed them from every
   // dropdown while this still filed them under "All 3 open" — and a reload did
   // not help, because the omission was in the derivation, not in stale state.
+  //
+  // A block someone is out for is not "open": they cannot be put there.
   const teacherRows = useMemo(() => {
     const busy = new Map<string, Set<RotationSlot>>();
     for (const p of expectedPlacements) {
@@ -477,13 +494,59 @@ export default function CoverageDashboard({
     return teachers
       .map((t) => {
         const assignedRotations = busy.get(t.id) ?? new Set<RotationSlot>();
+        const outRotations = outByTeacher.get(t.id) ?? new Set<RotationSlot>();
         const freeCount = ALL_ROTATIONS.filter(
-          (r) => !assignedRotations.has(r)
+          (r) => !assignedRotations.has(r) && !outRotations.has(r)
         ).length;
-        return { ...t, freeCount, assignedRotations };
+        const outAllDay = ALL_ROTATIONS.every((r) => outRotations.has(r));
+        return { ...t, freeCount, assignedRotations, outRotations, outAllDay };
       })
       .sort((a, b) => b.freeCount - a.freeCount);
-  }, [teachers, expectedPlacements]);
+  }, [teachers, expectedPlacements, outByTeacher]);
+
+  // Keyed `teacherId` or `teacherId:rotation`, whichever control is saving.
+  const [outBusy, setOutBusy] = useState<string | null>(null);
+
+  /**
+   * Mark a teacher out for some blocks of the day (all of them when `rotations`
+   * is omitted), or bring them back.
+   *
+   * Person-level — every club slot and duty post they were expected at that
+   * block empties at once, and comes back when this is undone. Refreshes rather
+   * than guessing, for the same reason as `setAbsence` below.
+   */
+  const setOut = useCallback(
+    async (
+      teacherId: string,
+      absent: boolean,
+      rotations?: RotationSlot[],
+      busyKey: string = teacherId
+    ) => {
+      setOutBusy(busyKey);
+      try {
+        const res = await fetch(`/api/flex-days/${flexDayId}/absences`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teacherId, absent, rotations }),
+        });
+        if (res.ok) router.refresh();
+        return res.ok;
+      } finally {
+        setOutBusy(null);
+      }
+    },
+    [flexDayId, router]
+  );
+
+  /** Bring back everyone out on one cell's rotation, from the cell's own undo. */
+  const undoOut = useCallback(
+    async (rotation: RotationSlot, teacherIds: string[]) => {
+      await Promise.all(
+        teacherIds.map((id) => setOut(id, false, [rotation], `${id}:${rotation}`))
+      );
+    },
+    [setOut]
+  );
 
   /**
    * Record (or lift) a teacher's absence from one rotation of one club session.
@@ -575,6 +638,9 @@ export default function CoverageDashboard({
   /**
    * Who can still be offered for a slot in this rotation.
    *
+   * A teacher out for the block is never on offer: they are not in the building
+   * to put anywhere.
+   *
    * One question for clubs and duty posts alike: nobody can be in two rooms at
    * once, so anyone already expected somewhere in this rotation is not on offer
    * anywhere else in it.
@@ -601,6 +667,9 @@ export default function CoverageDashboard({
         .filter((p) => p.rotation === rotation && !isExcluded(p.source))
         .map((p) => p.teacherId)
     );
+    for (const [teacherId, rotations] of outByTeacher) {
+      if (rotations.has(rotation)) taken.add(teacherId);
+    }
 
     return teachers.filter((t) => !taken.has(t.id));
   }
@@ -705,6 +774,12 @@ export default function CoverageDashboard({
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {flexDayLabel}
+            {outByTeacher.size > 0 && (
+              <span title="Teachers out for at least one Flex — mark them in the Teachers panel">
+                {" "}
+                · {outByTeacher.size} out
+              </span>
+            )}
           </p>
         </div>
         {/* Duty posts are defined elsewhere but staffed here, so the page they
@@ -1019,6 +1094,13 @@ export default function CoverageDashboard({
                                 ?.absentTeacherIds ?? []
                             )
                           }
+                          onUndoOut={() =>
+                            undoOut(
+                              rotation,
+                              assignments[session.sessionId]?.[rotation]
+                                ?.outTeacherIds ?? []
+                            )
+                          }
                           saveStatus={
                             saveStatus[session.sessionId]?.[rotation] ?? "idle"
                           }
@@ -1046,6 +1128,10 @@ export default function CoverageDashboard({
                           dutyAssignments[row.duty.dutyPostId]?.[rotation] ??
                           null
                         }
+                        outTeacherId={
+                          row.duty.outTeacherIds[rotation] ?? null
+                        }
+                        onUndoOut={(id) => undoOut(rotation, [id])}
                         clashingTeachers={
                           clashesByCard.get(
                             `duty:${row.duty.dutyPostId}:${rotation}`
@@ -1128,47 +1214,95 @@ export default function CoverageDashboard({
               </span>
             </div>
 
-            {[3, 2, 1, 0].map((freeCount) => {
+            {/* Clicking a chip marks the teacher out for that Flex; "Out today"
+                does all three. Someone out all day drops to the last group, so
+                the open groups above stay a list of people who can be placed. */}
+            {([3, 2, 1, 0, "out"] as const).map((group) => {
               const label =
-                freeCount === 3
-                  ? "All 3 open"
-                  : freeCount === 0
-                    ? "Fully assigned"
-                    : `${freeCount} open`;
-              const group = teacherRows.filter(
-                (t) => t.freeCount === freeCount
+                group === "out"
+                  ? "Out today"
+                  : group === 3
+                    ? "All 3 open"
+                    : group === 0
+                      ? "Fully assigned"
+                      : `${group} open`;
+              const members = teacherRows.filter((t) =>
+                group === "out" ? t.outAllDay : !t.outAllDay && t.freeCount === group
               );
-              if (group.length === 0) return null;
+              if (members.length === 0) return null;
               return (
-                <div key={freeCount}>
+                <div key={group}>
                   <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border-y border-gray-200 dark:border-gray-700 uppercase tracking-wide">
                     {label}
                   </div>
-                  {group.map((teacher) => (
+                  {members.map((teacher) => (
                     <div
                       key={teacher.id}
-                      className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0"
+                      className="group flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0"
                     >
                       <span
-                        className="text-sm text-gray-700 dark:text-gray-200 truncate"
+                        className={`text-sm truncate ${
+                          teacher.outAllDay
+                            ? "text-gray-400 dark:text-gray-500"
+                            : "text-gray-700 dark:text-gray-200"
+                        }`}
                         title={teacher.name}
                       >
                         {teacher.name}
                       </span>
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Always shown below xl, where the panel is full width;
+                            beside the grid it appears on hover or focus so the
+                            narrow column isn't crowded with a button per row. */}
+                        <button
+                          onClick={() => setOut(teacher.id, !teacher.outAllDay)}
+                          disabled={outBusy !== null}
+                          className={`mr-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline disabled:opacity-50 ${
+                            teacher.outAllDay
+                              ? ""
+                              : "xl:hidden xl:group-hover:inline xl:group-focus-within:inline"
+                          }`}
+                          aria-label={`${teacher.outAllDay ? "Bring back" : "Mark out"} ${teacher.name} for the whole day`}
+                        >
+                          {outBusy === teacher.id
+                            ? "…"
+                            : teacher.outAllDay
+                              ? "Back"
+                              : "Out today"}
+                        </button>
                         {ALL_ROTATIONS.map((r) => {
+                          const out = teacher.outRotations.has(r);
                           const assigned = teacher.assignedRotations.has(r);
                           return (
-                            <span
+                            <button
                               key={r}
-                              className={`text-xs px-1 py-0.5 rounded font-medium ${
-                                assigned
-                                  ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
-                                  : "border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                              onClick={() =>
+                                setOut(teacher.id, !out, [r], `${teacher.id}:${r}`)
+                              }
+                              disabled={outBusy !== null}
+                              title={
+                                out
+                                  ? `Out for ${ROTATION_LABELS[r]} — click to undo`
+                                  : `Mark out for ${ROTATION_LABELS[r]}`
+                              }
+                              aria-label={`${teacher.name}: ${
+                                out ? "out" : assigned ? "assigned" : "open"
+                              } for ${ROTATION_LABELS[r]}. ${
+                                out ? "Bring back" : "Mark out"
+                              }`}
+                              aria-pressed={out}
+                              className={`text-xs px-1 py-0.5 rounded font-medium disabled:cursor-wait ${
+                                outBusy === `${teacher.id}:${r}` ? "animate-pulse " : ""
+                              }${
+                                out
+                                  ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 line-through"
+                                  : assigned
+                                    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 hover:ring-1 hover:ring-gray-400"
+                                    : "border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500"
                               }`}
                             >
                               {SHORT_LABELS[r]}
-                            </span>
+                            </button>
                           );
                         })}
                       </div>
@@ -1218,6 +1352,7 @@ function ClubCell({
   assignment,
   clashingTeachers,
   onUndoAbsence,
+  onUndoOut,
   saveStatus,
   teachers,
   availableTeachers,
@@ -1234,6 +1369,8 @@ function ClubCell({
   clashingTeachers: string[];
   /** Lifts every absence recorded on this cell's rotation. */
   onUndoAbsence: () => void;
+  /** Brings back everyone out for this block who would be in this cell. */
+  onUndoOut: () => void;
   saveStatus: SaveStatus;
   teachers: CoverageTeacher[];
   availableTeachers: (slot: "t1" | "t2") => CoverageTeacher[];
@@ -1266,6 +1403,11 @@ function ClubCell({
   // without this line an admin would see an empty slot with no way to tell why
   // and no way back.
   const absentHere = assignment.absentTeacherIds.map(
+    (id) => teachers.find((t) => t.id === id)?.name ?? "A teacher"
+  );
+  // Out for the whole block, not just this club — a different record, so it
+  // gets its own line and its own undo.
+  const outHere = assignment.outTeacherIds.map(
     (id) => teachers.find((t) => t.id === id)?.name ?? "A teacher"
   );
 
@@ -1384,7 +1526,23 @@ function ClubCell({
           </button>
         </p>
       )}
+      {outHere.length > 0 && <OutNote names={outHere} onUndo={onUndoOut} />}
     </div>
+  );
+}
+
+/**
+ * "Smith out · undo" — the footnote for a teacher out for this whole block.
+ * Same amber line as "not attending" so the cell's grammar doesn't change.
+ */
+function OutNote({ names, onUndo }: { names: string[]; onUndo: () => void }) {
+  return (
+    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+      {names.join(", ")} out{" "}
+      <button onClick={onUndo} className="font-medium underline hover:no-underline">
+        undo
+      </button>
+    </p>
   );
 }
 
@@ -1407,6 +1565,8 @@ function DutyCell({
   duty,
   rotation,
   teacherId,
+  outTeacherId,
+  onUndoOut,
   clashingTeachers,
   saveStatus,
   options,
@@ -1416,6 +1576,9 @@ function DutyCell({
   duty: CoverageDuty;
   rotation: RotationSlot;
   teacherId: string | null;
+  /** Still assigned here but out this block, so the slot reads as open. */
+  outTeacherId: string | null;
+  onUndoOut: (teacherId: string) => void;
   clashingTeachers: string[];
   saveStatus: SaveStatus;
   options: CoverageTeacher[];
@@ -1493,6 +1656,14 @@ function DutyCell({
           ))}
         </select>
       </div>
+      {/* Only while the slot is still empty: once someone else is picked, the
+          assignment is theirs and lifting the absence has nothing to restore. */}
+      {outTeacherId && !assigned && (
+        <OutNote
+          names={[teachers.find((t) => t.id === outTeacherId)?.name ?? "A teacher"]}
+          onUndo={() => onUndoOut(outTeacherId)}
+        />
+      )}
     </div>
   );
 }

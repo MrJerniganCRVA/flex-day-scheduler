@@ -34,6 +34,13 @@ export type ResolvedAssignment = {
    * "Not here" control knows whether it is setting or undoing.
    */
   absentTeacherIds: string[];
+  /**
+   * Teachers out for this whole block (or the day) who would otherwise be here —
+   * the club's T1/T2 before the absence was subtracted. A different record from
+   * `absentTeacherIds`, so undoing it lifts the person-level absence rather than
+   * the session one.
+   */
+  outTeacherIds: string[];
 };
 
 /**
@@ -107,8 +114,13 @@ export type BoardDuty = {
   name: string;
   location: string | null;
   rotations: RotationSlot[];
-  /** teacherId per required rotation; null means unstaffed. */
+  /**
+   * teacherId per required rotation; null means unstaffed — including when the
+   * assigned teacher is out that block.
+   */
   assignments: Partial<Record<RotationSlot, string | null>>;
+  /** The assigned teacher who is out, per rotation, so the cell can say who. */
+  outTeacherIds: Partial<Record<RotationSlot, string | null>>;
 };
 
 /**

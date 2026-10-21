@@ -54,7 +54,15 @@ function loadDutyAssignments(flexDayId: string) {
       calendarEvent: {
         select: { id: true, googleEventId: true, ownerId: true },
       },
-      flexDay: { select: { date: true } },
+      // Who is out for the day or a block. An out teacher stays assigned — the
+      // Coverage page shows the post as open and puts them back the moment the
+      // absence is lifted — but must not be sent to stand there.
+      flexDay: {
+        select: {
+          date: true,
+          teacherAbsences: { select: { teacherId: true, rotation: true } },
+        },
+      },
     },
     orderBy: [{ dutyPost: { name: "asc" } }, { rotation: "asc" }],
   });
@@ -74,6 +82,15 @@ const blockLabel = (row: DutyRow) =>
  */
 const isLiveBlock = (row: DutyRow) =>
   row.dutyPost.isActive && row.dutyPost.requiredRotations.includes(row.rotation);
+
+/** The teacher actually standing the post: nobody, if they are out that block. */
+const standingTeacher = (row: DutyRow) =>
+  row.teacher &&
+  !row.flexDay.teacherAbsences.some(
+    (a) => a.teacherId === row.teacher!.id && a.rotation === row.rotation
+  )
+    ? row.teacher
+    : null;
 
 /**
  * Take an event back off its owner's calendar and forget it.
@@ -137,13 +154,18 @@ export async function sendDutyInvites(params: {
   for (const row of rows) {
     const label = blockLabel(row);
     const live = isLiveBlock(row);
+    const teacher = standingTeacher(row);
 
     // Not happening, or nobody standing it: either way no event should exist.
-    if (!live || !row.teacher) {
+    if (!live || !teacher) {
       await withdraw(
         row,
         params.clientFor,
-        live ? "its teacher was unassigned" : "the post stopped needing this block"
+        !live
+          ? "the post stopped needing this block"
+          : row.teacher
+            ? "its teacher is out"
+            : "its teacher was unassigned"
       );
 
       // An active post that still requires this rotation but has nobody on it is
@@ -161,8 +183,6 @@ export async function sendDutyInvites(params: {
       }
       continue;
     }
-
-    const teacher = row.teacher;
 
     try {
       // The teacher standing the post sends it, so the event lands on their own

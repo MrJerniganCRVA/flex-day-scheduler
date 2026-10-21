@@ -268,3 +268,17 @@ export const sessionAbsenceSchema = z.object({
   absent: z.boolean(),
   reason: z.string().trim().max(300).optional(),
 });
+
+/**
+ * A teacher out for one or more Flex blocks of a day. Omitting `rotations`
+ * means the whole day. No reason is recorded — whether someone is here is the
+ * fact coverage needs; why is between them and the office.
+ */
+export const flexAbsenceSchema = z.object({
+  teacherId: z.string().cuid().optional(),
+  rotations: z
+    .array(z.enum(["FLEX_1", "FLEX_2", "FLEX_3"] as [RotationSlot, ...RotationSlot[]]))
+    .min(1)
+    .optional(),
+  absent: z.boolean(),
+});

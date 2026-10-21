@@ -10,9 +10,10 @@ import {
   sessionEventTitle,
 } from "@/lib/session-event";
 import {
-  SESSION_ABSENCE_SELECT,
+  SESSION_ABSENCES_INCLUDE,
   SESSION_COVERAGE_SELECT,
   resolveSessionCoverage,
+  sessionAbsences,
   sessionRef,
 } from "@/lib/coverage";
 import {
@@ -96,8 +97,9 @@ export async function POST(
           // A teacher who has stepped back from a rotation must not be invited to
           // it, even when they are the club's owner and therefore the implicit
           // default — and, now that events are per-rotation, must not be invited
-          // to that rotation while staying on the others they do cover.
-          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+          // to that rotation while staying on the others they do cover. A
+          // teacher out for the whole block is left off the same way.
+          ...SESSION_ABSENCES_INCLUDE,
           sessionEvents: {
             select: {
               id: true,
@@ -232,7 +234,7 @@ export async function POST(
             sessionRef(cs),
             cs.rotationCoverage,
             rotation,
-            cs.teacherAbsences
+            sessionAbsences(cs)
           );
 
           // T1 sends it. Coverage is the source of truth for who is actually

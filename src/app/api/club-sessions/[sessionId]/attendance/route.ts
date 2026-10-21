@@ -8,6 +8,7 @@ import {
   SESSION_ABSENCE_SELECT,
   SESSION_COVERAGE_SELECT,
   resolveSessionTeacherIds,
+  sessionAbsences,
   sessionRef,
 } from "@/lib/coverage";
 
@@ -35,7 +36,14 @@ export async function PUT(
     where: { id: sessionId },
     select: {
       rotations: true,
-      flexDay: { select: { date: true } },
+      flexDay: {
+        select: {
+          date: true,
+          // Same shape SESSION_ABSENCES_INCLUDE produces; written out because
+          // this select already reads the day's date.
+          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+        },
+      },
       club: { select: { ownerId: true, cosponsorId: true } },
       oneOffOwnerId: true,
       rotationCoverage: { select: SESSION_COVERAGE_SELECT },
@@ -55,7 +63,7 @@ export async function PUT(
     sessionRef(clubSession),
     clubSession.rotationCoverage,
     clubSession.rotations,
-    clubSession.teacherAbsences
+    sessionAbsences(clubSession)
   );
   if (
     !canRecordAttendance(

@@ -111,6 +111,32 @@ export const SESSION_ABSENCE_SELECT = {
 } as const;
 
 /**
+ * Prisma fragment for *every* absence that bears on a session: its own rows
+ * ("not at this club") and the day's person-level rows ("out for this Flex").
+ * Spread into a ClubSession include, then read through `sessionAbsences`.
+ *
+ * One fragment rather than two selects at each call site for the reason the
+ * module header gives: a screen that loaded only the session's rows would still
+ * typecheck, and would quietly keep an absent teacher in the room.
+ */
+export const SESSION_ABSENCES_INCLUDE = {
+  teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+  flexDay: { select: { teacherAbsences: { select: SESSION_ABSENCE_SELECT } } },
+} as const;
+
+/**
+ * Every absence that applies to a session, as loaded by
+ * `SESSION_ABSENCES_INCLUDE`. A teacher out for the block is subtracted exactly
+ * like one who stepped back from this club — both have the `AbsenceRow` shape.
+ */
+export function sessionAbsences(session: {
+  teacherAbsences: AbsenceRow[];
+  flexDay: { teacherAbsences: AbsenceRow[] };
+}): AbsenceRow[] {
+  return [...session.teacherAbsences, ...session.flexDay.teacherAbsences];
+}
+
+/**
  * Effective T1/T2 for one rotation of one session.
  *
  * With no explicit assignment, T1 falls back to the club's owner, or for a one-off
@@ -297,6 +323,7 @@ export function sessionPlacement(session: {
   oneOffOwnerId?: string | null;
   rotationCoverage: CoverageRow[];
   teacherAbsences: AbsenceRow[];
+  flexDay: { teacherAbsences: AbsenceRow[] };
 }): ExpectedPlacement {
   return {
     id: session.id,
@@ -304,6 +331,6 @@ export function sessionPlacement(session: {
     rotations: session.rotations,
     session: sessionRef(session),
     rows: session.rotationCoverage,
-    absences: session.teacherAbsences,
+    absences: sessionAbsences(session),
   };
 }
