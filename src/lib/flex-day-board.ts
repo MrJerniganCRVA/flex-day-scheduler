@@ -2,9 +2,12 @@ import prisma from "@/lib/prisma";
 import type { RotationSlot } from "@prisma/client";
 import {
   SESSION_ABSENCE_SELECT,
+  SESSION_ABSENCES_INCLUDE,
   SESSION_COVERAGE_SELECT,
   resolveSessionCoverage,
+  sessionAbsences,
   sessionRef,
+  type AbsenceRow,
 } from "@/lib/coverage";
 import { resolveRoomName } from "@/lib/session-event";
 import type {
@@ -54,6 +57,11 @@ export type FlexDayBoard = {
    * one of them wrong.
    */
   staff: { id: string; name: string | null }[];
+  /**
+   * Who is out, per rotation, for the whole day — person-level absences only.
+   * Drives the Coverage sidebar; the cells already have them folded in.
+   */
+  outAbsences: AbsenceRow[];
 };
 
 const SESSION_INCLUDE = {
@@ -76,9 +84,10 @@ const SESSION_INCLUDE = {
   oneOffOwner: { select: { name: true } },
   _count: { select: { signups: true } },
   rotationCoverage: { select: SESSION_COVERAGE_SELECT },
-  // Without these, a teacher who has stepped back still showed as covering the
-  // session — on the one screen an admin uses to find gaps.
-  teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+  // Without these, a teacher who has stepped back — or is out for the block —
+  // still showed as covering the session, on the one screen an admin uses to
+  // find gaps.
+  ...SESSION_ABSENCES_INCLUDE,
 } as const;
 
 type RawFlexDay = NonNullable<
@@ -94,7 +103,10 @@ function findNextFlexDay() {
   return prisma.flexDay.findFirst({
     where: { date: { gte: today }, isActive: true },
     orderBy: { date: "asc" },
-    include: { clubSessions: { include: SESSION_INCLUDE } },
+    include: {
+      clubSessions: { include: SESSION_INCLUDE },
+      teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+    },
   });
 }
 
@@ -142,13 +154,27 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
   // only.
   const sessions: BoardSession[] = nextFlexDay.clubSessions.map((cs) => {
     const ref = sessionRef(cs);
+    const absences = sessionAbsences(cs);
     const assignments = Object.fromEntries(
       cs.rotations.map((rotation) => {
         const resolved = resolveSessionCoverage(
           ref,
           cs.rotationCoverage,
           rotation,
+          absences
+        );
+        // Who would be here if nobody were out — the only way to name a teacher
+        // whose day absence emptied this slot.
+        const expected = resolveSessionCoverage(
+          ref,
+          cs.rotationCoverage,
+          rotation,
           cs.teacherAbsences
+        );
+        const outHere = new Set(
+          nextFlexDay.teacherAbsences
+            .filter((a) => a.rotation === rotation)
+            .map((a) => a.teacherId)
         );
         const row = cs.rotationCoverage.find((r) => r.rotation === rotation);
         return [
@@ -161,6 +187,13 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
             absentTeacherIds: cs.teacherAbsences
               .filter((a) => a.rotation === rotation)
               .map((a) => a.teacherId),
+            outTeacherIds: [
+              ...new Set(
+                [expected.primaryTeacherId, expected.secondaryTeacherId].filter(
+                  (id): id is string => id !== null && outHere.has(id)
+                )
+              ),
+            ],
           } satisfies ResolvedAssignment,
         ];
       })
@@ -208,20 +241,38 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
     byName({ ...a, id: a.sessionId }, { ...b, id: b.sessionId })
   );
 
-  const duties: BoardDuty[] = dutyPosts.map((post) => ({
-    dutyPostId: post.id,
-    name: post.name,
-    location: post.location,
-    // Only the rotations the post actually needs staffing for get a slot, so an
-    // empty slot always means "needs someone" and never "not needed here".
-    rotations: post.requiredRotations,
-    assignments: Object.fromEntries(
-      post.requiredRotations.map((rotation) => [
-        rotation,
-        post.assignments.find((a) => a.rotation === rotation)?.teacherId ?? null,
-      ])
-    ) as Partial<Record<RotationSlot, string | null>>,
-  }));
+  const isOut = (teacherId: string | null, rotation: RotationSlot) =>
+    teacherId !== null &&
+    nextFlexDay.teacherAbsences.some(
+      (a) => a.teacherId === teacherId && a.rotation === rotation
+    );
+
+  const duties: BoardDuty[] = dutyPosts.map((post) => {
+    const assigned = (rotation: RotationSlot) =>
+      post.assignments.find((a) => a.rotation === rotation)?.teacherId ?? null;
+    return {
+      dutyPostId: post.id,
+      name: post.name,
+      location: post.location,
+      // Only the rotations the post actually needs staffing for get a slot, so an
+      // empty slot always means "needs someone" and never "not needed here".
+      rotations: post.requiredRotations,
+      // An out teacher stays on the assignment but not in the slot: the post
+      // reads as open until the absence is lifted, which restores them.
+      assignments: Object.fromEntries(
+        post.requiredRotations.map((rotation) => {
+          const id = assigned(rotation);
+          return [rotation, isOut(id, rotation) ? null : id];
+        })
+      ) as Partial<Record<RotationSlot, string | null>>,
+      outTeacherIds: Object.fromEntries(
+        post.requiredRotations.map((rotation) => {
+          const id = assigned(rotation);
+          return [rotation, isOut(id, rotation) ? id : null];
+        })
+      ) as Partial<Record<RotationSlot, string | null>>,
+    };
+  });
 
   duties.sort((a, b) =>
     byName({ ...a, id: a.dutyPostId }, { ...b, id: b.dutyPostId })
@@ -249,5 +300,6 @@ export async function loadFlexDayBoard(): Promise<FlexDayBoard | null> {
     clubSessions: nextFlexDay.clubSessions,
     dutyPosts,
     staff,
+    outAbsences: nextFlexDay.teacherAbsences,
   };
 }

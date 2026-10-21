@@ -6,7 +6,7 @@ import { ALL_ROTATIONS, ROTATION_LABELS } from "@/types";
 import { resolveRoomName } from "@/lib/session-event";
 import { mySessionsFilter } from "@/lib/my-sessions";
 import { sortByLastName } from "@/lib/student-name";
-import { SESSION_ABSENCE_SELECT } from "@/lib/coverage";
+import { SESSION_ABSENCES_INCLUDE, sessionAbsences } from "@/lib/coverage";
 import PrintButton from "@/components/print/PrintButton";
 
 /**
@@ -36,7 +36,7 @@ const SESSION_INCLUDE = {
       defaultRoom: { select: { name: true } },
     },
   },
-  teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+  ...SESSION_ABSENCES_INCLUDE,
   signups: {
     select: {
       id: true,
@@ -102,7 +102,7 @@ export default async function PrintRostersPage({
    * two roll calls, in two rooms' worth of time, and the second page is the one
    * that gets marked up at the second bell.
    *
-   * Rotations this person has stepped back from are left out. The page exists to
+   * Rotations this person has stepped back from, or is out for, are left out. The page exists to
    * be carried into a room they will be in; a roster for a session someone else
    * is covering is a page to throw away.
    */
@@ -111,7 +111,7 @@ export default async function PrintRostersPage({
       .filter(
         (cs) =>
           cs.rotations.includes(rotation) &&
-          !cs.teacherAbsences.some(
+          !sessionAbsences(cs).some(
             (a) => a.teacherId === userId && a.rotation === rotation
           )
       )

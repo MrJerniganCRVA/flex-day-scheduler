@@ -14,9 +14,10 @@ import { schoolTimeZone } from "@/lib/flex-day-utils";
 import { resolveRoomName } from "@/lib/session-event";
 import { sortByLastName } from "@/lib/student-name";
 import {
-  SESSION_ABSENCE_SELECT,
+  SESSION_ABSENCES_INCLUDE,
   SESSION_COVERAGE_SELECT,
   resolveSessionCoverage,
+  sessionAbsences,
   sessionRef,
 } from "@/lib/coverage";
 
@@ -50,7 +51,7 @@ export default async function AdminFlexDayDetailPage({
           },
           roomOverride: { select: { name: true } },
           rotationCoverage: { select: SESSION_COVERAGE_SELECT },
-          teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+          ...SESSION_ABSENCES_INCLUDE,
           oneOffOwner: { select: { name: true } },
           signups: {
             select: {
@@ -91,7 +92,7 @@ export default async function AdminFlexDayDetailPage({
           sessionRef(cs),
           cs.rotationCoverage,
           rotation,
-          cs.teacherAbsences
+          sessionAbsences(cs)
         ).primaryTeacherId === null
     );
 

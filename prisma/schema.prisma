@@ -103,6 +103,7 @@ model User {
   auditsPerformed  SignupAudit[]             @relation("SignupAuditActor")
   auditsAbout      SignupAudit[]             @relation("SignupAuditStudent")
   sessionAbsences  SessionTeacherAbsence[]   @relation("SessionAbsence")
+  flexAbsences     TeacherFlexAbsence[]      @relation("FlexAbsence")
   dutyAssignments  DutyAssignment[]          @relation("DutyTeacher")
   requiredIn       RequiredMember[]          @relation("RequiredMembership")
   sessionEventsOwned SessionCalendarEvent[]  @relation("SessionEventOwner")
@@ -123,6 +124,7 @@ model FlexDay {
 
   clubSessions    ClubSession[]
   dutyAssignments DutyAssignment[]
+  teacherAbsences TeacherFlexAbsence[]
 
   @@unique([date])
   @@index([date])
@@ -312,6 +314,37 @@ model SessionTeacherAbsence {
 
   @@unique([sessionId, teacherId, rotation])
   @@index([sessionId])
+  @@index([teacherId])
+}
+
+/// A teacher who is out for a whole Flex block — or, as three rows, the whole
+/// day — whatever they would otherwise be doing in it.
+///
+/// Attendance is a fact about the *person*, not about any one placement: someone
+/// out sick, in a meeting, or off site is missing from every club and duty post
+/// they were expected at that block. SessionTeacherAbsence is the other kind —
+/// "not at this club", the usual answer to a double-booking — and stays separate,
+/// because lifting one must not lift the other.
+///
+/// Like a session absence this is subtracted after the coverage fallbacks (see
+/// sessionAbsences in src/lib/coverage.ts), and duty posts resolve an absent
+/// teacher to unstaffed rather than clearing the assignment. Nothing is deleted
+/// or rewritten, so lifting the absence puts them back everywhere at once.
+model TeacherFlexAbsence {
+  id        String       @id @default(cuid())
+  flexDayId String
+  teacherId String
+  /// Required, for the same reason as on SessionTeacherAbsence: a nullable "all
+  /// day" value would let the unique index admit duplicates. Out all day is one
+  /// row per rotation.
+  rotation  RotationSlot
+  createdAt DateTime     @default(now())
+
+  flexDay FlexDay @relation(fields: [flexDayId], references: [id], onDelete: Cascade)
+  teacher User    @relation("FlexAbsence", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([flexDayId, teacherId, rotation])
+  @@index([flexDayId])
   @@index([teacherId])
 }
 

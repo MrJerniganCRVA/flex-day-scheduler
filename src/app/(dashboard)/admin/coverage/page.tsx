@@ -57,8 +57,9 @@ export default async function AdminCoveragePage({
   //
   // Duty posts join the club sessions as placements. A duty assignment is already
   // an explicit decision with no owner or cosponsor to derive from, so it carries
-  // no coverage rows and no absences — the assigned teacher goes straight into the
-  // `ownerId` slot that resolveSessionCoverage reads as T1.
+  // no coverage rows — the assigned teacher goes straight into the `ownerId` slot
+  // that resolveSessionCoverage reads as T1. Its only absences are the day's: a
+  // teacher out for the block is not standing the post either.
   const dutyPlacements = board.dutyPosts.flatMap((post) =>
     post.assignments
       .filter((a) => a.teacherId !== null && post.requiredRotations.includes(a.rotation))
@@ -68,7 +69,7 @@ export default async function AdminCoveragePage({
         rotations: [a.rotation],
         session: { ownerId: a.teacherId },
         rows: [],
-        absences: [],
+        absences: board.outAbsences,
       }))
   );
 
@@ -148,6 +149,7 @@ export default async function AdminCoveragePage({
         clashes={clashWarnings}
         summary={summary}
         flexDayLabel={flexDayLabel}
+        outAbsences={board.outAbsences}
       />
     </>
   );

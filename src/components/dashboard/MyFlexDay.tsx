@@ -5,8 +5,9 @@ import { resolveRoomName } from "@/lib/session-event";
 import type { RotationSlot } from "@prisma/client";
 import SessionAttendanceForm from "@/components/sessions/SessionAttendanceForm";
 import RotationClashNotice from "@/components/sessions/RotationClashNotice";
+import OutToggle from "@/components/sessions/OutToggle";
 import {
-  SESSION_ABSENCE_SELECT,
+  SESSION_ABSENCES_INCLUDE,
   SESSION_COVERAGE_SELECT,
   findTeacherClashes,
   sessionPlacement,
@@ -39,7 +40,7 @@ const SESSION_INCLUDE = {
     },
   },
   rotationCoverage: { select: SESSION_COVERAGE_SELECT },
-  teacherAbsences: { select: SESSION_ABSENCE_SELECT },
+  ...SESSION_ABSENCES_INCLUDE,
   signups: {
     select: {
       id: true,
@@ -125,6 +126,19 @@ export default async function MyFlexDay({
   const iAmAbsentFrom = (cs: MySession, slot: RotationSlot) =>
     cs.teacherAbsences.some((a) => a.teacherId === userId && a.rotation === slot);
 
+  // Blocks this person is out for altogether — sick, in a meeting, off site. A
+  // different record from stepping back from one club: it covers every
+  // placement in the block, duty posts included.
+  const myOutRotations = new Set(
+    (
+      await prisma.teacherFlexAbsence.findMany({
+        where: { flexDayId: nextFlexDay.id, teacherId: userId },
+        select: { rotation: true },
+      })
+    ).map((a) => a.rotation)
+  );
+  const outAllDay = ALL_ROTATIONS.every((r) => myOutRotations.has(r));
+
   // Someone expected by two sessions in the same rotation cannot attend both.
   //
   // Shares its implementation with the admin Coverage page, which grew the same
@@ -171,8 +185,9 @@ export default async function MyFlexDay({
       )}
 
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-5">
-        {(showDayHeader || hasSessions) && (
-          <div className="mb-4 flex items-start justify-between gap-3">
+        {/* Always rendered now: "I'm out today" belongs to anyone with a Flex
+            Day, including someone whose only placement is a duty post. */}
+        <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               {showDayHeader && (
                 <>
@@ -197,6 +212,8 @@ export default async function MyFlexDay({
             {/* Paper, for the teacher who would rather not carry the roster on a
                 phone around a room. A new tab: the print view has no app chrome
                 and nothing to come back from. */}
+            <div className="flex shrink-0 flex-wrap items-start justify-end gap-2">
+            <OutToggle flexDayId={nextFlexDay.id} out={outAllDay} />
             {hasSessions && (
               <a
                 href={`/rosters/${nextFlexDay.id}`}
@@ -224,7 +241,7 @@ export default async function MyFlexDay({
               </a>
             )}
           </div>
-        )}
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
           {ALL_ROTATIONS.map((slot: RotationSlot) => {
@@ -232,143 +249,163 @@ export default async function MyFlexDay({
               cs.rotations.includes(slot)
             );
 
+            const outHere = myOutRotations.has(slot);
+
             return (
               <div
                 key={slot}
                 className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden"
               >
                 <div
-                  className={`px-4 py-2.5 font-semibold text-sm ${
+                  className={`flex items-center justify-between gap-2 px-4 py-2.5 font-semibold text-sm ${
                     sessions.length > 0
                       ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300"
                       : "bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
                   }`}
                 >
-                  {ROTATION_LABELS[slot]}
+                  <span className="flex items-center gap-1.5">
+                    {ROTATION_LABELS[slot]}
+                    {outHere && (
+                      <span className="rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                        Out
+                      </span>
+                    )}
+                  </span>
+                  <OutToggle
+                    flexDayId={nextFlexDay.id}
+                    rotations={[slot]}
+                    out={outHere}
+                    variant="link"
+                  />
                 </div>
 
-                {dutyByRotation.has(slot) && (
-                  <div className="px-4 pt-3">
-                    <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2">
-                      <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">
-                        On duty: {dutyByRotation.get(slot)!.name}
-                      </p>
-                      {dutyByRotation.get(slot)!.location && (
-                        <p className="mt-0.5 text-[11px] text-indigo-700 dark:text-indigo-300">
-                          {dutyByRotation.get(slot)!.location}
+                {/* Still listed while out, dimmed: they can see what is being
+                    covered for them, and undo it from the header above. */}
+                <div className={outHere ? "opacity-60" : undefined}>
+
+                  {dutyByRotation.has(slot) && (
+                    <div className="px-4 pt-3">
+                      <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2">
+                        <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">
+                          On duty: {dutyByRotation.get(slot)!.name}
                         </p>
-                      )}
+                        {dutyByRotation.get(slot)!.location && (
+                          <p className="mt-0.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+                            {dutyByRotation.get(slot)!.location}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {clashes.has(slot) && (
-                  <div className="px-4 pt-3">
-                    <RotationClashNotice
-                      rotation={slot}
-                      rotationLabel={ROTATION_LABELS[slot]}
-                      options={clashes.get(slot)!.map((cs) => ({
-                        sessionId: cs.id,
-                        name: cs.club?.name ?? cs.title ?? "Session",
-                        absent: iAmAbsentFrom(cs, slot),
-                      }))}
-                    />
-                  </div>
-                )}
-
-                <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                  {sessions.length === 0 ? (
-                    <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
-                      Not scheduled
-                    </p>
-                  ) : (
-                    sessions.map((cs) => {
-                      const absentHere = iAmAbsentFrom(cs, slot);
-                      return (
-                        <div
-                          key={cs.id}
-                          className={`px-4 py-4 ${absentHere ? "opacity-60" : ""}`}
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <div className="font-medium text-gray-900 dark:text-white text-sm">
-                              {cs.club?.name ?? cs.title ?? "Session"}
-                              {absentHere && (
-                                <span className="ml-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                                  Not attending
-                                </span>
-                              )}
-                            </div>
-                            <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
-                              {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
-                            </span>
-                          </div>
-
-                          {/* Where to be. A duty post's location is shown
-                              directly above this; a club's room was not,
-                              which left the teacher running a club worse
-                              informed than the one covering a hallway. */}
-                          {resolveRoomName(cs) && (
-                            <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-                              {resolveRoomName(cs)}
-                            </div>
-                          )}
-
-                          {/* capacity bar */}
-                          <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">
-                            <div
-                              className="h-full rounded-full bg-indigo-400 dark:bg-indigo-500 transition-all"
-                              style={{
-                                width: `${Math.min(
-                                  100,
-                                  Math.round(
-                                    (cs._count.signups /
-                                      (cs.capacityOverride ?? cs.club?.maxCapacity ?? 1)) *
-                                      100
-                                  )
-                                )}%`,
-                              }}
-                            />
-                          </div>
-
-                          {cs.signups.length > 0 ? (
-                            isToday ? (
-                              <SessionAttendanceForm
-                                sessionId={cs.id}
-                                signups={cs.signups}
-                              />
-                            ) : (
-                              <details>
-                                <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                                  Roster ({cs.signups.length})
-                                </summary>
-                                <ul className="mt-2 space-y-0.5">
-                                  {/* Same roster order as the attendance list
-                                      it becomes on the day, so the teacher is
-                                      not handed two different orderings of the
-                                      same names. */}
-                                  {sortByLastName(
-                                    cs.signups,
-                                    (s) => s.student.name
-                                  ).map((s) => (
-                                    <li
-                                      key={s.id}
-                                      className="text-sm text-gray-600 dark:text-gray-300"
-                                    >
-                                      {s.student.name}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </details>
-                            )
-                          ) : (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-                              No signups yet
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })
                   )}
+
+                  {clashes.has(slot) && (
+                    <div className="px-4 pt-3">
+                      <RotationClashNotice
+                        rotation={slot}
+                        rotationLabel={ROTATION_LABELS[slot]}
+                        options={clashes.get(slot)!.map((cs) => ({
+                          sessionId: cs.id,
+                          name: cs.club?.name ?? cs.title ?? "Session",
+                          absent: iAmAbsentFrom(cs, slot),
+                        }))}
+                      />
+                    </div>
+                  )}
+
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                    {sessions.length === 0 ? (
+                      <p className="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
+                        Not scheduled
+                      </p>
+                    ) : (
+                      sessions.map((cs) => {
+                        const absentHere = iAmAbsentFrom(cs, slot);
+                        return (
+                          <div
+                            key={cs.id}
+                            className={`px-4 py-4 ${absentHere ? "opacity-60" : ""}`}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <div className="font-medium text-gray-900 dark:text-white text-sm">
+                                {cs.club?.name ?? cs.title ?? "Session"}
+                                {absentHere && (
+                                  <span className="ml-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                    Not attending
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                {cs._count.signups}/{cs.capacityOverride ?? cs.club?.maxCapacity ?? 0}
+                              </span>
+                            </div>
+
+                            {/* Where to be. A duty post's location is shown
+                                directly above this; a club's room was not,
+                                which left the teacher running a club worse
+                                informed than the one covering a hallway. */}
+                            {resolveRoomName(cs) && (
+                              <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                                {resolveRoomName(cs)}
+                              </div>
+                            )}
+
+                            {/* capacity bar */}
+                            <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden mb-3">
+                              <div
+                                className="h-full rounded-full bg-indigo-400 dark:bg-indigo-500 transition-all"
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    Math.round(
+                                      (cs._count.signups /
+                                        (cs.capacityOverride ?? cs.club?.maxCapacity ?? 1)) *
+                                        100
+                                    )
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+
+                            {cs.signups.length > 0 ? (
+                              isToday ? (
+                                <SessionAttendanceForm
+                                  sessionId={cs.id}
+                                  signups={cs.signups}
+                                />
+                              ) : (
+                                <details>
+                                  <summary className="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    Roster ({cs.signups.length})
+                                  </summary>
+                                  <ul className="mt-2 space-y-0.5">
+                                    {/* Same roster order as the attendance list
+                                        it becomes on the day, so the teacher is
+                                        not handed two different orderings of the
+                                        same names. */}
+                                    {sortByLastName(
+                                      cs.signups,
+                                      (s) => s.student.name
+                                    ).map((s) => (
+                                      <li
+                                        key={s.id}
+                                        className="text-sm text-gray-600 dark:text-gray-300"
+                                      >
+                                        {s.student.name}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              )
+                            ) : (
+                              <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                                No signups yet
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
             );

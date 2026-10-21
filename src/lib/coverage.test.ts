@@ -4,6 +4,8 @@ import {
   resolveSessionCoverage,
   resolveSessionTeacherIds,
   rotationsExpectingTeacher,
+  sessionAbsences,
+  sessionPlacement,
   sessionRef,
   type CoverageRow,
   type ExpectedPlacement,
@@ -691,5 +693,80 @@ describe("the sender of each block's invite", () => {
       resolveSessionCoverage(club, [row("FLEX_1", null, null, false, true)], "FLEX_1", [])
         .primaryTeacherId
     ).toBeNull();
+  });
+});
+
+/**
+ * A teacher out for a Flex block (or the day) is a person-level absence: it
+ * reaches every session they would be in, by riding along with the session's
+ * own absences through `sessionAbsences`.
+ */
+describe("day-level absences", () => {
+  const session = (
+    id: string,
+    ownerId: string,
+    dayOut: { teacherId: string; rotation: CoverageRow["rotation"] }[],
+    rotationCoverage: CoverageRow[] = []
+  ) => ({
+    id,
+    rotations: ["FLEX_1", "FLEX_2"] as CoverageRow["rotation"][],
+    club: { name: id, ownerId, cosponsorId: "cosponsor" },
+    oneOffOwnerId: null,
+    rotationCoverage,
+    teacherAbsences: [],
+    flexDay: { teacherAbsences: dayOut },
+  });
+
+  it("merges the session's own absences with the day's", () => {
+    expect(
+      sessionAbsences({
+        teacherAbsences: [{ teacherId: "a", rotation: "FLEX_1" }],
+        flexDay: { teacherAbsences: [{ teacherId: "b", rotation: "FLEX_2" }] },
+      })
+    ).toEqual([
+      { teacherId: "a", rotation: "FLEX_1" },
+      { teacherId: "b", rotation: "FLEX_2" },
+    ]);
+  });
+
+  it("takes an out owner off the default T1, only in the block they are out for", () => {
+    const cs = session("chess", "owner", [{ teacherId: "owner", rotation: "FLEX_2" }]);
+    const absences = sessionAbsences(cs);
+    expect(resolveSessionCoverage(club, [], "FLEX_2", absences).primaryTeacherId).toBeNull();
+    expect(resolveSessionCoverage(club, [], "FLEX_1", absences).primaryTeacherId).toBe(
+      "owner"
+    );
+  });
+
+  it("takes an out teacher off an explicit assignment too", () => {
+    const rows = [row("FLEX_1", "sub", "helper")];
+    const absences = sessionAbsences(
+      session("chess", "owner", [
+        { teacherId: "sub", rotation: "FLEX_1" },
+        { teacherId: "helper", rotation: "FLEX_1" },
+      ])
+    );
+    expect(resolveSessionCoverage(club, rows, "FLEX_1", absences)).toEqual({
+      primaryTeacherId: null,
+      secondaryTeacherId: null,
+    });
+  });
+
+  it("clears a double-booking for the block they are out for", () => {
+    // Owns two clubs in the same blocks: double-booked in both, until they are
+    // out for Flex 1 — then only Flex 2 still clashes.
+    const out = [{ teacherId: "owner", rotation: "FLEX_1" as const }];
+    const clashes = findTeacherClashes(
+      [session("chess", "owner", out), session("drama", "owner", out)].map(
+        sessionPlacement
+      ),
+      ["FLEX_1", "FLEX_2"]
+    );
+    // Both fixture clubs share a cosponsor too; only the owner is under test.
+    expect(
+      clashes
+        .filter((c) => c.teacherId === "owner")
+        .map((c) => [c.teacherId, c.rotation])
+    ).toEqual([["owner", "FLEX_2"]]);
   });
 });
