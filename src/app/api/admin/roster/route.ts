@@ -22,7 +22,7 @@ import {
  * POST /api/admin/roster — admin roster override.
  *
  * The normal signup rules are deliberately strict: students sign up themselves,
- * and everything closes at the Friday deadline. But real situations need an
+ * and everything closes at the signup deadline. But real situations need an
  * exception (a student turns up without the permission slip a club requires),
  * and before this route existed there was no way to make one — POST /api/signups
  * rejects every non-student, the admin flex-day rosters were read-only, and the

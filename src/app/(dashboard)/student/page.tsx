@@ -26,7 +26,7 @@ export default async function StudentDashboard() {
   // Every upcoming day, not just the nearest one.
   //
   // The dashboard used to show only the next Flex Day and nothing linked to the
-  // per-day page, so between one day's Friday deadline and the day itself
+  // per-day page, so between one day's signup deadline and the day itself
   // students were parked on a "Signups closed" screen with no route to the next
   // Flex Day — whose signups were open the whole time.
   const upcomingFlexDays = await prisma.flexDay.findMany({
