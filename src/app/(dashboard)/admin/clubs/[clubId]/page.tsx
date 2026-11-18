@@ -173,6 +173,15 @@ export default async function AdminClubDetailPage({
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                           {cs._count.signups}/{club.maxCapacity} enrolled
                         </span>
+                        <a
+                          href={`/rosters/${cs.flexDay.id}?session=${cs.id}`}
+                          target="_blank"
+                          rel="noopener"
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                          title="Open a printable roster for this session — one page per rotation"
+                        >
+                          Print roster
+                        </a>
                         <DeleteSessionButton sessionId={cs.id} />
                       </div>
                     </div>

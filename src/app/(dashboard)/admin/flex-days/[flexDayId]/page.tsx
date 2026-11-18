@@ -296,6 +296,18 @@ export default async function AdminFlexDayDetailPage({
                               >
                                 Edit
                               </a>
+                              {/* The teacher print view, narrowed to this one
+                                  session — an admin is attached to no session,
+                                  so the unparameterised page prints nothing. */}
+                              <a
+                                href={`/rosters/${flexDayId}?session=${cs.id}`}
+                                target="_blank"
+                                rel="noopener"
+                                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                                title="Open a printable roster for this session — one page per rotation"
+                              >
+                                Print
+                              </a>
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {resolveRoomName(cs) && (
                                   <span className="mr-1">{resolveRoomName(cs)} ·</span>
