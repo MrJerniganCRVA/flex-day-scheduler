@@ -25,6 +25,11 @@ import PrintButton from "@/components/print/PrintButton";
  *
  * Scoped by mySessionsFilter, the same predicate the dashboard uses — a teacher
  * can only ever print rosters for sessions they are attached to.
+ *
+ * `?session=<id>` narrows the page to one session. For an admin that lifts the
+ * mySessionsFilter scope, which is how the admin Flex Day and Club pages print
+ * any club's roster without a second print view to keep in step with this one.
+ * For anyone else the filter still applies, so the param can only narrow.
  */
 
 const SESSION_INCLUDE = {
@@ -63,20 +68,33 @@ function columnCount(size: number): 1 | 2 | 3 {
 
 export default async function PrintRostersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ flexDayId: string }>;
+  searchParams: Promise<{ session?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const userId = session.user.id;
+  const isAdmin = session.user.role === "ADMIN";
 
   const { flexDayId } = await params;
+  const { session: rawSessionId } = await searchParams;
+  const sessionId =
+    typeof rawSessionId === "string" && rawSessionId ? rawSessionId : null;
+
+  const sessionWhere =
+    sessionId === null
+      ? mySessionsFilter(userId)
+      : isAdmin
+        ? { id: sessionId }
+        : { AND: [{ id: sessionId }, mySessionsFilter(userId)] };
 
   const flexDay = await prisma.flexDay.findUnique({
     where: { id: flexDayId },
     include: {
       clubSessions: {
-        where: mySessionsFilter(userId),
+        where: sessionWhere,
         include: SESSION_INCLUDE,
       },
     },
@@ -104,19 +122,26 @@ export default async function PrintRostersPage({
    *
    * Rotations this person has stepped back from, or is out for, are left out. The page exists to
    * be carried into a room they will be in; a roster for a session someone else
-   * is covering is a page to throw away.
+   * is covering is a page to throw away. That reasoning is about *my* day, so a
+   * single session asked for by id prints every rotation it runs in.
    */
   const pages = ALL_ROTATIONS.flatMap((rotation: RotationSlot) =>
     flexDay.clubSessions
       .filter(
         (cs) =>
           cs.rotations.includes(rotation) &&
-          !sessionAbsences(cs).some(
-            (a) => a.teacherId === userId && a.rotation === rotation
-          )
+          (sessionId !== null ||
+            !sessionAbsences(cs).some(
+              (a) => a.teacherId === userId && a.rotation === rotation
+            ))
       )
       .map((cs) => ({ rotation, session: cs }))
   );
+
+  const single = sessionId !== null ? flexDay.clubSessions[0] : undefined;
+  const heading = single
+    ? `${single.club?.name ?? single.title ?? "Session"} roster`
+    : "Flex Day rosters";
 
   return (
     <div className="mx-auto max-w-4xl p-6 print:max-w-none print:p-0">
@@ -124,7 +149,7 @@ export default async function PrintRostersPage({
           button nobody can press. */}
       <div className="no-print mb-6 flex items-center justify-between gap-4 border-b border-gray-200 pb-4">
         <div>
-          <h1 className="text-xl font-bold">Flex Day rosters</h1>
+          <h1 className="text-xl font-bold">{heading}</h1>
           <p className="text-sm text-gray-600">
             {dateLabel} · {pages.length}{" "}
             {pages.length === 1 ? "page" : "pages"}, one per rotation
@@ -135,7 +160,9 @@ export default async function PrintRostersPage({
 
       {pages.length === 0 ? (
         <p className="no-print text-sm text-gray-600">
-          You have no sessions on this Flex Day, so there is nothing to print.
+          {sessionId !== null
+            ? "That session isn't on this Flex Day, or you don't have access to it."
+            : "You have no sessions on this Flex Day, so there is nothing to print."}
         </p>
       ) : (
         pages.map(({ rotation, session: cs }, i) => {
