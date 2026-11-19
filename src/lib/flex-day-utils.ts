@@ -54,9 +54,13 @@ function zonedTimeToUtc(
   return new Date(utc);
 }
 
+/** How many calendar days before a Flex Day its signups close. */
+export const SIGNUP_DEADLINE_DAYS_BEFORE = 7;
+
 /**
  * Calculate the signup deadline for a given flex day.
- * Deadline is Friday before the flex day at 2:56 PM school-local time.
+ * Deadline is SIGNUP_DEADLINE_DAYS_BEFORE calendar days before the flex day
+ * (the same weekday, one week earlier) at 2:56 PM school-local time.
  *
  * `timeZone` defaults to the configured school timezone; it is a parameter so
  * the DST behavior can be tested against fixed zones without env setup.
@@ -65,29 +69,15 @@ export function getSignupDeadline(flexDayDate: Date, timeZone?: string): Date {
   const tz = timeZone ?? schoolTimeZone();
   const flexDay = new Date(flexDayDate);
 
-  // Day-of-week / day-offset arithmetic operates purely on the calendar date
+  // Day-offset arithmetic operates purely on the calendar date
   // (dates are stored as UTC midnight in the DB) and is timezone-independent,
   // so it stays in UTC.
   const year = flexDay.getUTCFullYear();
   const month = flexDay.getUTCMonth();
   const day = flexDay.getUTCDate();
-  const dayOfWeek = new Date(Date.UTC(year, month, day)).getUTCDay();
-
-  // Calculate days back to the most recent Friday (5 = Friday)
-  let daysBack: number;
-  if (dayOfWeek === 0) {
-    // Sunday -> go back 2 days to Friday
-    daysBack = 2;
-  } else if (dayOfWeek === 6) {
-    // Saturday -> go back 1 day to Friday
-    daysBack = 1;
-  } else {
-    // Monday-Friday -> go back to previous Friday
-    // Mon(1)=3, Tue(2)=4, Wed(3)=5, Thu(4)=6, Fri(5)=7
-    daysBack = dayOfWeek + 2;
-  }
-
-  const deadlineDate = new Date(Date.UTC(year, month, day - daysBack));
+  const deadlineDate = new Date(
+    Date.UTC(year, month, day - SIGNUP_DEADLINE_DAYS_BEFORE)
+  );
 
   // The deadline is a wall-clock time in the school's timezone — resolve it
   // against that zone so it lands at 2:56 PM there regardless of what

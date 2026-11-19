@@ -15,7 +15,7 @@ import {
  *
  * minified in production to "Cannot access 't' before initialization". It fired
  * for every student whose nearest Flex Day had already closed — i.e. every
- * student, every week, from Friday 2:56 PM until the next open Flex Day — and
+ * student, every week, from the 2:56 PM deadline until the next open Flex Day — and
  * took the whole student dashboard down with it right after they signed in.
  *
  * Fake timers drive both Date.now and setInterval, so these exercise the real

@@ -11,7 +11,7 @@ export interface FlexDayOption {
  *
  * Without it a student could only ever reach the single nearest Flex Day: the
  * dashboard rendered that one day and nothing in the app linked to the per-day
- * page. Once the nearest day's Friday deadline passed, that left a closed
+ * page. Once the nearest day's signup deadline passed, that left a closed
  * screen and no way through to the next day, whose signups were open.
  *
  * The nearest day links to /student rather than to its own page so the

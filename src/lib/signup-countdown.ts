@@ -11,7 +11,7 @@
  * the deadline had already passed, that first call took the expiry branch and
  * ran `clearInterval(id)` while `id` was still in its temporal dead zone. So the
  * student dashboard — the page every student lands on after signing in — threw
- * during hydration for the whole stretch between one Friday 2:56 PM deadline and
+ * during hydration for the whole stretch between one 2:56 PM signup deadline and
  * the next Flex Day, and Next.js replaced the page with "A client side exception
  * has occurred".
  *
